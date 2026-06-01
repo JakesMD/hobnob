@@ -1,0 +1,14 @@
+tasks:
+  parent:
+    steps:
+      - call: child
+        with:
+          - INPUT: "hello"
+        into:
+          - RESULT: OUTPUT
+          - DERIVED: "{{.RESULT}}_done"
+
+  child:
+    steps:
+      - set:
+          - OUTPUT: "{{.INPUT}}_processed"

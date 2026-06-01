@@ -1,0 +1,20 @@
+tasks:
+  upload:
+    steps:
+      - multi-select:
+          name: FILE_PATHS
+          description: Files to upload.
+          values:
+            - a.txt
+            - b.txt
+      - single-select:
+          name: METHOD
+          description: Upload method.
+          values:
+            - direct
+            - chunked
+      - text-input:
+          name: CHUNK_SIZE
+          description: Chunk size in bytes.
+          check: '[ "$CHUNK_SIZE" -lt 10485760 ]'
+      - shell: echo "{{.FILE_PATHS}} {{.METHOD}} {{.CHUNK_SIZE}}"

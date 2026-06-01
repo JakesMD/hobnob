@@ -1,0 +1,15 @@
+tasks:
+  conditional:
+    steps:
+      - run: echo "always"
+      - run: echo "only when enabled"
+        if: '{{.ENABLED}} == "true"'
+      - set:
+          - FLAG: "set"
+        if: '{{.MODE}} == "fast"'
+      - loop:
+          - a
+          - b
+        steps:
+          - run: echo "{{.ITEM}}"
+        if: '{{.RUN_LOOP}} == "yes"'

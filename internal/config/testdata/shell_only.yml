@@ -1,0 +1,4 @@
+tasks:
+  greet:
+    steps:
+      - shell: echo "hello world"

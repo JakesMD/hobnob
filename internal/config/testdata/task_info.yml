@@ -1,0 +1,17 @@
+vars:
+  - ANIMAL: cat
+
+tasks:
+  adopt:
+    info: "Adopt a {{.ANIMAL}} from the shelter"
+    steps:
+      - run: echo "adopting {{.ANIMAL}}"
+
+  list_animals:
+    info: List all available animals
+    steps:
+      - run: echo "listing"
+
+  no_info:
+    steps:
+      - run: echo "no info here"

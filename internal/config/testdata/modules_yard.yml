@@ -1,0 +1,15 @@
+tasks:
+  clean:
+    info: Clean the yard
+    steps:
+      - run: echo "cleaning yard"
+
+  fix:
+    info: Fix the fence
+    steps:
+      - run: echo "fixing fence"
+
+  die:
+    info: Do nothing useful
+    steps:
+      - run: echo "dying"

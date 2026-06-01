@@ -1,0 +1,59 @@
+tasks:
+  install:
+    info: Installs hobnob with tab completion
+    steps:
+      - run: ./install.sh
+
+  go:build:
+    info: Builds the Go application
+    steps:
+      - run: go build -o hobnob ./cmd/hobnob
+
+  go:test:
+    info: Runs Go tests
+    steps:
+      - run: go test ./...
+
+  go:vet:
+    info: Vets Go code
+    steps:
+      - run: go vet ./...
+
+  go:check:
+    info: Vets and tests Go code
+    steps:
+      - call: go:vet
+      - call: go:test
+
+  go:build:release:
+    info: Builds release binary for a target OS and ARCH
+    steps:
+      - call: _get_os_arch
+        into:
+          - OS: .OS
+          - ARCH: .ARCH
+      - run: GOOS={{.OS}} GOARCH={{.ARCH}} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hobnob ./cmd/hobnob
+
+  go:package:
+    info: Packages release binary into a tarball
+    steps:
+      - call: _get_os_arch
+        into:
+          - OS: .OS
+          - ARCH: .ARCH
+      - run: tar -czf hobnob_{{.OS}}_{{.ARCH}}.tar.gz hobnob
+
+  go:verify:
+    info: Verifies installed hobnob binary works
+    steps:
+      - run: hobnob --list
+
+  _get_os_arch:
+    steps:
+      - get:
+          - OS:
+              info: Target OS
+              options: [darwin, linux]
+          - ARCH:
+              info: Target architecture
+              options: [amd64, arm64]

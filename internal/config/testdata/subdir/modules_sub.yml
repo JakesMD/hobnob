@@ -1,0 +1,10 @@
+tasks:
+  hello:
+    info: Say hello
+    steps:
+      - run: echo "hello from subdir"
+
+  world:
+    info: Say world
+    steps:
+      - run: echo "world from subdir"

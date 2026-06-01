@@ -1,0 +1,6 @@
+tasks:
+  conditional:
+    steps:
+      - shell: echo "always"
+      - shell: echo "conditional"
+        if: '[ "$ENABLED" = "1" ]'

@@ -1,0 +1,14 @@
+tasks:
+  public:
+    info: A public task
+    steps:
+      - run: echo "public"
+
+  _helper:
+    info: An internal helper
+    steps:
+      - run: echo "internal"
+
+  another_public:
+    steps:
+      - run: echo "another"
