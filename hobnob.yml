@@ -55,10 +55,9 @@ tasks:
           - OS:
               info: Target OS
               options: [darwin, linux]
+      - set: [{ARCH: arm64}]
+        if: '{{eq .OS "darwin"}}'
       - get:
           - ARCH:
               info: Target architecture
               options: [arm64, amd64]
-        if: '[ "{{.OS}}" = linux ]'
-      - set: [{ARCH: arm64}]
-        if: '[ "{{.OS}}" = darwin ]'
