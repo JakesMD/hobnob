@@ -51,6 +51,10 @@ _download() {
     local os arch url tmp
     os="$(_detect_os)"
     arch="$(_detect_arch)"
+    if [[ "$os" == "darwin" && "$arch" == "amd64" ]]; then
+        echo "error: macOS amd64 is not supported; arm64 only" >&2
+        exit 1
+    fi
     url="https://github.com/${GITHUB_REPO}/releases/latest/download/hobnob_${os}_${arch}.tar.gz"
     tmp="$(mktemp -d)"
 
