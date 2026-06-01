@@ -115,8 +115,8 @@ Runs another task in an isolated scope. Pass variables in with `with:`, pull res
     - TARGET_ENV: "production"
     - TIMEOUT_SECS: "90"
   into:
-    - DEPLOY_STATUS: STATUS
-    - ARTIFACT_PATH: LOG_FILE
+    - DEPLOY_STATUS: .STATUS
+    - ARTIFACT_PATH: .LOG_FILE
 ```
 
 ### `loop` — loops

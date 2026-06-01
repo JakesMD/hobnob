@@ -1119,6 +1119,41 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 	}
 }
 
+func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
+	// given into: uses dot-prefixed value (the intended syntax, e.g. ".OUTPUT"),
+	// when call completes, then parent receives child's value correctly
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"parent": {Steps: []config.Step{
+				{
+					Kind:       config.KindCall,
+					CallTarget: "child",
+					IntoEntries: []config.IntoEntry{
+						{ParentKey: "RESULT", ValueTmpl: ".OUTPUT"},
+					},
+				},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{
+					{Key: "OUTPUT", ValTmpl: "ok"},
+				}},
+			}},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask("parent", vars, cfg, true, t.TempDir(), map[string]bool{})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["RESULT"] != "ok" {
+		t.Errorf("RESULT: got %q, want ok", vars["RESULT"])
+	}
+}
+
 func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	// Arrange
 	orig := promptTextFn

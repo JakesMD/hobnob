@@ -375,8 +375,9 @@ func execCall(s config.Step, parentVars map[string]string, parentDir string, cfg
 				return fmt.Errorf("into value %q: %w", e.ValueTmpl, err)
 			}
 		} else {
-			val = childVars[e.ValueTmpl]
-			if childSecrets[e.ValueTmpl] {
+			key := strings.TrimPrefix(e.ValueTmpl, ".")
+			val = childVars[key]
+			if childSecrets[key] {
 				secrets[parentKey] = true
 			}
 		}
