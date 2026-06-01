@@ -28,7 +28,7 @@ tasks:
               multi: true
       - call: _pick-drive
         into:
-          - DRIVE: DRIVE
+          - DRIVE: .DRIVE
       - loop: .RELEASES
         steps:
           - run: gh release download {{.ITEM}} --pattern "*.zip" --dir /media/$USER/{{.DRIVE}}/
@@ -90,9 +90,9 @@ curl -fsSL https://raw.githubusercontent.com/jakesmd/hobnob/main/install.sh | ba
 ## 📖 Docs
 
 Everything you need to know to write your first file is right here in the
-[hobnob Guide](GUIDE.md).
+[hobnob guide](GUIDE.md).
 
 ## 🤝 Contributing
 
-Got ideas or fixes? Check out the [Contributing Guide](CONTRIBUTING.md) to see
+Got ideas or fixes? Check out the [Contributing guide](CONTRIBUTING.md) to see
 how to get involved and submit a PR.
