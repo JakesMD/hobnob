@@ -10,7 +10,7 @@ for the Confluence docs nobody can find and nobody keeps current.
 
 ---
 
-## Quick look
+## 👀 Quick look
 
 ```yaml
 # hobnob.yml
@@ -65,7 +65,7 @@ Releases to copy
 
 ---
 
-## Top Features
+## ✨ Top features
 
 **Prompts** — text input or selection menus, with optional validation.
 
@@ -79,7 +79,7 @@ leaks.
 
 ---
 
-## Install
+## 📦 Install
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jakesmd/hobnob/main/install.sh | bash
@@ -87,12 +87,12 @@ curl -fsSL https://raw.githubusercontent.com/jakesmd/hobnob/main/install.sh | ba
 
 ---
 
-## Docs
+## 📖 Docs
 
 Everything you need to know to write your first file is right here in the
 [hobnob Guide](GUIDE.md).
 
-## Contributing
+## 🤝 Contributing
 
 Got ideas or fixes? Check out the [Contributing Guide](CONTRIBUTING.md) to see
 how to get involved and submit a PR.

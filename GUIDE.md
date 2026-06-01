@@ -1,91 +1,63 @@
-# The hobnob guide
+# hobnob guide
 
-Hobnob is a timeline-based task runner. Unlike tools that build static
-dependency trees upfront, Hobnob evaluates variables, checks conditions, and
-processes inputs sequentially at the exact millisecond execution reaches that
-step.
+Hobnob is a timeline-based task runner. Variables, conditions, and prompts are evaluated sequentially as execution reaches each step — not compiled into a static dependency tree upfront.
 
 ---
 
-## 1. Core Mechanics & CLI
+## CLI
 
-### Auto-Discovery
+### Auto-discovery
 
-Running `hobnob` without a `--file` flag triggers a bottom-up directory search:
+No `--file` flag? Hobnob searches up from your current directory for `hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same directory.
 
-1. Searches the **current working directory** for `hobnob.yml` or `hobnob.yaml`.
-2. Walks up **parent directories** to the filesystem root until a match is
-   found.
-3. If both extensions exist in the same directory, `hobnob.yml` takes priority.
-
-### Command Reference
+### Commands
 
 ```bash
-# Execute a public task
-hobnob deploy
-
-# Pass runtime variables (Highest priority)
-hobnob deploy ENV=production TIMEOUT=60
-
-# Target a specific configuration file
-hobnob --file ops/tasks.yml build
-
-# List all available public tasks
-hobnob --list
-
-# Force non-interactive mode (skips prompts, fails on missing required vars)
-hobnob deploy --no-input
+hobnob deploy                        # run a task
+hobnob deploy ENV=production         # pass runtime variables
+hobnob --file ops/tasks.yml build    # target a specific file
+hobnob --list                        # list all public tasks
+hobnob deploy --no-input             # skip prompts, fail on missing vars
 ```
 
-### Public vs. Internal Tasks
+### Public vs. internal tasks
 
-- **Public Tasks:** Standard named blocks. Visible in `hobnob --list` and
-  executable via CLI.
-- **Internal Tasks:** Names prefixed with an underscore (e.g., `_compile`).
-  Hidden from `--list`, cannot be run from CLI, and must be executed via a
-  `call` step.
+- **Public** — standard named tasks, visible in `--list` and runnable from CLI.
+- **Internal** — prefix with `_` (e.g. `_compile`). Hidden from `--list`, only callable via `call`.
 
 ---
 
-## 2. Variable Scope & Precedence
+## Variables
 
-Variables are evaluated dynamically at runtime using Go templates
-(`{{ .VAR }}`).
+Evaluated at runtime using Go templates (`{{ .VAR }}`).
 
-### Precedence Hierarchy (Highest to Lowest)
+### Precedence (highest to lowest)
 
-| Priority | Scope                 | Description                                                      |
-| -------- | --------------------- | ---------------------------------------------------------------- |
-| **1**    | **Local Scope**       | Mutated inline via `set`, `get`, or loop iterators.              |
-| **2**    | **Passed Parameters** | Explicitly injected via a `call` step's `with:` list.            |
-| **3**    | **Inherited Scope**   | Copied over from the calling parent task.                        |
-| **4**    | **Global Block**      | Declared in the root-level `vars:` block.                        |
-| **5**    | **Environment / CLI** | Host OS environment variables or trailing `KEY=VALUE` arguments. |
+| Priority | Scope | Description |
+| --- | --- | --- |
+| **1** | Local | Set via `set`, `get`, or loop iterators. |
+| **2** | Passed | Injected explicitly via `call`'s `with:`. |
+| **3** | Inherited | Copied from the calling task. |
+| **4** | Global | Declared in the root `vars:` block. |
+| **5** | Env / CLI | OS environment or `KEY=VALUE` args. |
 
-### Scope Isolation
+### Scope isolation
 
-When Task A invokes Task B via `call`, Task B receives a **deep copy**
-(Read-Copy) of Task A's scope.
+`call` gives the child task a deep copy of the current scope. It can read everything, but mutations stay sandboxed unless you pull them back with `into:`.
 
-- Task B can read any variable from Task A.
-- Mutations (`set`, `get`) inside Task B are completely sandboxed and do not
-  modify Task A unless explicitly returned using the `into:` list.
+### Top-to-bottom resolution
 
-### Top-to-Bottom Resolution
-
-Within blocks defining multiple variables, assignments resolve sequentially. A
-variable can immediately reference a key declared right above it:
+Variables in a `set` block resolve top-to-bottom, so you can reference a key defined just above:
 
 ```yaml
 - set:
     - BASE_URL: "https://api.example.com"
-    - AUTH_URL: "{{.BASE_URL}}/v1/auth" # Valid: References item above
+    - AUTH_URL: "{{.BASE_URL}}/v1/auth"
 ```
 
-### Template Filters
+### Template filters
 
-Standard pipeline filters can be used anywhere templates are supported:
-`default`, `trim`, `upper`, `lower`, `lines`, `split`.
+`default`, `trim`, `upper`, `lower`, `lines`, `split` — usable anywhere templates are supported.
 
 ```yaml
 - run: echo "Targeting {{.ENV | upper}}"
@@ -93,27 +65,21 @@ Standard pipeline filters can be used anywhere templates are supported:
 
 ---
 
-## 3. Step Reference (The 5 Verbs)
+## Steps
 
-Every task timeline is constructed using five explicit sequential actions.
+Every task is a sequence of five step types.
 
-### `set` — Data Assignment
-
-Assigns or calculates local variables. Supports an expanded form for masking
-sensitive terminal logs.
+### `set` — assign variables
 
 ```yaml
 - set:
     - TARGET_HOST: "localhost"
     - APPLICATION_KEY:
         value: "{{.VAULT_TOKEN}}"
-        secret: true
+        secret: true    # masked in terminal output
 ```
 
-### `run` — Shell Execution
-
-Spawns an OS shell command. Text can be extracted from standard streams into
-scope variables using the `into:` list.
+### `run` — shell commands
 
 ```yaml
 - run: git rev-parse --short HEAD
@@ -122,30 +88,26 @@ scope variables using the `into:` list.
     - ERROR_LOG: stderr
 ```
 
-### `get` — Interactive Prompts
+### `get` — interactive prompts
 
-Pauses execution for user input. **If the variable already exists in the current
-scope, the prompt is skipped automatically.**
+Prompts for input. Skipped if the variable already exists in scope.
 
-> ⚠️ **Non-Interactive Mode:** If `--no-input` is passed or a `CI` environment
-> variable is present, prompts are skipped. If a variable is missing and lacks a
-> `default`, execution aborts.
+> ⚠️ With `--no-input` or a `CI` env var set, prompts are skipped. Missing variables with no `default` will abort.
 
 ```yaml
 - get:
     - PORT:
         info: "Enter deployment port"
         default: "8080"
-        check: "[ {{.PORT}} -gt 1024 ]" # Must exit 0 to pass validation
+        check: "[ {{.PORT}} -gt 1024 ]"    # must exit 0 to pass
     - ENVIRONMENT:
         info: "Select target stage"
         options: ["staging", "production"]
 ```
 
-### `call` — Sub-routines
+### `call` — sub-tasks
 
-Invokes another task within a deep-copied child scope. Input parameters and
-output returns are passed as explicit lists.
+Runs another task in an isolated scope. Pass variables in with `with:`, pull results back with `into:`.
 
 ```yaml
 - call: "deploy_pipeline"
@@ -157,13 +119,9 @@ output returns are passed as explicit lists.
     - ARTIFACT_PATH: LOG_FILE
 ```
 
-### `for` — Loops
+### `loop` — loops
 
-Iterates over lists or matrices sequentially.
-
-#### List Form
-
-Iterates through a sequence. The current element maps to `{{.ITEM}}`.
+**List form** — iterates a sequence, current element available as `{{.ITEM}}`:
 
 ```yaml
 - loop: .GO_FILES
@@ -171,9 +129,7 @@ Iterates through a sequence. The current element maps to `{{.ITEM}}`.
     - run: go fmt {{.ITEM}}
 ```
 
-#### Matrix Form (Cartesian Product)
-
-Specifying multiple arrays runs every parameter combination.
+**Matrix form** — runs every combination of the given arrays:
 
 ```yaml
 - loop:
@@ -185,71 +141,57 @@ Specifying multiple arrays runs every parameter combination.
 
 ---
 
-## 4. Control Flow & Error Handling
+## Control flow
 
-### Step Conditionals (`if:`)
+### `if:` conditionals
 
-Every individual step supports an inline `if:` modifier. It runs a low-level
-shell command; a `0` exit code allows the step to run, while any non-zero code
-skips it.
+Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 
 ```yaml
 - run: echo "Purging production cache..."
   if: '[ "{{.ENV}}" = "production" ]'
 ```
 
-### Failure Mitigation (`soft:`)
+### `soft:` failure handling
 
-By default, any command returning a non-zero exit code halts the entire
-timeline. To allow execution to proceed past a failing step, append `soft: true`
-to a `call`.
+By default, a non-zero exit halts the timeline. `soft: true` on a `call` lets execution continue past failures.
 
 ```yaml
 - call: "flaky_cleanup_script"
-  soft: true # Timeline continues even if this task crashes
+  soft: true
 - call: "next_critical_step"
 ```
 
 ---
 
-## 5. Sub-Modules
+## Modules
 
-Break down monolithic configurations by importing external Hobnob files in the
-root `modules:` block.
+Import tasks from other files with the root-level `modules:` block.
 
 ```yaml
 modules:
-  - _infra: terraform.yml # Internal namespace
+  - _infra: terraform.yml
   - docker:
       path: "./docker/tasks.yml"
       show: ["build", "push"]
       flatten: true
 ```
 
-### Prefix Routing & Namespaces
+### Namespaces
 
-- External tasks are normally namespaced via their module key (e.g.,
-  `call: docker:build`).
-- If a module key begins with an underscore (e.g., `_infra`), the entire module
-  becomes internal, hiding all its tasks from `--list` and the CLI.
+Imported tasks are prefixed with their module key — `call: docker:build`. Prefix the key with `_` to make the entire module internal.
 
-### Inclusion Filters
+### Inclusion filters
 
-- `show`: An explicit whitelist. Only these tasks are imported.
-- `hide`: A blacklist. Imports everything _except_ these tasks.
+- `show` — whitelist. Only listed tasks are imported.
+- `hide` — blacklist. Imports everything except listed tasks.
 
-### Namespace Flattening
+### Flattening
 
-When `flatten: true` is set, tasks are registered under **both** their prefixed
-identifier (`docker:build`) and their short name (`build`). If a short name
-conflicts with a native task in the host file, the native task takes precedence.
+`flatten: true` registers tasks under both `docker:build` and `build`. Native tasks always win on conflicts.
 
-### Module Scoping Rules
+### Scoping rules
 
-1. **One-Way Global Flow:** Sub-modules inherit global variables from the root
-   file as read-only context.
-2. **Isolated Module Vars:** A module's root-level `vars:` block is internal to
-   that file and never leaks back to the parent.
-3. **Sandbox Restriction:** Tasks within an imported module can call sibling
-   tasks inside their own file, but they cannot invoke tasks belonging to the
-   parent host file.
+- Sub-modules inherit root `vars:` as read-only.
+- A module's own `vars:` block never leaks to the parent.
+- Module tasks can call siblings within the same file, but not tasks in the parent.
