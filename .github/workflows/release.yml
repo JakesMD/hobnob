@@ -25,6 +25,8 @@ jobs:
             arch: arm64
 
     steps:
+      - uses: actions/checkout@v4
+
       - uses: ./.github/actions/setup
 
       - name: Build
