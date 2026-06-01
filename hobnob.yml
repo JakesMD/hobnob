@@ -32,7 +32,7 @@ tasks:
         into:
           - OS: .OS
           - ARCH: .ARCH
-      - run: GOOS={{.OS}} GOARCH={{.ARCH}} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hobnob ./cmd/hobnob
+      - run: GOOS={{.OS}} GOARCH={{.ARCH}} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hobnob_release ./cmd/hobnob
 
   go:package:
     info: Packages release binary into a tarball
@@ -41,6 +41,7 @@ tasks:
         into:
           - OS: .OS
           - ARCH: .ARCH
+      - run: mv hobnob_release hobnob
       - run: tar -czf hobnob_{{.OS}}_{{.ARCH}}.tar.gz hobnob
 
   go:verify:
