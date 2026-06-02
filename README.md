@@ -67,7 +67,8 @@ Releases to copy
 
 ## ✨ Top features
 
-**Prompts** — text input or selection menus, with optional validation.
+**Prompts** — text input or selection menus, placed anywhere in the timeline.
+Options can pull from a previous step's output.
 
 **Sub-task returns** — run separate tasks and explicitly pull their variables
 back into the parent context, ensuring predictable data flow without accidental
@@ -75,7 +76,8 @@ leaks.
 
 **Modules** — pull tasks from other files.
 
-**Dynamic everywhere** — Go templates in values, conditions, options, ...
+**Dynamic everywhere** — set variables at any point, not just upfront. Go
+templates in values, conditions, options, ...
 
 ---
 
