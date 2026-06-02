@@ -334,7 +334,6 @@ func TestParseConfig_ForStep(t *testing.T) {
 		taskName string
 		wantList []string
 		wantTmpl string
-		wantVar  string
 	}{
 		{
 			name:     "given literal list, when parsing for step, then stores items in ForList",
@@ -345,12 +344,6 @@ func TestParseConfig_ForStep(t *testing.T) {
 			name:     "given template target, when parsing for step, then stores template in ForTarget",
 			taskName: "loop_dynamic",
 			wantTmpl: "{{.FILES}}",
-		},
-		{
-			name:     "given custom var name, when parsing for step, then stores ForVar",
-			taskName: "loop_custom_var",
-			wantList: []string{"x", "y"},
-			wantVar:  "NODE",
 		},
 		{
 			name:     "given bare .VAR loop target, when parsing for step, then wraps in template syntax (why: shorthand avoids {{}} noise)",
@@ -394,9 +387,6 @@ func TestParseConfig_ForStep(t *testing.T) {
 				if fs.ForList[i] != w {
 					t.Errorf("ForList[%d]: got %q, want %q", i, fs.ForList[i], w)
 				}
-			}
-			if fs.ForVar != tc.wantVar {
-				t.Errorf("ForVar: got %q, want %q", fs.ForVar, tc.wantVar)
 			}
 			if len(fs.ForSteps) == 0 {
 				t.Error("ForSteps should not be empty")

@@ -16,15 +16,6 @@ tasks:
         steps:
           - run: echo "file {{.ITEM}}"
 
-  loop_custom_var:
-    steps:
-      - loop:
-          - x
-          - y
-        as: NODE
-        steps:
-          - run: echo "node {{.NODE}}"
-
   loop_matrix_single:
     steps:
       - loop:

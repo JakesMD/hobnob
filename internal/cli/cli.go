@@ -174,8 +174,6 @@ func collectGetParams(steps []config.Step, cfg *config.ConfigFile, visited map[s
 				for _, m := range s.ForMatrix {
 					loopPreset[m.VarName] = true
 				}
-			} else if s.ForVar != "" {
-				loopPreset[s.ForVar] = true
 			} else {
 				loopPreset["ITEM"] = true
 			}

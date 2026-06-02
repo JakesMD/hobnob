@@ -398,22 +398,17 @@ func execFor(s config.Step, vars map[string]string, cfg *config.ConfigFile, task
 		return err
 	}
 
-	iterVar := s.ForVar
-	if iterVar == "" {
-		iterVar = "ITEM"
-	}
-
-	prevVal, hadPrev := vars[iterVar]
+	prevVal, hadPrev := vars["ITEM"]
 	for _, item := range items {
-		vars[iterVar] = item
+		vars["ITEM"] = item
 		if err := executeSteps(s.ForSteps, vars, cfg, task, noPrompts, currentDir, secrets); err != nil {
 			return err
 		}
 	}
 	if hadPrev {
-		vars[iterVar] = prevVal
+		vars["ITEM"] = prevVal
 	} else {
-		delete(vars, iterVar)
+		delete(vars, "ITEM")
 	}
 
 	return nil

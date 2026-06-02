@@ -102,7 +102,6 @@ type Step struct {
 	// KindFor
 	ForTarget string
 	ForList   []string
-	ForVar    string
 	ForMatrix []ForMatrixEntry
 	ForSteps  []Step
 
@@ -284,8 +283,6 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 			s.Soft = v.Value == "true"
 		case "dir":
 			s.DirTmpl = v.Value
-		case "as":
-			s.ForVar = v.Value
 		case "steps":
 			subSteps, err := parseStepSequence(v)
 			if err != nil {

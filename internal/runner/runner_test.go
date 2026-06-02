@@ -567,14 +567,13 @@ func TestExecFor_Matrix(t *testing.T) {
 	}
 }
 
-func makeForStringCfg(forList []string, forTarget, forVar, innerTmpl string) *config.ConfigFile {
+func makeForStringCfg(forList []string, forTarget, innerTmpl string) *config.ConfigFile {
 	return &config.ConfigFile{
 		Tasks: map[string]config.Task{
 			"t": {Steps: []config.Step{{
 				Kind:      config.KindFor,
 				ForList:   forList,
 				ForTarget: forTarget,
-				ForVar:    forVar,
 				ForSteps: []config.Step{{
 					Kind:       config.KindSet,
 					SetEntries: []config.SetEntry{{Key: "RESULT", ValTmpl: innerTmpl}},
@@ -589,7 +588,6 @@ func TestExecFor_String(t *testing.T) {
 		name       string
 		forList    []string
 		forTarget  string
-		forVar     string
 		innerTmpl  string
 		initVars   map[string]string
 		wantResult string
@@ -609,14 +607,6 @@ func TestExecFor_String(t *testing.T) {
 			wantResult: " x y z",
 		},
 		{
-			name:       "given custom ForVar, when executed, then uses named iterator instead of ITEM (why: ForVar overrides default ITEM name)",
-			forList:    []string{"p", "q"},
-			forVar:     "NODE",
-			innerTmpl:  "{{.RESULT}}/{{.NODE}}",
-			initVars:   map[string]string{"RESULT": ""},
-			wantResult: "/p/q",
-		},
-		{
 			name:       "given empty list, when executed, then runs zero iterations (why: empty source must not error)",
 			forList:    []string{},
 			innerTmpl:  "{{.RESULT}} {{.ITEM}}",
@@ -628,7 +618,7 @@ func TestExecFor_String(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
-			cfg := makeForStringCfg(tc.forList, tc.forTarget, tc.forVar, tc.innerTmpl)
+			cfg := makeForStringCfg(tc.forList, tc.forTarget, tc.innerTmpl)
 			vars := make(map[string]string)
 			for k, v := range tc.initVars {
 				vars[k] = v
@@ -928,38 +918,6 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 	}
 	if _, exists := vars["ITEM"]; exists {
 		t.Errorf("ITEM should not exist after loop, got %q", vars["ITEM"])
-	}
-}
-
-func TestExecFor_NamedIteratorVarRemovedAfterLoop(t *testing.T) {
-	// Arrange
-	cfg := &config.ConfigFile{
-		Tasks: map[string]config.Task{
-			"t": {Steps: []config.Step{
-				{
-					Kind:    config.KindFor,
-					ForVar:  "FILE",
-					ForList: []string{"x.go", "y.go"},
-					ForSteps: []config.Step{
-						{Kind: config.KindSet, SetEntries: []config.SetEntry{
-							{Key: "RESULT", ValTmpl: "{{.RESULT}} {{.FILE}}"},
-						}},
-					},
-				},
-			}},
-		},
-	}
-	vars := map[string]string{"RESULT": ""}
-
-	// Act
-	err := ExecuteTask("t", vars, cfg, true, t.TempDir(), map[string]bool{})
-
-	// Assert
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if _, exists := vars["FILE"]; exists {
-		t.Errorf("FILE should not exist after loop, got %q", vars["FILE"])
 	}
 }
 
