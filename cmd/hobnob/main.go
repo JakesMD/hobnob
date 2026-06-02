@@ -9,6 +9,7 @@ import (
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/runner"
+	"hobnob/internal/tui"
 )
 
 // findTaskfile walks startDir and its parents until it finds hobnob.yml or
@@ -102,9 +103,10 @@ func main() {
 			if _, ok := cfg.Tasks["default"]; ok {
 				noPrompts := os.Getenv("CI") != ""
 				if err := runner.ExecuteTask("default", scope, cfg, noPrompts, invDir, secrets); err != nil {
-					fmt.Fprintf(os.Stderr, "error: %v\n", err)
+					fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix("default")+tui.SError.Render(err.Error()))
 					os.Exit(1)
 				}
+				fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix("default") + tui.SChecked.Render("done"))
 				return
 			}
 			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
@@ -204,7 +206,8 @@ func main() {
 	}
 
 	if err := runner.ExecuteTask(taskName, scope, cfg, noPrompts, invocationDir, secrets); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
 		os.Exit(1)
 	}
+	fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix(taskName) + tui.SChecked.Render("done"))
 }

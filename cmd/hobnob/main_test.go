@@ -91,6 +91,140 @@ func TestInternalTaskRejectedByCLI(t *testing.T) {
 	}
 }
 
+func TestNamedTaskSuccessPrintsSuccessMessage(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "deploy"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  deploy:\n    steps:\n      - run: echo ok\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNamedTaskSuccessPrintsSuccessMessage")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "✓") {
+		t.Errorf("expected output to contain '✓', got: %s", out)
+	}
+	if !strings.Contains(outStr, "[deploy]") {
+		t.Errorf("expected output to contain '[deploy]', got: %s", out)
+	}
+	if !strings.Contains(outStr, "done") {
+		t.Errorf("expected output to contain 'done', got: %s", out)
+	}
+}
+
+func TestNamedTaskFailurePrintsFailureMessage(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "deploy"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  deploy:\n    steps:\n      - run: exit 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNamedTaskFailurePrintsFailureMessage")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err == nil {
+		t.Fatalf("expected failure, got success\noutput: %s", out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "✗") {
+		t.Errorf("expected output to contain '✗', got: %s", out)
+	}
+	if !strings.Contains(outStr, "[deploy]") {
+		t.Errorf("expected output to contain '[deploy]', got: %s", out)
+	}
+}
+
+func TestDefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  default:\n    steps:\n      - run: echo ok\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestDefaultTaskSuccessPrintsSuccessMessage")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "✓") {
+		t.Errorf("expected output to contain '✓', got: %s", out)
+	}
+	if !strings.Contains(outStr, "[default]") {
+		t.Errorf("expected output to contain '[default]', got: %s", out)
+	}
+	if !strings.Contains(outStr, "done") {
+		t.Errorf("expected output to contain 'done', got: %s", out)
+	}
+}
+
+func TestDefaultTaskFailurePrintsFailureMessage(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  default:\n    steps:\n      - run: exit 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestDefaultTaskFailurePrintsFailureMessage")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err == nil {
+		t.Fatalf("expected failure, got success\noutput: %s", out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "✗") {
+		t.Errorf("expected output to contain '✗', got: %s", out)
+	}
+	if !strings.Contains(outStr, "[default]") {
+		t.Errorf("expected output to contain '[default]', got: %s", out)
+	}
+}
+
 func TestFindTaskfile(t *testing.T) {
 	t.Run("given hobnob.yml in start dir, when searching, then returns it (why: nearest file wins)", func(t *testing.T) {
 		// Arrange
