@@ -340,3 +340,48 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 - run: echo "Purging production cache..."
   if: '[ "{{.ENV}}" = "production" ]'
 ```
+
+---
+
+## Best practices
+
+### Task naming
+
+Use kebab-case for task names.
+
+```yaml
+# bad
+tasks:
+  deploy_production:
+
+# good
+tasks:
+  deploy-production:
+```
+
+### Prompt placement
+
+Put `get:` steps as early as possible. Prompts buried after slow `run` steps
+make the user wait before they can answer.
+
+```yaml
+# bad — user waits for the build before being prompted
+tasks:
+  publish:
+    steps:
+      - run: ./build.sh
+      - get:
+          - ENV:
+              options: ["staging", "production"]
+      - run: ./deploy.sh {{.ENV}}
+
+# good — all prompts first, then execution
+tasks:
+  publish:
+    steps:
+      - get:
+          - ENV:
+              options: ["staging", "production"]
+      - run: ./build.sh
+      - run: ./deploy.sh {{.ENV}}
+```
