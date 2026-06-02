@@ -15,6 +15,7 @@ hobnob deploy                        # run a task
 hobnob deploy ENV=production         # pass runtime variables
 hobnob --file ops/tasks.yml build    # target a specific file
 hobnob --list                        # list all public tasks
+hobnob --help                        # show help and available tasks
 hobnob deploy --no-input             # skip prompts, fail on missing vars
 ```
 
@@ -91,8 +92,8 @@ A task is a named sequence of steps. The name prefix controls visibility:
 
 - **No `_`** — task is public. Appears in `--list`, runnable from the CLI, and
   visible to parent files that import this file as a module.
-- **`_` prefix** (e.g. `_compile`) — task is internal. Hidden from `--list`,
-  not visible to parent files, only callable via `call`.
+- **`_` prefix** (e.g. `_compile`) — task is internal. Hidden from `--list`, not
+  visible to parent files, only callable via `call`.
 
 ### `dir:` — working directory
 

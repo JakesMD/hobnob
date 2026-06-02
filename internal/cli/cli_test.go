@@ -64,7 +64,6 @@ func TestCompletionScript(t *testing.T) {
 	}
 }
 
-
 func TestRunDisplayLines(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -409,6 +408,39 @@ func TestBuildScope_SystemVars(t *testing.T) {
 	}
 	if scope["HOBNOB_INVOCATION_DIR"] != "/path/to/invocation" {
 		t.Errorf("HOBNOB_INVOCATION_DIR: got %q, want %q", scope["HOBNOB_INVOCATION_DIR"], "/path/to/invocation")
+	}
+}
+
+func TestPrintHelp(t *testing.T) {
+	// Arrange
+	cfg, err := config.ParseConfig("testdata/task_info.yml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	scope, _, err := BuildScope(cfg.Vars, nil, "/tmp/taskfile", "/tmp/invocation")
+	if err != nil {
+		t.Fatalf("scope error: %v", err)
+	}
+	var buf bytes.Buffer
+
+	// Act
+	if err := PrintHelp(cfg, scope, &buf); err != nil {
+		t.Fatalf("PrintHelp error: %v", err)
+	}
+
+	// Assert
+	output := buf.String()
+	for _, want := range []string{
+		"--file",
+		"--list",
+		"--help",
+		"--no-input",
+		"https://github.com/JakesMD/hobnob/GUIDE.md",
+		"adopt",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("output missing %q\ngot:\n%s", want, output)
+		}
 	}
 }
 

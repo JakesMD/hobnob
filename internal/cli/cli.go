@@ -208,6 +208,25 @@ func collectGetParams(steps []config.Step, cfg *config.ConfigFile, visited map[s
 	return entries
 }
 
+func PrintHelp(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
+	fmt.Fprint(w, `Usage:
+  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
+  hobnob [--file <path>] --list
+  hobnob [--file <path>] --help
+
+Flags:
+  --file <path>   Hobnob file to use instead of auto-discovery
+  --list          List all available tasks
+  --help          Show this help
+  --no-input      Skip interactive prompts; fail if a required variable is missing
+
+Docs:
+  https://github.com/JakesMD/hobnob/GUIDE.md
+
+`)
+	return ListTasks(cfg, scope, w)
+}
+
 func ListTasks(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
 	type row struct {
 		name   string

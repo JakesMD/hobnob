@@ -73,7 +73,7 @@ func main() {
 	}
 
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]\n       hobnob [--file <path>] --list\n       hobnob completion [bash|zsh|fish]\n")
+		fmt.Fprintf(os.Stderr, "usage: hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]\n       hobnob [--file <path>] --list\n       hobnob [--file <path>] --help\n")
 		os.Exit(1)
 	}
 
@@ -119,7 +119,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if args[0] == "--list" {
+	if args[0] == "--list" || args[0] == "--help" {
 		scope, _, err := cli.BuildScope(cfg.Vars, nil, cfg.TaskfileDir, invocationDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
@@ -129,9 +129,16 @@ func main() {
 			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			os.Exit(1)
 		}
-		if err := cli.ListTasks(cfg, scope, os.Stdout); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+		if args[0] == "--help" {
+			if err := cli.PrintHelp(cfg, scope, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := cli.ListTasks(cfg, scope, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
 		}
 		return
 	}
