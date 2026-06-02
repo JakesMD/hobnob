@@ -73,8 +73,50 @@ func main() {
 	}
 
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, "usage: hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]\n       hobnob [--file <path>] --list\n       hobnob [--file <path>] --help\n")
-		os.Exit(1)
+		invDir, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(1)
+		}
+		var tfPath string
+		if fileFlag != "" {
+			tfPath = fileFlag
+		} else {
+			tfPath, _ = findTaskfile(invDir)
+		}
+		if tfPath != "" {
+			cfg, err := config.ParseConfig(tfPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			scope, secrets, err := cli.BuildScope(cfg.Vars, nil, cfg.TaskfileDir, invDir)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			if err := config.LoadModules(cfg, scope); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			if _, ok := cfg.Tasks["default"]; ok {
+				noPrompts := os.Getenv("CI") != ""
+				if err := runner.ExecuteTask("default", scope, cfg, noPrompts, invDir, secrets); err != nil {
+					fmt.Fprintf(os.Stderr, "error: %v\n", err)
+					os.Exit(1)
+				}
+				return
+			}
+			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
+			if err := cli.PrintHelp(cfg, scope, os.Stdout); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+			return
+		}
+		fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
+		cli.PrintUsage(os.Stdout)
+		return
 	}
 
 	if args[0] == "completion" {

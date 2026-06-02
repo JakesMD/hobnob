@@ -11,6 +11,7 @@ static dependency tree upfront.
 ### Commands
 
 ```bash
+hobnob                               # run the "default" task (or show help)
 hobnob deploy                        # run a task
 hobnob deploy ENV=production         # pass runtime variables
 hobnob --file ops/tasks.yml build    # target a specific file
@@ -18,6 +19,20 @@ hobnob --list                        # list all public tasks
 hobnob --help                        # show help and available tasks
 hobnob deploy --no-input             # skip prompts, fail on missing vars
 ```
+
+### Default task
+
+Name a task `default` in your hobnob file and it runs automatically when you
+call `hobnob` with no arguments.
+
+```yaml
+tasks:
+  default:
+    steps:
+      - run: echo "Hi!"
+```
+
+If no `default` task is defined, `hobnob` shows help instead.
 
 ### Auto-discovery
 

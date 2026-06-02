@@ -208,7 +208,7 @@ func collectGetParams(steps []config.Step, cfg *config.ConfigFile, visited map[s
 	return entries
 }
 
-func PrintHelp(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
+func PrintUsage(w io.Writer) {
 	fmt.Fprint(w, `Usage:
   hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
   hobnob [--file <path>] --list
@@ -224,6 +224,10 @@ Docs:
   https://github.com/JakesMD/hobnob/GUIDE.md
 
 `)
+}
+
+func PrintHelp(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
+	PrintUsage(w)
 	return ListTasks(cfg, scope, w)
 }
 

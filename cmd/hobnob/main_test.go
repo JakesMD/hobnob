@@ -5,8 +5,68 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
+
+func TestNoArgsDefaultTaskRuns(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  default:\n    steps:\n      - run: echo hobnob-default-ran\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsDefaultTaskRuns")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "hobnob-default-ran") {
+		t.Errorf("expected output to contain 'hobnob-default-ran', got: %s", out)
+	}
+}
+
+func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  build:\n    steps:\n      - run: echo building\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsNoDefaultTaskShowsTip")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "Tip:") {
+		t.Errorf("expected output to contain 'Tip:', got: %s", out)
+	}
+	if !strings.Contains(string(out), "Usage:") {
+		t.Errorf("expected output to contain 'Usage:', got: %s", out)
+	}
+}
 
 func TestInternalTaskRejectedByCLI(t *testing.T) {
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
