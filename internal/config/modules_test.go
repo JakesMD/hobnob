@@ -355,3 +355,53 @@ func TestLoadModules_SubdirRelativePath(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadModules_NestedFormat(t *testing.T) {
+	// Arrange
+	cfg, err := ParseConfig("testdata/modules_nested_format.yml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+
+	err = LoadModules(cfg, map[string]string{})
+	if err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	tests := []struct {
+		name         string
+		taskName     string
+		wantFound    bool
+		wantFlat     bool
+	}{
+		{
+			name:      "given nested format with show:[clean,fix], when loaded, then yard:clean registered (why: nested path: key must be parsed)",
+			taskName:  "yard:clean",
+			wantFound: true,
+			wantFlat:  true,
+		},
+		{
+			name:      "given nested format with show:[clean,fix], when loaded, then yard:die excluded (why: not in show list)",
+			taskName:  "yard:die",
+			wantFound: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Act
+			_, ok := cfg.Tasks[tc.taskName]
+
+			// Assert
+			if ok != tc.wantFound {
+				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			}
+			if tc.wantFlat {
+				_, flatOk := cfg.Tasks["clean"]
+				if !flatOk {
+					t.Errorf("flat task %q not found (why: flatten:true should register it)", "clean")
+				}
+			}
+		})
+	}
+}

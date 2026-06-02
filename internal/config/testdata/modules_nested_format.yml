@@ -1,0 +1,11 @@
+modules:
+  - yard:
+      path: modules_yard.yml
+      show: [clean, fix]
+      flatten: true
+
+tasks:
+  deploy:
+    info: Deploy
+    steps:
+      - call: yard:clean

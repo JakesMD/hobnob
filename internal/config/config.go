@@ -438,7 +438,34 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 				m.FlattenTmpl = val.Value
 			default:
 				m.Prefix = key
-				m.FileTmpl = val.Value
+				if val.Kind == yaml.MappingNode {
+					for j := 0; j+1 < len(val.Content); j += 2 {
+						subKey := val.Content[j].Value
+						subVal := val.Content[j+1]
+						switch subKey {
+						case "path":
+							m.FileTmpl = subVal.Value
+						case "show":
+							if subVal.Kind != yaml.SequenceNode {
+								return nil, fmt.Errorf("module show must be a sequence")
+							}
+							for _, child := range subVal.Content {
+								m.ShowTmpls = append(m.ShowTmpls, child.Value)
+							}
+						case "hide":
+							if subVal.Kind != yaml.SequenceNode {
+								return nil, fmt.Errorf("module hide must be a sequence")
+							}
+							for _, child := range subVal.Content {
+								m.HideTmpls = append(m.HideTmpls, child.Value)
+							}
+						case "flatten":
+							m.FlattenTmpl = subVal.Value
+						}
+					}
+				} else {
+					m.FileTmpl = val.Value
+				}
 			}
 		}
 		if m.Prefix == "" {
