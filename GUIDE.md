@@ -8,11 +8,6 @@ static dependency tree upfront.
 
 ## CLI
 
-### Auto-discovery
-
-No `--file` flag? Hobnob searches up from your current directory for
-`hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same directory.
-
 ### Commands
 
 ```bash
@@ -23,11 +18,111 @@ hobnob --list                        # list all public tasks
 hobnob deploy --no-input             # skip prompts, fail on missing vars
 ```
 
-### Public vs. internal tasks
+### Auto-discovery
 
-- **Public** — standard named tasks, visible in `--list` and runnable from CLI.
-- **Internal** — prefix with `_` (e.g. `_compile`). Hidden from `--list`, only
-  callable via `call`.
+No `--file` flag? Hobnob searches up from your current directory for
+`hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same directory.
+
+---
+
+## File structure
+
+A hobnob file has three optional top-level keys:
+
+```yaml
+vars: # global variables
+  KEY: value
+
+modules: # imported hobnob files
+  - utils: ./utils.yml
+
+tasks: # task definitions
+  my-task:
+    steps:
+      - run: echo hello
+```
+
+---
+
+## Modules
+
+Import tasks from other files with the root-level `modules:` block.
+
+```yaml
+modules:
+  - _infra: terraform.yml
+  - docker:
+      path: "./docker/tasks.yml"
+      show: ["build", "push"]
+      flatten: true
+```
+
+### Namespaces
+
+Imported tasks are prefixed with their module key — `call: docker:build`.
+
+The key prefix controls visibility:
+
+- **No `_`** — module is exported. Its tasks appear in `--list` and are visible
+  to any parent file that imports this file as a module.
+- **`_` prefix** — module is internal. Its tasks are only accessible within this
+  file and are hidden from `--list` and parent files.
+
+### Inclusion filters
+
+- `show` — whitelist. Only listed tasks are imported.
+- `hide` — blacklist. Imports everything except listed tasks.
+
+### Flattening
+
+`flatten: true` registers tasks under both `docker:build` and `build`. Native
+tasks always win on conflicts.
+
+### Scoping rules
+
+- Sub-modules inherit root `vars:` as read-only.
+- A module's own `vars:` block never leaks to the parent.
+
+---
+
+## Tasks
+
+A task is a named sequence of steps. The name prefix controls visibility:
+
+- **No `_`** — task is public. Appears in `--list`, runnable from the CLI, and
+  visible to parent files that import this file as a module.
+- **`_` prefix** (e.g. `_compile`) — task is internal. Hidden from `--list`,
+  not visible to parent files, only callable via `call`.
+
+### `dir:` — working directory
+
+A task's `dir:` sets the working directory for every `run` step in that task and
+is **inherited down the call chain** — called tasks and their descendants all
+run under it, unless they declare a `dir:` of their own.
+
+```yaml
+tasks:
+  deploy:
+    dir: ./infra
+    steps:
+      - run: terraform apply # runs in ./infra
+      - call: _verify # _verify inherits ./infra unless it has its own dir:
+```
+
+A `call` step's `dir:` **overrides the called task's own `dir:`** and becomes
+the inherited directory for everything that task calls in turn:
+
+```yaml
+- call: _verify
+  dir: ./staging # _verify runs here, ignoring its own dir: if any
+```
+
+A `run` step's `dir:` overrides the active directory for that one step only:
+
+```yaml
+- run: go test ./...
+  dir: ../tests # only this step runs in ../tests
+```
 
 ---
 
@@ -49,24 +144,19 @@ Evaluated at runtime using Go templates (`{{ .VAR }}`).
 <details>
 <summary>Rationale</summary>
 
-**Environment variables are lowest priority** because any variable name in
-`vars:` could collide with one already set in the caller's shell. If env won,
-the same task could silently behave differently on two machines — one developer
-has `HOST` exported, another doesn't, and they see different results from
-identical YAML. Putting env at the bottom makes tasks deterministic regardless
-of the ambient environment.
+Env is lowest priority because a variable name in `vars:` could collide with one
+already set in the caller's shell. If env won, the same task could silently
+behave differently on two machines depending on what's exported. Putting env at
+the bottom makes tasks deterministic regardless of the ambient environment.
 
-**CLI args sit above env** so callers can explicitly override env values when
-they need to — `HOST=remotehost hobnob deploy` is unambiguous intent, not
-ambient noise.
+CLI args sit above env so callers can explicitly override env values when needed
+— `hobnob deploy HOST=remotehost` is clear intent.
 
-**Globals vars sit about CLI args** because the `vars:` block is an
-implementation detail of the task, not a public API. It sets up the internal
-wiring the task needs to function correctly — hardcoded endpoints, derived
-paths, computed defaults. A caller silently overriding those would make the task
-unpredictable.
+Global vars sit above CLI args because the `vars:` block is internal wiring —
+hardcoded endpoints, derived paths, computed defaults. A caller silently
+overriding those would make the task unpredictable.
 
-The **public API** for caller input is `get:` steps. A `get:` prompt is
+The intended input mechanism for callers is `get:` steps. A `get:` prompt is
 automatically skipped when its variable already exists in scope, so passing
 `HOST=remotehost` on the CLI answers the prompt without requiring interaction.
 
@@ -103,6 +193,13 @@ defined just above:
     - AUTH_URL: "{{.BASE_URL}}/v1/auth"
 ```
 
+### Built-in variables
+
+Two variables are automatically injected into every task's scope:
+
+- `HOBNOB_FILE_DIR` — directory containing the hobnob file.
+- `HOBNOB_INVOCATION_DIR` — directory from which hobnob was run.
+
 ### Template filters
 
 `default`, `trim`, `upper`, `lower`, `lines`, `split` — usable anywhere
@@ -132,6 +229,7 @@ Every task is a sequence of five step types.
 
 ```yaml
 - run: git rev-parse --short HEAD
+  dir: ./infra # working directory for this step
   into:
     - GIT_SHA: stdout | trim
     - ERROR_LOG: stderr
@@ -144,6 +242,14 @@ Prompts for input. Skipped if the variable already exists in scope.
 > ⚠️ With `--no-input` or a `CI` env var set, prompts are skipped. Missing
 > variables with no `default` will abort.
 
+Bare form — prompts for a value with no configuration:
+
+```yaml
+- get: [MY_VAR]
+```
+
+Object form — full configuration:
+
 ```yaml
 - get:
     - PORT:
@@ -153,6 +259,16 @@ Prompts for input. Skipped if the variable already exists in scope.
     - ENVIRONMENT:
         info: "Select target stage"
         options: ["staging", "production"]
+    - TAGS:
+        info: "Select applicable tags"
+        options: ["backend", "frontend", "infra"]
+        multi: true # multi-select prompt
+    - API_TOKEN:
+        info: "Paste your API token"
+        secret: true # masked in terminal output
+    - NOTES:
+        info: "Any notes? (optional)"
+        optional: true # skipped silently if missing, leaves variable empty
 ```
 
 ### `call` — sub-tasks
@@ -162,6 +278,7 @@ results back with `into:`.
 
 ```yaml
 - call: "deploy_pipeline"
+  dir: ./infra
   with:
     - TARGET_ENV: "production"
     - TIMEOUT_SECS: "90"
@@ -170,7 +287,16 @@ results back with `into:`.
     - ARTIFACT_PATH: .LOG_FILE
 ```
 
-### `loop` — loops
+By default, a non-zero exit halts the timeline. Use `soft: true` to let
+execution continue past a failed call:
+
+```yaml
+- call: "flaky_cleanup_script"
+  soft: true
+- call: "next_critical_step"
+```
+
+### `loop` — iteration
 
 **List form** — iterates a sequence, current element available as `{{.ITEM}}`:
 
@@ -190,11 +316,7 @@ results back with `into:`.
     - run: echo "Compiling for {{.OS}} on {{.ARCH}}"
 ```
 
----
-
-## Control flow
-
-### `if:` conditionals
+### `if:` — conditional steps
 
 Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 
@@ -202,51 +324,3 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 - run: echo "Purging production cache..."
   if: '[ "{{.ENV}}" = "production" ]'
 ```
-
-### `soft:` failure handling
-
-By default, a non-zero exit halts the timeline. `soft: true` on a `call` lets
-execution continue past failures.
-
-```yaml
-- call: "flaky_cleanup_script"
-  soft: true
-- call: "next_critical_step"
-```
-
----
-
-## Modules
-
-Import tasks from other files with the root-level `modules:` block.
-
-```yaml
-modules:
-  - _infra: terraform.yml
-  - docker:
-      path: "./docker/tasks.yml"
-      show: ["build", "push"]
-      flatten: true
-```
-
-### Namespaces
-
-Imported tasks are prefixed with their module key — `call: docker:build`. Prefix
-the key with `_` to make the entire module internal.
-
-### Inclusion filters
-
-- `show` — whitelist. Only listed tasks are imported.
-- `hide` — blacklist. Imports everything except listed tasks.
-
-### Flattening
-
-`flatten: true` registers tasks under both `docker:build` and `build`. Native
-tasks always win on conflicts.
-
-### Scoping rules
-
-- Sub-modules inherit root `vars:` as read-only.
-- A module's own `vars:` block never leaks to the parent.
-- Module tasks can call siblings within the same file, but not tasks in the
-  parent.
