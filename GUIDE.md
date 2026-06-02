@@ -1,6 +1,8 @@
 # hobnob guide
 
-Hobnob is a timeline-based task runner. Variables, conditions, and prompts are evaluated sequentially as execution reaches each step — not compiled into a static dependency tree upfront.
+Hobnob is a timeline-based task runner. Variables, conditions, and prompts are
+evaluated sequentially as execution reaches each step — not compiled into a
+static dependency tree upfront.
 
 ---
 
@@ -8,7 +10,8 @@ Hobnob is a timeline-based task runner. Variables, conditions, and prompts are e
 
 ### Auto-discovery
 
-No `--file` flag? Hobnob searches up from your current directory for `hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same directory.
+No `--file` flag? Hobnob searches up from your current directory for
+`hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same directory.
 
 ### Commands
 
@@ -23,7 +26,8 @@ hobnob deploy --no-input             # skip prompts, fail on missing vars
 ### Public vs. internal tasks
 
 - **Public** — standard named tasks, visible in `--list` and runnable from CLI.
-- **Internal** — prefix with `_` (e.g. `_compile`). Hidden from `--list`, only callable via `call`.
+- **Internal** — prefix with `_` (e.g. `_compile`). Hidden from `--list`, only
+  callable via `call`.
 
 ---
 
@@ -33,21 +37,65 @@ Evaluated at runtime using Go templates (`{{ .VAR }}`).
 
 ### Precedence (highest to lowest)
 
-| Priority | Scope | Description |
-| --- | --- | --- |
-| **1** | Local | Set via `set`, `get`, or loop iterators. |
-| **2** | Passed | Injected explicitly via `call`'s `with:`. |
-| **3** | Inherited | Copied from the calling task. |
-| **4** | Global | Declared in the root `vars:` block. |
-| **5** | Env / CLI | OS environment or `KEY=VALUE` args. |
+| Priority | Scope     | Description                               |
+| -------- | --------- | ----------------------------------------- |
+| **1**    | Local     | Set via `set`, `get`, or loop iterators.  |
+| **2**    | Passed    | Injected explicitly via `call`'s `with:`. |
+| **3**    | Inherited | Copied from the calling task.             |
+| **4**    | Global    | Declared in the root `vars:` block.       |
+| **5**    | CLI args  | `KEY=VALUE` args on the command line.     |
+| **6**    | Env       | OS environment variables.                 |
+
+<details>
+<summary>Rationale</summary>
+
+**Environment variables are lowest priority** because any variable name in
+`vars:` could collide with one already set in the caller's shell. If env won,
+the same task could silently behave differently on two machines — one developer
+has `HOST` exported, another doesn't, and they see different results from
+identical YAML. Putting env at the bottom makes tasks deterministic regardless
+of the ambient environment.
+
+**CLI args sit above env** so callers can explicitly override env values when
+they need to — `HOST=remotehost hobnob deploy` is unambiguous intent, not
+ambient noise.
+
+**Globals vars sit about CLI args** because the `vars:` block is an
+implementation detail of the task, not a public API. It sets up the internal
+wiring the task needs to function correctly — hardcoded endpoints, derived
+paths, computed defaults. A caller silently overriding those would make the task
+unpredictable.
+
+The **public API** for caller input is `get:` steps. A `get:` prompt is
+automatically skipped when its variable already exists in scope, so passing
+`HOST=remotehost` on the CLI answers the prompt without requiring interaction.
+
+</details>
+
+Use `{{ .VAR | default "fallback" }}` to let a lower-priority layer supply the
+value when a higher-priority one isn't set:
+
+```yaml
+vars:
+  HOST: "{{ .HOST | default "localhost" }}"
+```
+
+Or in a `set` step:
+
+```yaml
+- set:
+    - HOST: "{{ .HOST | default "localhost" }}"
+```
 
 ### Scope isolation
 
-`call` gives the child task a deep copy of the current scope. It can read everything, but mutations stay sandboxed unless you pull them back with `into:`.
+`call` gives the child task a deep copy of the current scope. It can read
+everything, but mutations stay sandboxed unless you pull them back with `into:`.
 
 ### Top-to-bottom resolution
 
-Variables in a `set` block resolve top-to-bottom, so you can reference a key defined just above:
+Variables in a `set` block resolve top-to-bottom, so you can reference a key
+defined just above:
 
 ```yaml
 - set:
@@ -57,7 +105,8 @@ Variables in a `set` block resolve top-to-bottom, so you can reference a key def
 
 ### Template filters
 
-`default`, `trim`, `upper`, `lower`, `lines`, `split` — usable anywhere templates are supported.
+`default`, `trim`, `upper`, `lower`, `lines`, `split` — usable anywhere
+templates are supported.
 
 ```yaml
 - run: echo "Targeting {{.ENV | upper}}"
@@ -76,7 +125,7 @@ Every task is a sequence of five step types.
     - TARGET_HOST: "localhost"
     - APPLICATION_KEY:
         value: "{{.VAULT_TOKEN}}"
-        secret: true    # masked in terminal output
+        secret: true # masked in terminal output
 ```
 
 ### `run` — shell commands
@@ -92,14 +141,15 @@ Every task is a sequence of five step types.
 
 Prompts for input. Skipped if the variable already exists in scope.
 
-> ⚠️ With `--no-input` or a `CI` env var set, prompts are skipped. Missing variables with no `default` will abort.
+> ⚠️ With `--no-input` or a `CI` env var set, prompts are skipped. Missing
+> variables with no `default` will abort.
 
 ```yaml
 - get:
     - PORT:
         info: "Enter deployment port"
         default: "8080"
-        check: "[ {{.PORT}} -gt 1024 ]"    # must exit 0 to pass
+        check: "[ {{.PORT}} -gt 1024 ]" # must exit 0 to pass
     - ENVIRONMENT:
         info: "Select target stage"
         options: ["staging", "production"]
@@ -107,7 +157,8 @@ Prompts for input. Skipped if the variable already exists in scope.
 
 ### `call` — sub-tasks
 
-Runs another task in an isolated scope. Pass variables in with `with:`, pull results back with `into:`.
+Runs another task in an isolated scope. Pass variables in with `with:`, pull
+results back with `into:`.
 
 ```yaml
 - call: "deploy_pipeline"
@@ -154,7 +205,8 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 
 ### `soft:` failure handling
 
-By default, a non-zero exit halts the timeline. `soft: true` on a `call` lets execution continue past failures.
+By default, a non-zero exit halts the timeline. `soft: true` on a `call` lets
+execution continue past failures.
 
 ```yaml
 - call: "flaky_cleanup_script"
@@ -179,7 +231,8 @@ modules:
 
 ### Namespaces
 
-Imported tasks are prefixed with their module key — `call: docker:build`. Prefix the key with `_` to make the entire module internal.
+Imported tasks are prefixed with their module key — `call: docker:build`. Prefix
+the key with `_` to make the entire module internal.
 
 ### Inclusion filters
 
@@ -188,10 +241,12 @@ Imported tasks are prefixed with their module key — `call: docker:build`. Pref
 
 ### Flattening
 
-`flatten: true` registers tasks under both `docker:build` and `build`. Native tasks always win on conflicts.
+`flatten: true` registers tasks under both `docker:build` and `build`. Native
+tasks always win on conflicts.
 
 ### Scoping rules
 
 - Sub-modules inherit root `vars:` as read-only.
 - A module's own `vars:` block never leaks to the parent.
-- Module tasks can call siblings within the same file, but not tasks in the parent.
+- Module tasks can call siblings within the same file, but not tasks in the
+  parent.

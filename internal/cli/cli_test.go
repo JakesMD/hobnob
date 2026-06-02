@@ -412,21 +412,21 @@ func TestBuildScope_SystemVars(t *testing.T) {
 	}
 }
 
-func TestBuildScope_CLIArgsOverride(t *testing.T) {
+func TestBuildScope_GlobalsWinOverCLIArgs(t *testing.T) {
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/global_vars.yml")
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
 
-	// Act — CLI arg overrides global HOST
+	// Act — global HOST="localhost" should win over CLI arg HOST="remotehost"
 	scope, _, err := BuildScope(cfg.Vars, map[string]string{"HOST": "remotehost"}, "/tmp/file", "/tmp/invoc")
 	if err != nil {
 		t.Fatalf("unexpected BuildScope error: %v", err)
 	}
 
 	// Assert
-	if scope["HOST"] != "remotehost" {
-		t.Errorf("HOST: got %q, want %q (CLI should override global)", scope["HOST"], "remotehost")
+	if scope["HOST"] != "localhost" {
+		t.Errorf("HOST: got %q, want %q (global vars: block should override CLI arg)", scope["HOST"], "localhost")
 	}
 }

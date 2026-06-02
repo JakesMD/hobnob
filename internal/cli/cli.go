@@ -87,8 +87,10 @@ complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)
 }
 
 // BuildScope constructs the initial variable scope: env vars as the base,
-// then system vars (HOBNOB_FILE_DIR, HOBNOB_INVOCATION_DIR), then global vars
-// evaluated on top, then CLI KEY=VALUE args (highest priority).
+// then system vars (HOBNOB_FILE_DIR, HOBNOB_INVOCATION_DIR), then CLI KEY=VALUE
+// args, then global vars evaluated on top (highest priority).
+// Globals win over CLI args because vars: is implementation detail — the public
+// API for caller input is get: steps, which are skipped when a var is already set.
 // Also returns a secrets map for any global vars marked secret: true.
 func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, invocationDir string) (map[string]string, map[string]bool, error) {
 	scope := make(map[string]string)
@@ -104,6 +106,10 @@ func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, 
 	scope["HOBNOB_FILE_DIR"] = taskfileDir
 	scope["HOBNOB_INVOCATION_DIR"] = invocationDir
 
+	for k, v := range cliVars {
+		scope[k] = v
+	}
+
 	for _, e := range vars {
 		val, err := eval.EvalTemplate(e.ValTmpl, scope)
 		if err != nil {
@@ -113,10 +119,6 @@ func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, 
 		if e.Secret {
 			secrets[e.Key] = true
 		}
-	}
-
-	for k, v := range cliVars {
-		scope[k] = v
 	}
 
 	return scope, secrets, nil
