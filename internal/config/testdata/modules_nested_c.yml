@@ -1,0 +1,5 @@
+tasks:
+  c_task:
+    info: Task from C
+    steps:
+      - run: echo "c_task"

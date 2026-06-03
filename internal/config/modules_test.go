@@ -405,3 +405,168 @@ func TestLoadModules_NestedFormat(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadModules_NestedImport(t *testing.T) {
+	// Arrange: A imports B (which imports C); expect b:b_task and b:c:c_task in A.
+	cfg := &ConfigFile{
+		Tasks:       make(map[string]Task),
+		TaskfileDir: "testdata",
+		Modules: []ModuleEntry{
+			{Prefix: "b", FileTmpl: "modules_nested_b.yml"},
+		},
+	}
+
+	// Act
+	if err := LoadModules(cfg, map[string]string{}); err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		taskName  string
+		wantFound bool
+	}{
+		{
+			name:      "given A imports B imports C, when loaded, then b:b_task registered (why: B's own task visible under b: prefix)",
+			taskName:  "b:b_task",
+			wantFound: true,
+		},
+		{
+			name:      "given A imports B imports C, when loaded, then b:c:c_task registered (why: nested import propagates through namespace)",
+			taskName:  "b:c:c_task",
+			wantFound: true,
+		},
+		{
+			name:      "given A imports B imports C, when loaded, then c:c_task not directly in A (why: C only imported via B, not directly by A)",
+			taskName:  "c:c_task",
+			wantFound: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[tc.taskName]
+			if ok != tc.wantFound {
+				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			}
+		})
+	}
+}
+
+func TestLoadModules_DiamondImport(t *testing.T) {
+	// Arrange: A imports B and C; both B and C import D. Expect all tasks present, no error.
+	cfg := &ConfigFile{
+		Tasks:       make(map[string]Task),
+		TaskfileDir: "testdata",
+		Modules: []ModuleEntry{
+			{Prefix: "b", FileTmpl: "modules_diamond_b.yml"},
+			{Prefix: "c", FileTmpl: "modules_diamond_c.yml"},
+		},
+	}
+
+	// Act
+	if err := LoadModules(cfg, map[string]string{}); err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		taskName  string
+		wantFound bool
+	}{
+		{
+			name:      "given diamond A->B->D and A->C->D, when loaded, then b:b_task registered",
+			taskName:  "b:b_task",
+			wantFound: true,
+		},
+		{
+			name:      "given diamond A->B->D and A->C->D, when loaded, then c:c_task registered",
+			taskName:  "c:c_task",
+			wantFound: true,
+		},
+		{
+			name:      "given diamond A->B->D and A->C->D, when loaded, then b:d:d_task registered (why: D accessible under B's namespace)",
+			taskName:  "b:d:d_task",
+			wantFound: true,
+		},
+		{
+			name:      "given diamond A->B->D and A->C->D, when loaded, then c:d:d_task registered (why: D accessible under C's namespace)",
+			taskName:  "c:d:d_task",
+			wantFound: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[tc.taskName]
+			if ok != tc.wantFound {
+				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			}
+		})
+	}
+}
+
+func TestLoadModules_SharedDirectImport(t *testing.T) {
+	// Arrange: A imports B (which imports C) and also imports C directly.
+	// Expect b:c:c_task and c:c_task both present with no error.
+	cfg := &ConfigFile{
+		Tasks:       make(map[string]Task),
+		TaskfileDir: "testdata",
+		Modules: []ModuleEntry{
+			{Prefix: "b", FileTmpl: "modules_shared_b.yml"},
+			{Prefix: "c", FileTmpl: "modules_nested_c.yml"},
+		},
+	}
+
+	// Act
+	if err := LoadModules(cfg, map[string]string{}); err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	tests := []struct {
+		name      string
+		taskName  string
+		wantFound bool
+	}{
+		{
+			name:      "given A->B->C and A->C, when loaded, then b:b_task registered",
+			taskName:  "b:b_task",
+			wantFound: true,
+		},
+		{
+			name:      "given A->B->C and A->C, when loaded, then b:c:c_task registered (why: C via B's namespace)",
+			taskName:  "b:c:c_task",
+			wantFound: true,
+		},
+		{
+			name:      "given A->B->C and A->C, when loaded, then c:c_task registered (why: C imported directly by A)",
+			taskName:  "c:c_task",
+			wantFound: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[tc.taskName]
+			if ok != tc.wantFound {
+				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			}
+		})
+	}
+}
+
+func TestLoadModules_CycleDetection(t *testing.T) {
+	// Arrange: A imports B, B imports A — circular import.
+	cfg, err := ParseConfig("testdata/modules_cycle_a.yml")
+	if err != nil {
+		t.Fatalf("ParseConfig error: %v", err)
+	}
+
+	// Act
+	err = LoadModules(cfg, map[string]string{})
+
+	// Assert
+	if err == nil {
+		t.Fatal("given circular import A->B->A, when loaded, then error expected (why: infinite loop without cycle detection)")
+	}
+}

@@ -1,0 +1,8 @@
+modules:
+  - c: modules_nested_c.yml
+
+tasks:
+  b_task:
+    info: Task from B (shared import)
+    steps:
+      - run: echo "b_task"

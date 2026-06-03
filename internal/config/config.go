@@ -36,6 +36,7 @@ type ModuleEntry struct {
 }
 
 type ConfigFile struct {
+	FilePath    string
 	Vars        []SetEntry
 	Tasks       map[string]Task
 	TaskNames   []string
@@ -131,6 +132,7 @@ func ParseConfig(path string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("resolve taskfile path: %w", err)
 	}
 	cfg := &ConfigFile{
+		FilePath:    absPath,
 		Tasks:       make(map[string]Task),
 		TaskfileDir: filepath.Dir(absPath),
 	}

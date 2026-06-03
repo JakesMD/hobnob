@@ -11,6 +11,14 @@ import (
 // LoadModules resolves module entries against scope, loads each module file,
 // and merges the resulting tasks into cfg. Must be called after BuildScope.
 func LoadModules(cfg *ConfigFile, scope map[string]string) error {
+	ancestors := map[string]bool{}
+	if cfg.FilePath != "" {
+		ancestors[cfg.FilePath] = true
+	}
+	return loadModules(cfg, scope, ancestors)
+}
+
+func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]bool) error {
 	for _, mod := range cfg.Modules {
 		filePath, err := eval.EvalTemplate(mod.FileTmpl, scope)
 		if err != nil {
@@ -19,9 +27,26 @@ func LoadModules(cfg *ConfigFile, scope map[string]string) error {
 		if !filepath.IsAbs(filePath) {
 			filePath = filepath.Join(cfg.TaskfileDir, filePath)
 		}
+		absPath, err := filepath.Abs(filePath)
+		if err != nil {
+			return fmt.Errorf("module %q: resolve path: %w", mod.Prefix, err)
+		}
+		if ancestors[absPath] {
+			return fmt.Errorf("module %q: circular import: %s", mod.Prefix, absPath)
+		}
 
 		modCfg, err := ParseConfig(filePath)
 		if err != nil {
+			return fmt.Errorf("module %q: %w", mod.Prefix, err)
+		}
+
+		newAncestors := make(map[string]bool, len(ancestors)+1)
+		for k := range ancestors {
+			newAncestors[k] = true
+		}
+		newAncestors[absPath] = true
+
+		if err := loadModules(modCfg, scope, newAncestors); err != nil {
 			return fmt.Errorf("module %q: %w", mod.Prefix, err)
 		}
 
@@ -56,7 +81,9 @@ func LoadModules(cfg *ConfigFile, scope map[string]string) error {
 			}
 
 			t := modCfg.Tasks[taskName]
-			t.Cfg = modCfg
+			if t.Cfg == nil {
+				t.Cfg = modCfg
+			}
 			if isInternal {
 				t.Hidden = true
 			}
