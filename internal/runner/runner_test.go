@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"hobnob/internal/cli"
 	"hobnob/internal/config"
 )
 
@@ -159,7 +160,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			}
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", make(map[string]bool))
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -259,7 +260,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			}
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", make(map[string]bool))
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -333,7 +334,7 @@ func TestMaskSecrets(t *testing.T) {
 			// Arrange (tc fields are the arrangement)
 
 			// Act
-			got := maskSecrets(tc.input, tc.vars, tc.secrets)
+			got := maskSecrets(tc.input, &cli.Scope{Vars: tc.vars, Secrets: tc.secrets})
 
 			// Assert
 			if got != tc.want {
@@ -386,7 +387,7 @@ func TestExecSet_SecretFlag(t *testing.T) {
 			secrets := make(map[string]bool)
 
 			// Act
-			err := ExecuteTask("t", map[string]string{}, cfg, true, "", secrets)
+			err := ExecuteTask("t", &cli.Scope{Vars: map[string]string{}, Secrets: secrets}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -448,7 +449,7 @@ func TestExecGet_SecretFlag_NoInput(t *testing.T) {
 			secrets := make(map[string]bool)
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", secrets)
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: secrets}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -554,7 +555,7 @@ func TestExecFor_Matrix(t *testing.T) {
 			}
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", make(map[string]bool))
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -625,7 +626,7 @@ func TestExecFor_String(t *testing.T) {
 			}
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", make(map[string]bool))
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -660,7 +661,7 @@ func captureRunDir(t *testing.T, step config.Step, taskfileDir, parentDir string
 		},
 		TaskfileDir: taskfileDir,
 	}
-	if err := ExecuteTask("t", map[string]string{}, cfg, true, parentDir, make(map[string]bool)); err != nil {
+	if err := ExecuteTask("t", &cli.Scope{Vars: map[string]string{}, Secrets: make(map[string]bool)}, cfg, true, parentDir); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 	data, err := os.ReadFile(outFile)
@@ -795,7 +796,7 @@ func TestRunInto(t *testing.T) {
 			vars := map[string]string{}
 
 			// Act
-			err := ExecuteTask("t", vars, cfg, true, "", make(map[string]bool))
+			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -870,7 +871,7 @@ func TestDir_CallStep_Priorities(t *testing.T) {
 			}
 
 			// Act
-			if err := ExecuteTask("parent", map[string]string{}, cfg, true, parentDir, make(map[string]bool)); err != nil {
+			if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: make(map[string]bool)}, cfg, true, parentDir); err != nil {
 				t.Fatalf("ExecuteTask: %v", err)
 			}
 			data, err := os.ReadFile(outFile)
@@ -907,7 +908,7 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -942,7 +943,7 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 	vars := map[string]string{"ITEM": "original", "RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -976,7 +977,7 @@ func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1016,7 +1017,7 @@ func TestExecCall_IntoTemplatePath(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1060,7 +1061,7 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1101,7 +1102,7 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1131,7 +1132,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, false, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1161,7 +1162,7 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, false, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1202,7 +1203,7 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, false, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1235,7 +1236,7 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	vars := map[string]string{"PORT": "80"}
 
 	// Act
-	err := ExecuteTask("t", vars, cfg, true, t.TempDir(), map[string]bool{})
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {

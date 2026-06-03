@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -14,38 +13,21 @@ import (
 	cterm "github.com/charmbracelet/x/term"
 )
 
-type LineWriter struct {
-	w      io.Writer
-	prefix string
-	buf    bytes.Buffer
+type Scope struct {
+	Vars    map[string]string
+	Secrets map[string]bool
 }
 
-func NewLineWriter(w io.Writer, prefix string) *LineWriter {
-	return &LineWriter{w: w, prefix: prefix}
-}
-
-func (lw *LineWriter) Write(p []byte) (int, error) {
-	n := len(p)
-	for _, b := range p {
-		if b == '\n' {
-			lw.w.Write([]byte(lw.prefix))
-			lw.w.Write(lw.buf.Bytes())
-			lw.w.Write([]byte{'\n'})
-			lw.buf.Reset()
-		} else {
-			lw.buf.WriteByte(b)
-		}
+func (s *Scope) Copy() *Scope {
+	vars := make(map[string]string, len(s.Vars))
+	for k, v := range s.Vars {
+		vars[k] = v
 	}
-	return n, nil
-}
-
-func (lw *LineWriter) Flush() {
-	if lw.buf.Len() > 0 {
-		lw.w.Write([]byte(lw.prefix))
-		lw.w.Write(lw.buf.Bytes())
-		lw.w.Write([]byte{'\n'})
-		lw.buf.Reset()
+	secrets := make(map[string]bool, len(s.Secrets))
+	for k, v := range s.Secrets {
+		secrets[k] = v
 	}
+	return &Scope{Vars: vars, Secrets: secrets}
 }
 
 func CompletionScript(shell string) (string, error) {
@@ -92,120 +74,38 @@ complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)
 // Globals win over CLI args because vars: is implementation detail — the public
 // API for caller input is get: steps, which are skipped when a var is already set.
 // Also returns a secrets map for any global vars marked secret: true.
-func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, invocationDir string) (map[string]string, map[string]bool, error) {
-	scope := make(map[string]string)
-	secrets := make(map[string]bool)
+func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, invocationDir string) (*Scope, error) {
+	s := &Scope{
+		Vars:    make(map[string]string),
+		Secrets: make(map[string]bool),
+	}
 
 	for _, e := range os.Environ() {
 		idx := strings.IndexByte(e, '=')
 		if idx > 0 {
-			scope[e[:idx]] = e[idx+1:]
+			s.Vars[e[:idx]] = e[idx+1:]
 		}
 	}
 
-	scope["HOBNOB_FILE_DIR"] = taskfileDir
-	scope["HOBNOB_INVOCATION_DIR"] = invocationDir
+	s.Vars["HOBNOB_FILE_DIR"] = taskfileDir
+	s.Vars["HOBNOB_INVOCATION_DIR"] = invocationDir
 
 	for k, v := range cliVars {
-		scope[k] = v
+		s.Vars[k] = v
 	}
 
 	for _, e := range vars {
-		val, err := eval.EvalTemplate(e.ValTmpl, scope)
+		val, err := eval.EvalTemplate(e.ValTmpl, s.Vars)
 		if err != nil {
-			return nil, nil, fmt.Errorf("global var %q: %w", e.Key, err)
+			return nil, fmt.Errorf("global var %q: %w", e.Key, err)
 		}
-		scope[e.Key] = val
+		s.Vars[e.Key] = val
 		if e.Secret {
-			secrets[e.Key] = true
+			s.Secrets[e.Key] = true
 		}
 	}
 
-	return scope, secrets, nil
-}
-
-func RunDisplayLines(cmd, task string) []string {
-	prefix := tui.TaskPrefix(task)
-	lines := strings.Split(cmd, "\n")
-	result := make([]string, len(lines))
-	for i, line := range lines {
-		if i == 0 {
-			result[i] = tui.SStep.Render("run:") + " " + prefix + tui.SStep.Render(line)
-		} else {
-			result[i] = tui.SStep.Render(line)
-		}
-	}
-	return result
-}
-
-func CollectGetParams(steps []config.Step, cfg *config.ConfigFile) []config.GetEntry {
-	return collectGetParams(steps, cfg, make(map[string]bool), make(map[string]bool))
-}
-
-func collectGetParams(steps []config.Step, cfg *config.ConfigFile, visited map[string]bool, preset map[string]bool) []config.GetEntry {
-	var entries []config.GetEntry
-	alreadySet := make(map[string]bool, len(preset))
-	for k := range preset {
-		alreadySet[k] = true
-	}
-	for _, s := range steps {
-		switch s.Kind {
-		case config.KindSet:
-			for _, e := range s.SetEntries {
-				alreadySet[e.Key] = true
-			}
-		case config.KindGet:
-			for _, e := range s.GetEntries {
-				if !alreadySet[e.VarName] {
-					entries = append(entries, e)
-				}
-				alreadySet[e.VarName] = true
-			}
-		case config.KindRun:
-			for _, e := range s.IntoEntries {
-				alreadySet[e.ParentKey] = true
-			}
-		case config.KindFor:
-			loopPreset := make(map[string]bool, len(alreadySet))
-			for k := range alreadySet {
-				loopPreset[k] = true
-			}
-			if len(s.ForMatrix) > 0 {
-				for _, m := range s.ForMatrix {
-					loopPreset[m.VarName] = true
-				}
-			} else {
-				loopPreset["ITEM"] = true
-			}
-			entries = append(entries, collectGetParams(s.ForSteps, cfg, visited, loopPreset)...)
-		case config.KindCall:
-			if cfg != nil && !strings.Contains(s.CallTarget, "{{") {
-				if !visited[s.CallTarget] {
-					childPreset := make(map[string]bool, len(alreadySet)+len(s.CallVars))
-					for k := range alreadySet {
-						childPreset[k] = true
-					}
-					for _, w := range s.CallVars {
-						childPreset[w.Key] = true
-					}
-					visited[s.CallTarget] = true
-					if t, ok := cfg.Tasks[s.CallTarget]; ok {
-						for _, e := range collectGetParams(t.Steps, cfg, visited, childPreset) {
-							if !alreadySet[e.VarName] {
-								entries = append(entries, e)
-							}
-							alreadySet[e.VarName] = true
-						}
-					}
-					delete(visited, s.CallTarget)
-				}
-				for _, e := range s.IntoEntries {
-					alreadySet[e.ParentKey] = true
-				}
-			}
-		}
-	}
-	return entries
+	return s, nil
 }
 
 func PrintUsage(w io.Writer) {
@@ -226,12 +126,12 @@ Docs:
 `)
 }
 
-func PrintHelp(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
+func PrintHelp(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
 	PrintUsage(w)
 	return ListTasks(cfg, scope, w)
 }
 
-func ListTasks(cfg *config.ConfigFile, scope map[string]string, w io.Writer) error {
+func ListTasks(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
 	type row struct {
 		name   string
 		info   string
@@ -248,8 +148,8 @@ func ListTasks(cfg *config.ConfigFile, scope map[string]string, w io.Writer) err
 		if t.Hidden {
 			continue
 		}
-		info := listRenderInfo(t.Info, scope)
-		params := CollectGetParams(t.Steps, cfg)
+		info := listRenderInfo(t.Info, scope.Vars)
+		params := config.CollectGetParams(t.Steps, cfg)
 		rows = append(rows, row{name, info, params})
 		if len(name) > maxTaskLen {
 			maxTaskLen = len(name)
@@ -290,7 +190,7 @@ func ListTasks(cfg *config.ConfigFile, scope map[string]string, w io.Writer) err
 		paramInfoIndent := strings.Repeat(" ", paramInfoCol)
 
 		for _, p := range r.params {
-			info := listRenderInfo(p.Info, scope)
+			info := listRenderInfo(p.Info, scope.Vars)
 			displayName := p.VarName
 			if p.DefaultTmpl != "" {
 				displayName = "(" + p.VarName + ")"

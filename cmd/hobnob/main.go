@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,6 +12,9 @@ import (
 	"hobnob/internal/runner"
 	"hobnob/internal/tui"
 )
+
+// errSilent signals main to exit 1 without printing — run() already printed.
+var errSilent = errors.New("")
 
 // findTaskfile walks startDir and its parents until it finds hobnob.yml or
 // hobnob.yaml, returning the absolute path of the first match.
@@ -66,18 +70,40 @@ func parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]string, er
 	return noPrompts, cliVars, nil
 }
 
-func main() {
-	fileFlag, args, err := extractFileFlag(os.Args[1:])
+func loadConfig(path string, cliVars map[string]string, invDir string) (*config.ConfigFile, *cli.Scope, error) {
+	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return nil, nil, err
+	}
+	scope, err := cli.BuildScope(cfg.Vars, cliVars, cfg.TaskfileDir, invDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := config.LoadModules(cfg, scope.Vars); err != nil {
+		return nil, nil, err
+	}
+	return cfg, scope, nil
+}
+
+func execTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, dir string) error {
+	if err := runner.ExecuteTask(taskName, scope, cfg, noPrompts, dir); err != nil {
+		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
+		return errSilent
+	}
+	fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix(taskName) + tui.SChecked.Render("done"))
+	return nil
+}
+
+func run(args []string) error {
+	fileFlag, args, err := extractFileFlag(args)
+	if err != nil {
+		return err
 	}
 
 	if len(args) < 1 {
 		invDir, err := os.Getwd()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		var tfPath string
 		if fileFlag != "" {
@@ -86,64 +112,40 @@ func main() {
 			tfPath, _ = findTaskfile(invDir)
 		}
 		if tfPath != "" {
-			cfg, err := config.ParseConfig(tfPath)
+			cfg, scope, err := loadConfig(tfPath, nil, invDir)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-			scope, secrets, err := cli.BuildScope(cfg.Vars, nil, cfg.TaskfileDir, invDir)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-			if err := config.LoadModules(cfg, scope); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
+				return err
 			}
 			if _, ok := cfg.Tasks["default"]; ok {
-				noPrompts := os.Getenv("CI") != ""
-				if err := runner.ExecuteTask("default", scope, cfg, noPrompts, invDir, secrets); err != nil {
-					fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix("default")+tui.SError.Render(err.Error()))
-					os.Exit(1)
-				}
-				fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix("default") + tui.SChecked.Render("done"))
-				return
+				return execTask("default", scope, cfg, os.Getenv("CI") != "", invDir)
 			}
 			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
-			if err := cli.PrintHelp(cfg, scope, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-			return
+			return cli.PrintHelp(cfg, scope, os.Stdout)
 		}
 		fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
 		cli.PrintUsage(os.Stdout)
-		return
+		return nil
 	}
 
 	if args[0] == "completion" {
 		if len(args) < 2 {
-			fmt.Fprintf(os.Stderr, "usage: hobnob completion [bash|zsh|fish]\n")
-			os.Exit(1)
+			return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")
 		}
 		script, err := cli.CompletionScript(args[1])
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		fmt.Print(script)
-		return
+		return nil
 	}
 
 	if args[0] != "--list" && strings.HasPrefix(args[0], "_") {
-		fmt.Fprintf(os.Stderr, "task %q is internal and cannot be called directly\n", args[0])
-		os.Exit(1)
+		return fmt.Errorf("task %q is internal and cannot be called directly", args[0])
 	}
 
 	invocationDir, err := os.Getwd()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
 	var taskfilePath string
@@ -152,62 +154,40 @@ func main() {
 	} else {
 		taskfilePath, err = findTaskfile(invocationDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
-	}
-
-	cfg, err := config.ParseConfig(taskfilePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
 	}
 
 	if args[0] == "--list" || args[0] == "--help" {
-		scope, _, err := cli.BuildScope(cfg.Vars, nil, cfg.TaskfileDir, invocationDir)
+		cfg, scope, err := loadConfig(taskfilePath, nil, invocationDir)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
-		}
-		if err := config.LoadModules(cfg, scope); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
-			os.Exit(1)
+			return err
 		}
 		if args[0] == "--help" {
-			if err := cli.PrintHelp(cfg, scope, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
-		} else {
-			if err := cli.ListTasks(cfg, scope, os.Stdout); err != nil {
-				fmt.Fprintf(os.Stderr, "error: %v\n", err)
-				os.Exit(1)
-			}
+			return cli.PrintHelp(cfg, scope, os.Stdout)
 		}
-		return
+		return cli.ListTasks(cfg, scope, os.Stdout)
 	}
 
 	taskName := args[0]
 	noPrompts, cliVars, err := parseTaskArgs(args[1:])
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "invalid argument %v\n", err)
-		os.Exit(1)
+		return fmt.Errorf("invalid argument %w", err)
 	}
 
-	scope, secrets, err := cli.BuildScope(cfg.Vars, cliVars, cfg.TaskfileDir, invocationDir)
+	cfg, scope, err := loadConfig(taskfilePath, cliVars, invocationDir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
+		return err
 	}
 
-	if err := config.LoadModules(cfg, scope); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
-		os.Exit(1)
-	}
+	return execTask(taskName, scope, cfg, noPrompts, invocationDir)
+}
 
-	if err := runner.ExecuteTask(taskName, scope, cfg, noPrompts, invocationDir, secrets); err != nil {
-		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
+func main() {
+	if err := run(os.Args[1:]); err != nil {
+		if !errors.Is(err, errSilent) {
+			fmt.Fprintln(os.Stderr, "error:", err)
+		}
 		os.Exit(1)
 	}
-	fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix(taskName) + tui.SChecked.Render("done"))
 }

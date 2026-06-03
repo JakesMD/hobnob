@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"hobnob/internal/eval"
@@ -42,6 +44,54 @@ func TaskStyle(task string) lipgloss.Style {
 func TaskPrefix(task string) string {
 	bracket := lipgloss.NewStyle()
 	return bracket.Render("[") + TaskStyle(task).Render(task) + bracket.Render("]") + " "
+}
+
+type LineWriter struct {
+	w      io.Writer
+	prefix string
+	buf    bytes.Buffer
+}
+
+func NewLineWriter(w io.Writer, prefix string) *LineWriter {
+	return &LineWriter{w: w, prefix: prefix}
+}
+
+func (lw *LineWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	for _, b := range p {
+		if b == '\n' {
+			lw.w.Write([]byte(lw.prefix))
+			lw.w.Write(lw.buf.Bytes())
+			lw.w.Write([]byte{'\n'})
+			lw.buf.Reset()
+		} else {
+			lw.buf.WriteByte(b)
+		}
+	}
+	return n, nil
+}
+
+func (lw *LineWriter) Flush() {
+	if lw.buf.Len() > 0 {
+		lw.w.Write([]byte(lw.prefix))
+		lw.w.Write(lw.buf.Bytes())
+		lw.w.Write([]byte{'\n'})
+		lw.buf.Reset()
+	}
+}
+
+func RunDisplayLines(cmd, task string) []string {
+	prefix := TaskPrefix(task)
+	lines := strings.Split(cmd, "\n")
+	result := make([]string, len(lines))
+	for i, line := range lines {
+		if i == 0 {
+			result[i] = SStep.Render("run:") + " " + prefix + SStep.Render(line)
+		} else {
+			result[i] = SStep.Render(line)
+		}
+	}
+	return result
 }
 
 func PromptText(info, check, varName string, vars map[string]string, defaultVal string, task string, secret bool, optional bool) (string, error) {
