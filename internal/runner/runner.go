@@ -331,11 +331,11 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 		if t.Cfg != nil {
 			execCfg = t.Cfg
 		}
-		resolved, err := eval.EvalTemplate(s.DirTmpl, scope.Vars)
+		resolved, err := eval.EvalTemplate(s.DirTmpl, childScope.Vars)
 		if err != nil {
 			return fmt.Errorf("call dir template: %w", err)
 		}
-		childDir := resolveDirPath(resolved, execCfg.TaskfileDir)
+		childDir := resolveDirPath(resolved, cfg.TaskfileDir)
 		callErr = executeSteps(t.Steps, childScope, execCfg, taskName, noPrompts, childDir)
 	} else {
 		// Priority B (task-level dir) or C (inherit parentDir) — handled inside ExecuteTask

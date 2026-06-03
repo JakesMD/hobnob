@@ -1217,6 +1217,98 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	}
 }
 
+func TestDir_CallStep_DirUsesWithVars(t *testing.T) {
+	// given call step has dir: template referencing a with: variable,
+	// when called, then dir resolves using the with: variable's value
+	// (why: childScope is populated with with: vars before dir: is evaluated)
+	targetDir := t.TempDir()
+	outFile := filepath.Join(t.TempDir(), "out.txt")
+
+	cfg := &config.ConfigFile{
+		TaskfileDir: t.TempDir(),
+		Tasks: map[string]config.Task{
+			"parent": {Steps: []config.Step{
+				{
+					Kind:       config.KindCall,
+					CallTarget: "child",
+					DirTmpl:    "{{.TARGET_DIR}}",
+					CallVars:   []config.SetEntry{{Key: "TARGET_DIR", ValTmpl: targetDir}},
+				},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindRun, Command: fmt.Sprintf("pwd > '%s'", outFile)},
+			}},
+		},
+	}
+
+	// Act
+	if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: map[string]bool{}}, cfg, true, t.TempDir()); err != nil {
+		t.Fatalf("ExecuteTask: %v", err)
+	}
+
+	// Assert
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read out file: %v", err)
+	}
+	got := strings.TrimRight(string(data), "\n")
+	want := realPath(t, targetDir)
+	if got != want {
+		t.Errorf("child run dir: got %q, want %q", got, want)
+	}
+}
+
+func TestDir_CallStep_RelativeToCallerDir(t *testing.T) {
+	// given call step has a relative dir: and the called task is from a different module,
+	// when called, then the relative path resolves against the caller's file directory
+	// (why: dir: on a call step is written in the caller's file and should be relative to it)
+	callerDir := t.TempDir()
+	calleeDir := t.TempDir()
+	subDir := filepath.Join(callerDir, "sub")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	outFile := filepath.Join(t.TempDir(), "out.txt")
+
+	calleeCfg := &config.ConfigFile{
+		TaskfileDir: calleeDir,
+		Tasks:       map[string]config.Task{},
+	}
+	childTask := config.Task{
+		Cfg: calleeCfg,
+		Steps: []config.Step{
+			{Kind: config.KindRun, Command: fmt.Sprintf("pwd > '%s'", outFile)},
+		},
+	}
+	calleeCfg.Tasks["child"] = childTask
+
+	callerCfg := &config.ConfigFile{
+		TaskfileDir: callerDir,
+		Tasks: map[string]config.Task{
+			"parent": {Steps: []config.Step{
+				{Kind: config.KindCall, CallTarget: "child", DirTmpl: "sub"},
+			}},
+			"child": childTask,
+		},
+	}
+
+	// Act
+	if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: map[string]bool{}}, callerCfg, true, t.TempDir()); err != nil {
+		t.Fatalf("ExecuteTask: %v", err)
+	}
+
+	// Assert
+	data, err := os.ReadFile(outFile)
+	if err != nil {
+		t.Fatalf("read out file: %v", err)
+	}
+	got := strings.TrimRight(string(data), "\n")
+	want := realPath(t, subDir)
+	if got != want {
+		t.Errorf("child run dir: got %q, want %q (expected relative to caller, not callee)", got, want)
+	}
+}
+
 func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	// given PORT already in scope with value failing check, when get step reached,
 	// then check runs and errors (why: skip-if-set must still validate via check:)
