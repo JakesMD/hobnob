@@ -1309,6 +1309,64 @@ func TestDir_CallStep_RelativeToCallerDir(t *testing.T) {
 	}
 }
 
+func TestRunStep_ScopeVarOverridesInheritedEnv(t *testing.T) {
+	// given env var FOO set in ambient environment, when scope sets FOO to a
+	// different value, then the run step sees the scope value (why: scope vars
+	// must win over inherited env — exec first-occurrence semantics means the
+	// old append-only approach silently lost the override)
+	t.Setenv("FOO", "from-env")
+
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{Kind: config.KindRun, Command: "printf '%s' \"$FOO\"", IntoEntries: []config.IntoEntry{
+					{ParentKey: "RESULT", ValueTmpl: "stdout"},
+				}},
+			}},
+		},
+	}
+	vars := map[string]string{"FOO": "from-scope"}
+
+	// Act
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := vars["RESULT"]; got != "from-scope" {
+		t.Errorf("RESULT: got %q, want %q (why: scope var must override inherited env)", got, "from-scope")
+	}
+}
+
+func TestRunStep_EnvVarNotInScope_StillVisible(t *testing.T) {
+	// given env var BAR not in scope, when run step reads BAR, then it sees the
+	// ambient env value (why: env vars not shadowed by scope must still pass through)
+	t.Setenv("BAR", "from-env")
+
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{Kind: config.KindRun, Command: "printf '%s' \"$BAR\"", IntoEntries: []config.IntoEntry{
+					{ParentKey: "RESULT", ValueTmpl: "stdout"},
+				}},
+			}},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := vars["RESULT"]; got != "from-env" {
+		t.Errorf("RESULT: got %q, want %q (why: env vars not in scope must still reach the subprocess)", got, "from-env")
+	}
+}
+
 func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	// given PORT already in scope with value failing check, when get step reached,
 	// then check runs and errors (why: skip-if-set must still validate via check:)

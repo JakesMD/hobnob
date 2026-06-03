@@ -130,7 +130,22 @@ func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir stri
 		c.Stdout = stdoutLW
 		c.Stderr = stderrLW
 	}
-	c.Env = os.Environ()
+	// Scope vars must win over inherited env. Build a map of scope keys so we
+	// can filter os.Environ() before appending scope vars (first-occurrence wins
+	// in os/exec).
+	scopeKeys := make(map[string]bool, len(scope.Vars))
+	for k := range scope.Vars {
+		scopeKeys[k] = true
+	}
+	env := os.Environ()
+	filtered := env[:0:len(env)]
+	for _, e := range env {
+		k, _, _ := strings.Cut(e, "=")
+		if !scopeKeys[k] {
+			filtered = append(filtered, e)
+		}
+	}
+	c.Env = filtered
 	for k, v := range scope.Vars {
 		c.Env = append(c.Env, k+"="+v)
 	}
