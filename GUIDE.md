@@ -68,8 +68,8 @@ Import tasks from other files with the root-level `modules:` block.
 modules:
   - _infra: terraform.yml
   - docker:
-      path: "./docker/tasks.yml"
-      show: ["build", "push"]
+      path: ./docker/tasks.yml
+      show: [build, push]
       flatten: true
 ```
 
@@ -205,7 +205,7 @@ defined just above:
 
 ```yaml
 - set:
-    - BASE_URL: "https://api.example.com"
+    - BASE_URL: https://api.example.com
     - AUTH_URL: "{{.BASE_URL}}/v1/auth"
 ```
 
@@ -235,9 +235,9 @@ Every task is a sequence of five step types.
 
 ```yaml
 - set:
-    - TARGET_HOST: "localhost"
+    - TARGET_HOST: localhost
     - APPLICATION_KEY:
-        value: "{{.VAULT_TOKEN}}"
+        value: .VAULT_TOKEN
         secret: true # masked in terminal output
 ```
 
@@ -269,21 +269,21 @@ Object form — full configuration:
 ```yaml
 - get:
     - PORT:
-        info: "Enter deployment port"
-        default: "8080"
+        info: Enter deployment port
+        default: 8080
         check: "[ {{.PORT}} -gt 1024 ]" # must exit 0 to pass
     - ENVIRONMENT:
-        info: "Select target stage"
-        options: ["staging", "production"]
+        info: Select target stage
+        options: [staging, production]
     - TAGS:
-        info: "Select applicable tags"
-        options: ["backend", "frontend", "infra"]
+        info: Select applicable tags
+        options: [backend, frontend, infra]
         multi: true # multi-select prompt
     - API_TOKEN:
-        info: "Paste your API token"
+        info: Paste your API token
         secret: true # masked in terminal output
     - NOTES:
-        info: "Any notes? (optional)"
+        info: Any notes? (optional)
         optional: true # skipped silently if missing, leaves variable empty
 ```
 
@@ -293,11 +293,11 @@ Runs another task in an isolated scope. Pass variables in with `with:`, pull
 results back with `into:`.
 
 ```yaml
-- call: "deploy_pipeline"
+- call: deploy_pipeline
   dir: ./infra
   with:
-    - TARGET_ENV: "production"
-    - TIMEOUT_SECS: "90"
+    - TARGET_ENV: production
+    - TIMEOUT_SECS: 90
   into:
     - DEPLOY_STATUS: .STATUS
     - ARTIFACT_PATH: .LOG_FILE
@@ -307,9 +307,9 @@ By default, a non-zero exit halts the timeline. Use `soft: true` to let
 execution continue past a failed call:
 
 ```yaml
-- call: "flaky_cleanup_script"
+- call: flaky_cleanup_script
   soft: true
-- call: "next_critical_step"
+- call: next_critical_step
 ```
 
 ### `loop` — iteration
@@ -326,8 +326,8 @@ execution continue past a failed call:
 
 ```yaml
 - loop:
-    OS: ["linux", "darwin"]
-    ARCH: ["amd64", "arm64"]
+    OS: [linux, darwin]
+    ARCH: [amd64, arm64]
   steps:
     - run: echo "Compiling for {{.OS}} on {{.ARCH}}"
 ```
@@ -372,7 +372,7 @@ tasks:
       - run: ./build.sh
       - get:
           - ENV:
-              options: ["staging", "production"]
+              options: [staging, production]
       - run: ./deploy.sh {{.ENV}}
 
 # good — all prompts first, then execution
@@ -381,7 +381,7 @@ tasks:
     steps:
       - get:
           - ENV:
-              options: ["staging", "production"]
+              options: [staging, production]
       - run: ./build.sh
       - run: ./deploy.sh {{.ENV}}
 ```
