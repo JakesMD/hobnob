@@ -218,6 +218,8 @@ func listRenderInfo(tmpl string, scope map[string]string) string {
 		return ""
 	}
 	rendered, err := eval.EvalTemplate(tmpl, scope)
+	// At --list time, runtime vars aren't in scope yet, so any {{.VAR}} ref
+	// produces <no value>. Hiding the info line is better than showing that.
 	if err != nil || strings.Contains(rendered, "<no value>") {
 		return ""
 	}

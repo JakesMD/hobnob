@@ -393,6 +393,8 @@ func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task strin
 	if err != nil {
 		return err
 	}
+	// items == nil means the source var/list resolved to empty — zero iterations
+	// is the correct semantic result (e.g. loop: .FILES where FILES is empty).
 
 	prevVal, hadPrev := scope.Vars["ITEM"]
 	restoreItem := func() {

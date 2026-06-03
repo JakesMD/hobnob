@@ -71,6 +71,8 @@ func (lw *LineWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// Flush writes any buffered partial line. Errors from w are discarded because
+// w is always os.Stdout/os.Stderr — if those fail the process is dying anyway.
 func (lw *LineWriter) Flush() {
 	if lw.buf.Len() > 0 {
 		lw.w.Write([]byte(lw.prefix))
@@ -161,6 +163,9 @@ func PromptSelect(varName, info string, items []string, multi bool, defaultVal s
 	display := final.value
 	if final.multi {
 		var vals []string
+		// final.value is JSON produced by the TUI model, not user input — unmarshal
+		// can only fail if there's an upstream code bug. Display is best-effort; the
+		// actual return value (final.value) is correct regardless.
 		_ = json.Unmarshal([]byte(final.value), &vals)
 		display = strings.Join(vals, ", ")
 	}

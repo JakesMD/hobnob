@@ -109,7 +109,7 @@ func run(args []string) error {
 		if fileFlag != "" {
 			tfPath = fileFlag
 		} else {
-			tfPath, _ = findTaskfile(invDir)
+			tfPath, _ = findTaskfile(invDir) // error = "not found"; tfPath=="" handles it below
 		}
 		if tfPath != "" {
 			cfg, scope, err := loadConfig(tfPath, nil, invDir)

@@ -418,6 +418,10 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 		for i := 0; i+1 < len(item.Content); i += 2 {
 			key := item.Content[i].Value
 			val := item.Content[i+1]
+			// "show", "hide", "flatten" are reserved at the top-level mapping key
+			// position. Using them as module prefixes always produces a parse error
+			// (not a silent shadow): "show"/"hide" fail the sequence check; "flatten"
+			// sets FlattenTmpl, leaving Prefix empty → "module entry missing prefix key".
 			switch key {
 			case "show":
 				if val.Kind != yaml.SequenceNode {
