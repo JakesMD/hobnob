@@ -395,18 +395,21 @@ func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task strin
 	}
 
 	prevVal, hadPrev := scope.Vars["ITEM"]
+	restoreItem := func() {
+		if hadPrev {
+			scope.Vars["ITEM"] = prevVal
+		} else {
+			delete(scope.Vars, "ITEM")
+		}
+	}
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
 		if err := executeSteps(s.ForSteps, scope, cfg, task, noPrompts, currentDir); err != nil {
+			restoreItem()
 			return err
 		}
 	}
-	if hadPrev {
-		scope.Vars["ITEM"] = prevVal
-	} else {
-		delete(scope.Vars, "ITEM")
-	}
-
+	restoreItem()
 	return nil
 }
 
@@ -430,16 +433,20 @@ func execCartesian(varNames []string, itemLists [][]string, idx int, steps []con
 	}
 	name := varNames[idx]
 	prevVal, hadPrev := scope.Vars[name]
+	restore := func() {
+		if hadPrev {
+			scope.Vars[name] = prevVal
+		} else {
+			delete(scope.Vars, name)
+		}
+	}
 	for _, item := range itemLists[idx] {
 		scope.Vars[name] = item
 		if err := execCartesian(varNames, itemLists, idx+1, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+			restore()
 			return err
 		}
 	}
-	if hadPrev {
-		scope.Vars[name] = prevVal
-	} else {
-		delete(scope.Vars, name)
-	}
+	restore()
 	return nil
 }
