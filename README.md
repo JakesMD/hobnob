@@ -84,7 +84,7 @@ templates in values, conditions, options, ...
 ## 📦 Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jakesmd/hobnob/main/install.sh | bash
+curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
 ```
 
 ---
