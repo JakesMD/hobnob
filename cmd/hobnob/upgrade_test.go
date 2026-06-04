@@ -168,4 +168,33 @@ func TestDownloadAndInstall(t *testing.T) {
 			t.Errorf("expected output to contain 'v9.9.9', got: %s", out.String())
 		}
 	})
+
+	t.Run("given GitHub-style redirect through versioned URL to CDN, when upgrading, then prints new version (why: real GitHub redirects end at CDN so version must be captured from intermediate redirect)", func(t *testing.T) {
+		// Arrange
+		newBinary := []byte("new-binary-content")
+		archive := makeTarGz(t, map[string][]byte{"hobnob": newBinary})
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if strings.Contains(r.URL.Path, "latest") {
+				http.Redirect(w, r, "/jakesmd/hobnob/releases/download/v9.9.9/hobnob_linux_amd64.tar.gz", http.StatusFound)
+				return
+			}
+			w.Write(archive)
+		}))
+		defer srv.Close()
+		exe := filepath.Join(t.TempDir(), "hobnob")
+		os.WriteFile(exe, []byte("old"), 0755)
+
+		var out bytes.Buffer
+
+		// Act
+		err := downloadAndInstall(srv.URL+"/jakesmd/hobnob/releases/latest/download/hobnob_linux_amd64.tar.gz", exe, &out)
+
+		// Assert
+		if err != nil {
+			t.Fatalf("expected success, got: %v", err)
+		}
+		if !strings.Contains(out.String(), "v9.9.9") {
+			t.Errorf("expected output to contain 'v9.9.9', got: %s", out.String())
+		}
+	})
 }

@@ -40,7 +40,25 @@ func selfUpgrade() error {
 func downloadAndInstall(url, exe string, w io.Writer) error {
 	fmt.Fprintln(w, "Downloading latest hobnob...")
 
-	resp, err := http.Get(url) //nolint:noctx
+	// GitHub redirects latest → /releases/download/v1.2.3/... → CDN.
+	// Capture version from the intermediate GitHub-domain redirect.
+	var newVersion string
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if newVersion == "" {
+				parts := strings.Split(req.URL.Path, "/")
+				for i, part := range parts {
+					if part == "download" && i+1 < len(parts) {
+						newVersion = parts[i+1]
+						break
+					}
+				}
+			}
+			return nil
+		},
+	}
+
+	resp, err := client.Get(url) //nolint:noctx
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
@@ -92,13 +110,13 @@ func downloadAndInstall(url, exe string, w io.Writer) error {
 			return fmt.Errorf("replace binary: %w", err)
 		}
 
-		// GitHub redirects latest → /releases/download/v1.2.3/...; extract tag from final URL.
-		newVersion := ""
-		parts := strings.Split(resp.Request.URL.Path, "/")
-		for i, part := range parts {
-			if part == "download" && i+1 < len(parts) {
-				newVersion = parts[i+1]
-				break
+		if newVersion == "" {
+			parts := strings.Split(resp.Request.URL.Path, "/")
+			for i, part := range parts {
+				if part == "download" && i+1 < len(parts) {
+					newVersion = parts[i+1]
+					break
+				}
 			}
 		}
 		if newVersion != "" {
