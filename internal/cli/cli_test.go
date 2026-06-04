@@ -112,6 +112,15 @@ func TestListTasks(t *testing.T) {
 			},
 			wantAbsent: []string{"_helper"},
 		},
+		{
+			name:    "given no public tasks, when listed, then shows empty-state message with guide link (why: blank output is confusing for new users)",
+			fixture: "testdata/no_public_tasks.yml",
+			wantLines: []string{
+				"No tasks found",
+				"hobnob.yml",
+				"GUIDE.md",
+			},
+		},
 	}
 
 	for _, tc := range tests {

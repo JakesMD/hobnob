@@ -277,6 +277,12 @@ func ListTasks(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
 		}
 	}
 
+	if len(rows) == 0 {
+		fmt.Fprintln(w, "No tasks found. To get started, create a hobnob.yml file.")
+		fmt.Fprintln(w, "See the guide at: https://github.com/jakesmd/hobnob/blob/main/GUIDE.md")
+		return nil
+	}
+
 	tw := listTermWidth()
 	// "• " (2) + name (maxTaskLen) + "  " (2)
 	taskInfoCol := 2 + maxTaskLen + 2
