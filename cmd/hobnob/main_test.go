@@ -9,6 +9,58 @@ import (
 	"testing"
 )
 
+func TestVersionFlag(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		os.Args = []string{"hobnob", "--version"}
+		main()
+		return
+	}
+
+	// Arrange
+	cmd := exec.Command(os.Args[0], "-test.run=TestVersionFlag")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1")
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "hobnob") {
+		t.Errorf("expected output to contain 'hobnob', got: %s", out)
+	}
+}
+
+func TestHelpFlagShowsVersion(t *testing.T) {
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "--help"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks: {}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestHelpFlagShowsVersion")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	firstLine := strings.SplitN(string(out), "\n", 2)[0]
+	if !strings.Contains(firstLine, "hobnob") {
+		t.Errorf("expected version on first line of --help output, got: %q", firstLine)
+	}
+}
+
 func TestNoArgsDefaultTaskRuns(t *testing.T) {
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")

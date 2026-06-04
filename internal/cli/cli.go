@@ -108,26 +108,40 @@ func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, 
 	return s, nil
 }
 
-func PrintUsage(w io.Writer) {
-	fmt.Fprint(w, `Usage:
+func PrintUsage(w io.Writer, version string) {
+	v := version
+	if v == "" {
+		v = "dev"
+	}
+	docsURL := "https://github.com/JakesMD/hobnob/blob/main/GUIDE.md"
+	if version != "" {
+		docsURL = "https://github.com/JakesMD/hobnob/blob/" + version + "/GUIDE.md"
+	}
+	fmt.Fprintf(w, `hobnob %s
+
+Usage:
   hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
   hobnob [--file <path>] --list
   hobnob [--file <path>] --help
+  hobnob --version
+  hobnob --upgrade
 
 Flags:
   --file <path>   Hobnob file to use instead of auto-discovery
   --list          List all available tasks
   --help          Show this help
   --no-input      Skip interactive prompts; fail if a required variable is missing
+  --version       Print version and exit
+  --upgrade       Upgrade hobnob to the latest release
 
 Docs:
-  https://github.com/JakesMD/hobnob/GUIDE.md
+  %s
 
-`)
+`, v, docsURL)
 }
 
-func PrintHelp(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
-	PrintUsage(w)
+func PrintHelp(cfg *config.ConfigFile, scope *Scope, w io.Writer, version string) error {
+	PrintUsage(w, version)
 	return ListTasks(cfg, scope, w)
 }
 

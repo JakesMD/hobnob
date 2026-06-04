@@ -28,7 +28,7 @@ jobs:
       - uses: ./.github/actions/setup
 
       - name: Build
-        run: ./hobnob go:build:release OS=${{ matrix.os }} ARCH=${{ matrix.arch }}
+        run: ./hobnob go:build:release OS=${{ matrix.os }} ARCH=${{ matrix.arch }} VERSION=${{ github.ref_name }}
 
       - name: Package
         run: ./hobnob go:package OS=${{ matrix.os }} ARCH=${{ matrix.arch }}

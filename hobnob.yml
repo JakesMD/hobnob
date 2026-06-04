@@ -26,13 +26,16 @@ tasks:
       - call: go:test
 
   go:build:release:
-    info: Builds release binary for a target OS and ARCH
+    info: Builds release binary for a target OS, ARCH, and VERSION
     steps:
       - call: _get_os_arch
         into:
           - OS: .OS
           - ARCH: .ARCH
-      - run: GOOS={{.OS}} GOARCH={{.ARCH}} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o hobnob_release ./cmd/hobnob
+      - get:
+          - VERSION:
+              info: Release version (e.g. v1.2.3)
+      - run: GOOS={{.OS}} GOARCH={{.ARCH}} CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version={{.VERSION}}" -o hobnob_release ./cmd/hobnob
 
   go:package:
     info: Packages release binary into a tarball

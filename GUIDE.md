@@ -18,6 +18,8 @@ hobnob --file ops/tasks.yml build    # target a specific file
 hobnob --list                        # list all public tasks
 hobnob --help                        # show help and available tasks
 hobnob deploy --no-input             # skip prompts, fail on missing vars
+hobnob --version                     # print version and exit
+hobnob --upgrade                     # upgrade to the latest release
 ```
 
 ### Default task

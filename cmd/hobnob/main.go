@@ -13,6 +13,8 @@ import (
 	"hobnob/internal/tui"
 )
 
+var version string // injected at build time via -ldflags="-X main.version=vX.Y.Z"
+
 // errSilent signals main to exit 1 without printing — run() already printed.
 var errSilent = errors.New("")
 
@@ -100,6 +102,19 @@ func run(args []string) error {
 		return err
 	}
 
+	if len(args) > 0 && args[0] == "--version" {
+		v := version
+		if v == "" {
+			v = "dev"
+		}
+		fmt.Fprintln(os.Stdout, "hobnob "+v)
+		return nil
+	}
+
+	if len(args) > 0 && args[0] == "--upgrade" {
+		return selfUpgrade()
+	}
+
 	if len(args) < 1 {
 		invDir, err := os.Getwd()
 		if err != nil {
@@ -120,10 +135,10 @@ func run(args []string) error {
 				return execTask("default", scope, cfg, os.Getenv("CI") != "", invDir)
 			}
 			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
-			return cli.PrintHelp(cfg, scope, os.Stdout)
+			return cli.PrintHelp(cfg, scope, os.Stdout, version)
 		}
 		fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
-		cli.PrintUsage(os.Stdout)
+		cli.PrintUsage(os.Stdout, version)
 		return nil
 	}
 
@@ -164,7 +179,7 @@ func run(args []string) error {
 			return err
 		}
 		if args[0] == "--help" {
-			return cli.PrintHelp(cfg, scope, os.Stdout)
+			return cli.PrintHelp(cfg, scope, os.Stdout, version)
 		}
 		return cli.ListTasks(cfg, scope, os.Stdout)
 	}
