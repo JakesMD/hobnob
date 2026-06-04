@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"hobnob/internal/config"
@@ -34,9 +35,42 @@ func CompletionScript(shell string) (string, error) {
 	switch shell {
 	case "zsh":
 		return `_hobnob() {
-  if (( CURRENT == 2 )); then
+  local cur="${words[CURRENT]}"
+  local prev="${words[CURRENT-1]}"
+
+  if [[ "$prev" == "--file" ]]; then
+    _files
+    return
+  fi
+
+  if [[ "$cur" == "--file="* ]]; then
+    compset -P '--file='
+    _files
+    return
+  fi
+
+  if [[ "$cur" == --* ]]; then
+    compadd -- --file --list --help --no-input --version --upgrade
+    return
+  fi
+
+  local file_arg="" positional=0 i
+  for (( i=2; i<CURRENT; i++ )); do
+    if [[ "${words[i]}" == "--file" ]]; then
+      file_arg="${words[i+1]}"
+      (( i++ ))
+    elif [[ "${words[i]}" != --* && "${words[i]}" != *=* ]]; then
+      (( positional++ ))
+    fi
+  done
+
+  if (( positional == 0 )); then
     local tasks
-    tasks=(${(f)"$(hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')"})
+    if [[ -n "$file_arg" ]]; then
+      tasks=(${(f)"$(hobnob --file "$file_arg" --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')"})
+    else
+      tasks=(${(f)"$(hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')"})
+    fi
     compadd -a tasks
   fi
 }
@@ -45,22 +79,91 @@ compdef _hobnob hobnob
 `, nil
 	case "bash":
 		return `_hobnob_completion() {
-  local cur tasks
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  if [[ "${COMP_CWORD}" -eq 1 ]]; then
-    tasks=$(hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')
+  local cur="${COMP_WORDS[COMP_CWORD]}"
+  local prev="${COMP_WORDS[COMP_CWORD-1]}"
+
+  if [[ "$prev" == "--file" ]]; then
+    COMPREPLY=($(compgen -f -- "$cur"))
+    return
+  fi
+
+  if [[ "$cur" == "--file="* ]]; then
+    local val="${cur#--file=}"
+    local files=($(compgen -f -- "$val"))
+    COMPREPLY=("${files[@]/#/--file=}")
+    return
+  fi
+
+  if [[ "$cur" == --* ]]; then
+    COMPREPLY=($(compgen -W "--file --list --help --no-input --version --upgrade" -- "$cur"))
+    return
+  fi
+
+  local file_arg="" positional=0 i
+  for (( i=1; i<COMP_CWORD; i++ )); do
+    if [[ "${COMP_WORDS[i]}" == "--file" ]]; then
+      file_arg="${COMP_WORDS[i+1]}"
+      (( i++ ))
+    elif [[ "${COMP_WORDS[i]}" != --* && "${COMP_WORDS[i]}" != *=* ]]; then
+      (( positional++ ))
+    fi
+  done
+
+  if [[ "$positional" -eq 0 ]]; then
+    local tasks
+    if [[ -n "$file_arg" ]]; then
+      tasks=$(hobnob --file "$file_arg" --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')
+    else
+      tasks=$(hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}')
+    fi
     COMPREPLY=($(compgen -W "${tasks}" -- "${cur}"))
   fi
 }
 complete -F _hobnob_completion hobnob
 `, nil
 	case "fish":
-		return `function __fish_hobnob_no_task_given
-    test (count (commandline -opc)) -eq 1
+		return `function __fish_hobnob_file_value
+    set -l cmd (commandline -opc)
+    for i in (seq 2 (count $cmd))
+        if test "$cmd[$i]" = "--file"; and test (math $i + 1) -le (count $cmd)
+            echo $cmd[(math $i + 1)]
+            return
+        else if string match -qr '^--file=(.+)' "$cmd[$i]"
+            string replace --regex '^--file=' '' "$cmd[$i]"
+            return
+        end
+    end
+end
+function __fish_hobnob_no_task_given
+    set -l cmd (commandline -opc)
+    set -l positional 0
+    set -l i 2
+    while test $i -le (count $cmd)
+        if test "$cmd[$i]" = "--file"
+            set i (math $i + 2)
+        else if not string match -qr '^--' "$cmd[$i]"; and not string match -qr '=' "$cmd[$i]"
+            set positional (math $positional + 1)
+            set i (math $i + 1)
+        else
+            set i (math $i + 1)
+        end
+    end
+    test $positional -eq 0
 end
 function __fish_hobnob_tasks
-    hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}'
+    set -l f (__fish_hobnob_file_value)
+    if test -n "$f"
+        hobnob --file "$f" --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}'
+    else
+        hobnob --list 2>/dev/null | awk 'NR>1 && !/^[[:space:]]/{print $2}'
+    end
 end
+complete -c hobnob -l file -r -d 'Hobnob file to use'
+complete -c hobnob -f -l list -d 'List all available tasks'
+complete -c hobnob -f -l help -d 'Show help'
+complete -c hobnob -f -l no-input -d 'Skip interactive prompts'
+complete -c hobnob -f -l version -d 'Print version and exit'
+complete -c hobnob -f -l upgrade -d 'Upgrade to latest release'
 complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)"
 `, nil
 	default:
@@ -152,9 +255,13 @@ func ListTasks(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
 		params []config.GetEntry
 	}
 
+	sortedNames := make([]string, len(cfg.TaskNames))
+	copy(sortedNames, cfg.TaskNames)
+	sort.Strings(sortedNames)
+
 	var rows []row
 	maxTaskLen := 0
-	for _, name := range cfg.TaskNames {
+	for _, name := range sortedNames {
 		if strings.HasPrefix(name, "_") {
 			continue
 		}

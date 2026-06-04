@@ -18,17 +18,17 @@ func TestCompletionScript(t *testing.T) {
 		{
 			name:      "given zsh, when completion script generated, then contains compdef and _hobnob with compinit guard (why: zsh completion requires compdef directive, function, and compinit guard for shells that defer compinit)",
 			shell:     "zsh",
-			wantParts: []string{"_hobnob()", "hobnob --list", "compadd", "type compdef &>/dev/null", "compdef _hobnob hobnob", "CURRENT == 2"},
+			wantParts: []string{"_hobnob()", "hobnob --list", "compadd", "type compdef &>/dev/null", "compdef _hobnob hobnob", "--file", "--no-input", "--version", "--upgrade"},
 		},
 		{
 			name:      "given bash, when completion script generated, then contains complete directive and function (why: bash completion uses complete builtin)",
 			shell:     "bash",
-			wantParts: []string{"_hobnob_completion()", "hobnob --list", "compgen", "complete -F _hobnob_completion hobnob", "${COMP_CWORD}\" -eq 1"},
+			wantParts: []string{"_hobnob_completion()", "hobnob --list", "compgen", "complete -F _hobnob_completion hobnob", "--file", "--no-input", "--version", "--upgrade"},
 		},
 		{
 			name:      "given fish, when completion script generated, then contains complete command (why: fish completion uses complete builtin with -c flag)",
 			shell:     "fish",
-			wantParts: []string{"__fish_hobnob_tasks", "hobnob --list", "complete -c hobnob", "__fish_hobnob_no_task_given", "count (commandline -opc)"},
+			wantParts: []string{"__fish_hobnob_tasks", "hobnob --list", "complete -c hobnob", "__fish_hobnob_no_task_given", "commandline -opc", "--file", "-l no-input", "-l version", "-l upgrade"},
 		},
 		{
 			name:    "given unknown shell, when completion script generated, then returns error (why: unsupported shells must fail fast)",

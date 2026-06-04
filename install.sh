@@ -127,6 +127,9 @@ main() {
         _download
     fi
 
+    echo ""
+    echo "$("$INSTALL_DIR/hobnob" --version) installed."
+
     local shell
     shell="$(_detect_shell)"
     _setup_shell "$shell"

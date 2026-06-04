@@ -132,7 +132,7 @@ func run(args []string) error {
 				return err
 			}
 			if _, ok := cfg.Tasks["default"]; ok {
-				return execTask("default", scope, cfg, os.Getenv("CI") != "", invDir)
+				return execTask("default", scope, cfg, os.Getenv("CI") != "", cfg.TaskfileDir)
 			}
 			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
 			return cli.PrintHelp(cfg, scope, os.Stdout, version)
@@ -195,7 +195,7 @@ func run(args []string) error {
 		return err
 	}
 
-	return execTask(taskName, scope, cfg, noPrompts, invocationDir)
+	return execTask(taskName, scope, cfg, noPrompts, cfg.TaskfileDir)
 }
 
 func main() {

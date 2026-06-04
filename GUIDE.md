@@ -6,6 +6,18 @@ static dependency tree upfront.
 
 ---
 
+## Install
+
+```bash
+curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
+```
+
+The installer detects your OS and architecture, downloads the latest binary to
+`~/.local/bin`, and configures tab completion for your shell (bash, zsh, or
+fish).
+
+---
+
 ## CLI
 
 ### Commands
@@ -14,10 +26,10 @@ static dependency tree upfront.
 hobnob                               # run the "default" task (or show help)
 hobnob deploy                        # run a task
 hobnob deploy ENV=production         # pass runtime variables
+hobnob deploy --no-input             # skip prompts, fail on missing vars
 hobnob --file ops/tasks.yml build    # target a specific file
 hobnob --list                        # list all public tasks
 hobnob --help                        # show help and available tasks
-hobnob deploy --no-input             # skip prompts, fail on missing vars
 hobnob --version                     # print version and exit
 hobnob --upgrade                     # upgrade to the latest release
 ```
@@ -359,6 +371,49 @@ tasks:
 # good
 tasks:
   deploy-production:
+```
+
+### Variable naming
+
+Use ALL_CAPS with underscores for variable names.
+
+```yaml
+# bad
+vars:
+  targetHost: localhost
+  applicationKey: secret
+
+# good
+vars:
+  TARGET_HOST: localhost
+  APPLICATION_KEY: secret
+```
+
+### Field ordering
+
+In task definitions, put `info:` before `steps:`. In `get:` entries, put `info:`
+first.
+
+```yaml
+# bad
+tasks:
+  deploy:
+    steps:
+      - get:
+          - ENV:
+              options: [staging, production]
+              info: Select environment
+    info: Deploy the application
+
+# good
+tasks:
+  deploy:
+    info: Deploy the application
+    steps:
+      - get:
+          - ENV:
+              info: Select environment
+              options: [staging, production]
 ```
 
 ### Prompt placement
