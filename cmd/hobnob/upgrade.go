@@ -37,6 +37,16 @@ func selfUpgrade() error {
 	return downloadAndInstall(url, exe, os.Stdout)
 }
 
+func versionFromPath(path string) string {
+	parts := strings.Split(path, "/")
+	for i, part := range parts {
+		if part == "download" && i+1 < len(parts) {
+			return parts[i+1]
+		}
+	}
+	return ""
+}
+
 func downloadAndInstall(url, exe string, w io.Writer) error {
 	fmt.Fprintln(w, "Downloading latest hobnob...")
 
@@ -46,13 +56,7 @@ func downloadAndInstall(url, exe string, w io.Writer) error {
 	client := &http.Client{
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if newVersion == "" {
-				parts := strings.Split(req.URL.Path, "/")
-				for i, part := range parts {
-					if part == "download" && i+1 < len(parts) {
-						newVersion = parts[i+1]
-						break
-					}
-				}
+				newVersion = versionFromPath(req.URL.Path)
 			}
 			return nil
 		},
@@ -111,13 +115,7 @@ func downloadAndInstall(url, exe string, w io.Writer) error {
 		}
 
 		if newVersion == "" {
-			parts := strings.Split(resp.Request.URL.Path, "/")
-			for i, part := range parts {
-				if part == "download" && i+1 < len(parts) {
-					newVersion = parts[i+1]
-					break
-				}
-			}
+			newVersion = versionFromPath(resp.Request.URL.Path)
 		}
 		if newVersion != "" {
 			fmt.Fprintf(w, "Upgraded to hobnob %s\n", newVersion)

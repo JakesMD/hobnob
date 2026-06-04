@@ -115,11 +115,28 @@ func run(args []string) error {
 		return selfUpgrade()
 	}
 
-	if len(args) < 1 {
-		invDir, err := os.Getwd()
+	if len(args) > 0 && args[0] == "completion" {
+		if len(args) < 2 {
+			return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")
+		}
+		script, err := cli.CompletionScript(args[1])
 		if err != nil {
 			return err
 		}
+		fmt.Print(script)
+		return nil
+	}
+
+	if len(args) > 0 && args[0] != "--list" && strings.HasPrefix(args[0], "_") {
+		return fmt.Errorf("task %q is internal and cannot be called directly", args[0])
+	}
+
+	invDir, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	if len(args) < 1 {
 		var tfPath string
 		if fileFlag != "" {
 			tfPath = fileFlag
@@ -142,39 +159,18 @@ func run(args []string) error {
 		return nil
 	}
 
-	if args[0] == "completion" {
-		if len(args) < 2 {
-			return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")
-		}
-		script, err := cli.CompletionScript(args[1])
-		if err != nil {
-			return err
-		}
-		fmt.Print(script)
-		return nil
-	}
-
-	if args[0] != "--list" && strings.HasPrefix(args[0], "_") {
-		return fmt.Errorf("task %q is internal and cannot be called directly", args[0])
-	}
-
-	invocationDir, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-
 	var taskfilePath string
 	if fileFlag != "" {
 		taskfilePath = fileFlag
 	} else {
-		taskfilePath, err = findTaskfile(invocationDir)
+		taskfilePath, err = findTaskfile(invDir)
 		if err != nil {
 			return err
 		}
 	}
 
 	if args[0] == "--list" || args[0] == "--help" {
-		cfg, scope, err := loadConfig(taskfilePath, nil, invocationDir)
+		cfg, scope, err := loadConfig(taskfilePath, nil, invDir)
 		if err != nil {
 			return err
 		}
@@ -190,7 +186,7 @@ func run(args []string) error {
 		return fmt.Errorf("invalid argument %w", err)
 	}
 
-	cfg, scope, err := loadConfig(taskfilePath, cliVars, invocationDir)
+	cfg, scope, err := loadConfig(taskfilePath, cliVars, invDir)
 	if err != nil {
 		return err
 	}

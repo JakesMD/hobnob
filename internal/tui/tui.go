@@ -42,8 +42,7 @@ func TaskStyle(task string) lipgloss.Style {
 }
 
 func TaskPrefix(task string) string {
-	bracket := lipgloss.NewStyle()
-	return bracket.Render("[") + TaskStyle(task).Render(task) + bracket.Render("]") + " "
+	return "[" + TaskStyle(task).Render(task) + "] "
 }
 
 type LineWriter struct {
@@ -80,6 +79,10 @@ func (lw *LineWriter) Flush() {
 		lw.w.Write([]byte{'\n'})
 		lw.buf.Reset()
 	}
+}
+
+func printGetLine(task, varName, displayVal string) {
+	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(varName+": "+displayVal))
 }
 
 func RunDisplayLines(cmd, task string) []string {
@@ -129,7 +132,7 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 	if secret {
 		displayVal = "****"
 	}
-	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(final.varName+": "+displayVal))
+	printGetLine(task, final.varName, displayVal)
 	return final.value, nil
 }
 
@@ -172,7 +175,7 @@ func PromptSelect(varName, info string, items []string, multi bool, defaultVal s
 	if secret {
 		display = "****"
 	}
-	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(final.varName+": "+display))
+	printGetLine(task, final.varName, display)
 	return final.value, nil
 }
 

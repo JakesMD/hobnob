@@ -21,7 +21,7 @@ func normalizeTmpl(s string) string {
 
 type Task struct {
 	Info   string
-	Dir    string      // task-level working directory template
+	Dir    string // task-level working directory template
 	Steps  []Step
 	Hidden bool        // true = omit from --list
 	Cfg    *ConfigFile // non-nil = use this cfg for sub-calls (module task)
@@ -243,11 +243,12 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 			s.CallTarget = v.Value
 		case "loop":
 			s.Kind = KindFor
-			if v.Kind == yaml.SequenceNode {
+			switch v.Kind {
+			case yaml.SequenceNode:
 				for _, item := range v.Content {
 					s.ForList = append(s.ForList, item.Value)
 				}
-			} else if v.Kind == yaml.MappingNode {
+			case yaml.MappingNode:
 				for i := 0; i+1 < len(v.Content); i += 2 {
 					varName := v.Content[i].Value
 					if strings.Contains(varName, "{{") {
@@ -264,7 +265,7 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 					}
 					s.ForMatrix = append(s.ForMatrix, entry)
 				}
-			} else {
+			default:
 				s.ForTarget = normalizeTmpl(v.Value)
 			}
 		case "if":
@@ -405,6 +406,31 @@ func parseGetNode(n *yaml.Node) ([]GetEntry, error) {
 	return entries, nil
 }
 
+// applyModuleFlag applies a show/hide/flatten key-value pair to m.
+// Used for both sibling-key form (- docker: ./path\n  show: [...]) and
+// nested object form (- docker: {path: ..., show: [...]}).
+func applyModuleFlag(m *ModuleEntry, key string, val *yaml.Node) error {
+	switch key {
+	case "show":
+		if val.Kind != yaml.SequenceNode {
+			return fmt.Errorf("module show must be a sequence")
+		}
+		for _, child := range val.Content {
+			m.ShowTmpls = append(m.ShowTmpls, child.Value)
+		}
+	case "hide":
+		if val.Kind != yaml.SequenceNode {
+			return fmt.Errorf("module hide must be a sequence")
+		}
+		for _, child := range val.Content {
+			m.HideTmpls = append(m.HideTmpls, child.Value)
+		}
+	case "flatten":
+		m.FlattenTmpl = val.Value
+	}
+	return nil
+}
+
 func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 	if n.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("modules must be a sequence")
@@ -423,47 +449,20 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 			// (not a silent shadow): "show"/"hide" fail the sequence check; "flatten"
 			// sets FlattenTmpl, leaving Prefix empty → "module entry missing prefix key".
 			switch key {
-			case "show":
-				if val.Kind != yaml.SequenceNode {
-					return nil, fmt.Errorf("module show must be a sequence")
+			case "show", "hide", "flatten":
+				if err := applyModuleFlag(&m, key, val); err != nil {
+					return nil, err
 				}
-				for _, child := range val.Content {
-					m.ShowTmpls = append(m.ShowTmpls, child.Value)
-				}
-			case "hide":
-				if val.Kind != yaml.SequenceNode {
-					return nil, fmt.Errorf("module hide must be a sequence")
-				}
-				for _, child := range val.Content {
-					m.HideTmpls = append(m.HideTmpls, child.Value)
-				}
-			case "flatten":
-				m.FlattenTmpl = val.Value
 			default:
 				m.Prefix = key
 				if val.Kind == yaml.MappingNode {
 					for j := 0; j+1 < len(val.Content); j += 2 {
 						subKey := val.Content[j].Value
 						subVal := val.Content[j+1]
-						switch subKey {
-						case "path":
+						if subKey == "path" {
 							m.FileTmpl = subVal.Value
-						case "show":
-							if subVal.Kind != yaml.SequenceNode {
-								return nil, fmt.Errorf("module show must be a sequence")
-							}
-							for _, child := range subVal.Content {
-								m.ShowTmpls = append(m.ShowTmpls, child.Value)
-							}
-						case "hide":
-							if subVal.Kind != yaml.SequenceNode {
-								return nil, fmt.Errorf("module hide must be a sequence")
-							}
-							for _, child := range subVal.Content {
-								m.HideTmpls = append(m.HideTmpls, child.Value)
-							}
-						case "flatten":
-							m.FlattenTmpl = subVal.Value
+						} else if err := applyModuleFlag(&m, subKey, subVal); err != nil {
+							return nil, err
 						}
 					}
 				} else {

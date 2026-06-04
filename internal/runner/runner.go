@@ -39,17 +39,25 @@ func maskSecrets(s string, scope *cli.Scope) string {
 	return s
 }
 
-// ExecuteTask runs taskName using parentDir as the inherited working directory.
-// If the task defines a top-level dir:, that overrides parentDir (Priority B).
-// For CLI invocations pass invocationDir; execCall passes the resolved child dir.
-func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
 	t, ok := cfg.Tasks[taskName]
 	if !ok {
-		return fmt.Errorf("task %q not found", taskName)
+		return config.Task{}, nil, fmt.Errorf("task %q not found", taskName)
 	}
 	execCfg := cfg
 	if t.Cfg != nil {
 		execCfg = t.Cfg
+	}
+	return t, execCfg, nil
+}
+
+// ExecuteTask runs taskName using parentDir as the inherited working directory.
+// If the task defines a top-level dir:, that overrides parentDir (Priority B).
+// For CLI invocations pass invocationDir; execCall passes the resolved child dir.
+func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+	t, execCfg, err := resolveTask(taskName, cfg)
+	if err != nil {
+		return err
 	}
 	currentDir := parentDir
 	if t.Dir != "" {
@@ -182,93 +190,94 @@ func execSet(s config.Step, scope *cli.Scope) error {
 
 func execGet(s config.Step, scope *cli.Scope, task string, noPrompts bool) error {
 	for _, e := range s.GetEntries {
-		if _, exists := scope.Vars[e.VarName]; exists {
-			if e.Secret {
-				scope.Secrets[e.VarName] = true
-			}
-			if e.Optional && scope.Vars[e.VarName] == "" {
-				continue
-			}
-			if err := validateGetValue(e, scope.Vars, noPrompts); err != nil {
-				return err
-			}
-			continue
-		}
-
-		if noPrompts {
-			if e.Optional {
-				scope.Vars[e.VarName] = ""
-				if e.Secret {
-					scope.Secrets[e.VarName] = true
-				}
-				continue
-			}
-			if e.DefaultTmpl == "" {
-				return fmt.Errorf("--no-input: %s requires input", e.VarName)
-			}
-			val, err := eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
-			if err != nil {
-				return fmt.Errorf("get %s default: %w", e.VarName, err)
-			}
-			scope.Vars[e.VarName] = val
-			if e.Secret {
-				scope.Secrets[e.VarName] = true
-			}
-			if err := validateGetValue(e, scope.Vars, true); err != nil {
-				return err
-			}
-			continue
-		}
-
-		info, err := eval.EvalTemplate(e.Info, scope.Vars)
-		if err != nil {
-			return fmt.Errorf("get %s info: %w", e.VarName, err)
-		}
-
-		defaultVal := ""
-		if e.DefaultTmpl != "" {
-			defaultVal, err = eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
-			if err != nil {
-				return fmt.Errorf("get %s default: %w", e.VarName, err)
-			}
-		}
-
-		fromItems, err := eval.ResolveFromItems(e.FromList, e.FromTmpl, scope.Vars, "get "+e.VarName)
-		if err != nil {
+		if err := execGetEntry(e, scope, task, noPrompts); err != nil {
 			return err
 		}
+	}
+	return nil
+}
 
-		var val string
-		if len(fromItems) > 0 {
-			for {
-				val, err = promptSelectFn(e.VarName, info, fromItems, e.Multi, defaultVal, task, e.Secret)
-				if err != nil {
-					return fmt.Errorf("get %s: %w", e.VarName, err)
-				}
-				if e.Check == "" || (e.Optional && val == "") {
-					break
-				}
-				tmp := eval.CopyVars(scope.Vars)
-				tmp[e.VarName] = val
-				ok, checkErr := eval.EvalCondition(e.Check, tmp)
-				if checkErr != nil {
-					return fmt.Errorf("get %s check: %w", e.VarName, checkErr)
-				}
-				if ok {
-					break
-				}
-			}
-		} else {
-			val, err = promptTextFn(info, e.Check, e.VarName, scope.Vars, defaultVal, task, e.Secret, e.Optional)
-			if err != nil {
-				return fmt.Errorf("get %s: %w", e.VarName, err)
-			}
+func execGetEntry(e config.GetEntry, scope *cli.Scope, task string, noPrompts bool) error {
+	if _, exists := scope.Vars[e.VarName]; exists {
+		if e.Secret {
+			scope.Secrets[e.VarName] = true
 		}
+		if e.Optional && scope.Vars[e.VarName] == "" {
+			return nil
+		}
+		return validateGetValue(e, scope.Vars, noPrompts)
+	}
 
+	if noPrompts {
+		if e.Optional {
+			scope.Vars[e.VarName] = ""
+			if e.Secret {
+				scope.Secrets[e.VarName] = true
+			}
+			return nil
+		}
+		if e.DefaultTmpl == "" {
+			return fmt.Errorf("--no-input: %s requires input", e.VarName)
+		}
+		val, err := eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("get %s default: %w", e.VarName, err)
+		}
 		scope.Vars[e.VarName] = val
 		if e.Secret {
 			scope.Secrets[e.VarName] = true
 		}
+		return validateGetValue(e, scope.Vars, true)
+	}
+
+	info, err := eval.EvalTemplate(e.Info, scope.Vars)
+	if err != nil {
+		return fmt.Errorf("get %s info: %w", e.VarName, err)
+	}
+
+	defaultVal := ""
+	if e.DefaultTmpl != "" {
+		defaultVal, err = eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("get %s default: %w", e.VarName, err)
+		}
+	}
+
+	fromItems, err := eval.ResolveFromItems(e.FromList, e.FromTmpl, scope.Vars, "get "+e.VarName)
+	if err != nil {
+		return err
+	}
+
+	var val string
+	if len(fromItems) > 0 {
+		for {
+			val, err = promptSelectFn(e.VarName, info, fromItems, e.Multi, defaultVal, task, e.Secret)
+			if err != nil {
+				return fmt.Errorf("get %s: %w", e.VarName, err)
+			}
+			if e.Check == "" || (e.Optional && val == "") {
+				break
+			}
+			tmp := eval.CopyVars(scope.Vars)
+			tmp[e.VarName] = val
+			ok, checkErr := eval.EvalCondition(e.Check, tmp)
+			if checkErr != nil {
+				return fmt.Errorf("get %s check: %w", e.VarName, checkErr)
+			}
+			if ok {
+				break
+			}
+		}
+	} else {
+		val, err = promptTextFn(info, e.Check, e.VarName, scope.Vars, defaultVal, task, e.Secret, e.Optional)
+		if err != nil {
+			return fmt.Errorf("get %s: %w", e.VarName, err)
+		}
+	}
+
+	scope.Vars[e.VarName] = val
+	if e.Secret {
+		scope.Secrets[e.VarName] = true
 	}
 	return nil
 }
@@ -296,14 +305,11 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 			}
 		} else {
 			val := vars[e.VarName]
-			found := false
+			optSet := make(map[string]bool, len(items))
 			for _, opt := range items {
-				if opt == val {
-					found = true
-					break
-				}
+				optSet[opt] = true
 			}
-			if !found {
+			if !optSet[val] {
 				return fmt.Errorf("--no-input: %s value %q not in options", e.VarName, val)
 			}
 		}
@@ -338,13 +344,9 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 	var callErr error
 	if s.DirTmpl != "" {
 		// Priority A: call step dir overrides task-level dir
-		t, ok := cfg.Tasks[taskName]
-		if !ok {
-			return fmt.Errorf("task %q not found", taskName)
-		}
-		execCfg := cfg
-		if t.Cfg != nil {
-			execCfg = t.Cfg
+		t, execCfg, err := resolveTask(taskName, cfg)
+		if err != nil {
+			return err
 		}
 		resolved, err := eval.EvalTemplate(s.DirTmpl, childScope.Vars)
 		if err != nil {
@@ -384,6 +386,17 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 	return nil
 }
 
+func scopeSaveRestore(vars map[string]string, name string) func() {
+	prev, had := vars[name]
+	return func() {
+		if had {
+			vars[name] = prev
+		} else {
+			delete(vars, name)
+		}
+	}
+}
+
 func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	if len(s.ForMatrix) > 0 {
 		return execForMatrix(s.ForMatrix, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
@@ -396,14 +409,7 @@ func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task strin
 	// items == nil means the source var/list resolved to empty — zero iterations
 	// is the correct semantic result (e.g. loop: .FILES where FILES is empty).
 
-	prevVal, hadPrev := scope.Vars["ITEM"]
-	restoreItem := func() {
-		if hadPrev {
-			scope.Vars["ITEM"] = prevVal
-		} else {
-			delete(scope.Vars, "ITEM")
-		}
-	}
+	restoreItem := scopeSaveRestore(scope.Vars, "ITEM")
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
 		if err := executeSteps(s.ForSteps, scope, cfg, task, noPrompts, currentDir); err != nil {
@@ -434,14 +440,7 @@ func execCartesian(varNames []string, itemLists [][]string, idx int, steps []con
 		return executeSteps(steps, scope, cfg, task, noPrompts, currentDir)
 	}
 	name := varNames[idx]
-	prevVal, hadPrev := scope.Vars[name]
-	restore := func() {
-		if hadPrev {
-			scope.Vars[name] = prevVal
-		} else {
-			delete(scope.Vars, name)
-		}
-	}
+	restore := scopeSaveRestore(scope.Vars, name)
 	for _, item := range itemLists[idx] {
 		scope.Vars[name] = item
 		if err := execCartesian(varNames, itemLists, idx+1, steps, scope, cfg, task, noPrompts, currentDir); err != nil {

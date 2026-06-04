@@ -126,6 +126,10 @@ A task is a named sequence of steps. The name prefix controls visibility:
 
 ### `dir:` — working directory
 
+When no `dir:` is set anywhere in the call chain, steps run in the directory of
+the hobnob file. Paths in `dir:` are always resolved relative to the hobnob file
+that defines the task.
+
 A task's `dir:` sets the working directory for every `run` step in that task and
 is **inherited down the call chain** — called tasks and their descendants all
 run under it, unless they declare a `dir:` of their own.
