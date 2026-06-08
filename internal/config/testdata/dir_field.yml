@@ -18,3 +18,18 @@ tasks:
     steps:
       - call: task_with_dir
         dir: /tmp/override
+
+  run_with_bare_var_dir:
+    steps:
+      - run: echo hello
+        dir: .CUSTOM_DIR
+
+  task_with_bare_var_dir:
+    dir: .BASE_DIR
+    steps:
+      - run: echo hello
+
+  task_with_relative_dir:
+    dir: ./relative/path
+    steps:
+      - run: echo hello

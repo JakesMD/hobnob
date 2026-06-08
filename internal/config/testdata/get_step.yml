@@ -19,6 +19,13 @@ tasks:
               info: "Enter color"
               default: "blue"
 
+  get_text_default_from_var:
+    steps:
+      - get:
+          - COLOR:
+              info: "Enter color"
+              default: .FALLBACK
+
   get_select:
     steps:
       - get:

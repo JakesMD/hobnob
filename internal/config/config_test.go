@@ -20,6 +20,8 @@ func TestParseConfig_RunStep(t *testing.T) {
 			want: []Step{
 				{Kind: KindRun, Command: `echo "hello world"`},
 				{Kind: KindRun, Command: `echo "port {{.PORT}}"`, IfExpr: `{{.PORT}} == "8080"`},
+				{Kind: KindRun, Command: `{{.GREETING}}`},
+				{Kind: KindRun, Command: `./greet.sh`},
 			},
 		},
 	}
@@ -176,6 +178,13 @@ func TestParseConfig_GetStep(t *testing.T) {
 			taskName: "get_text_default",
 			wantEntries: []GetEntry{
 				{VarName: "COLOR", Info: "Enter color", DefaultTmpl: "blue"},
+			},
+		},
+		{
+			name:     "given get with bare var default, when parsing, then defaultTmpl normalized to template (why: default: .VAR should work like default: '{{.VAR}}')",
+			taskName: "get_text_default_from_var",
+			wantEntries: []GetEntry{
+				{VarName: "COLOR", Info: "Enter color", DefaultTmpl: "{{.FALLBACK}}"},
 			},
 		},
 		{
@@ -754,6 +763,27 @@ func TestParseConfig_DirField(t *testing.T) {
 			stepIdx:     0,
 			wantStepDir: "/tmp/override",
 			wantCallTgt: "task_with_dir",
+		},
+		{
+			name:        "given run step with bare var dir, when parsed, then DirTmpl normalized to template (why: dir: .VAR should work like dir: '{{.VAR}}')",
+			taskName:    "run_with_bare_var_dir",
+			wantTaskDir: "",
+			stepIdx:     0,
+			wantStepDir: "{{.CUSTOM_DIR}}",
+		},
+		{
+			name:        "given task with bare var dir, when parsed, then Dir normalized to template",
+			taskName:    "task_with_bare_var_dir",
+			wantTaskDir: "{{.BASE_DIR}}",
+			stepIdx:     0,
+			wantStepDir: "",
+		},
+		{
+			name:        "given task with relative path dir, when parsed, then Dir kept literal (why: ./relative starts with '.' but is not a var ref)",
+			taskName:    "task_with_relative_dir",
+			wantTaskDir: "./relative/path",
+			stepIdx:     0,
+			wantStepDir: "",
 		},
 	}
 

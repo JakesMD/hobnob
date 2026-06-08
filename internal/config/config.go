@@ -5,15 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
+// bareVarRef matches a whole-string reference to a single ALL_CAPS variable,
+// e.g. ".RELEASE_LIST". Relative paths (./infra, ../tests) and dotfiles
+// (.git) also start with "." but never match — they contain "/" or a
+// lowercase-leading segment, which this pattern excludes.
+var bareVarRef = regexp.MustCompile(`^\.[A-Z][A-Z0-9_]*$`)
+
 // normalizeTmpl wraps a bare .VAR reference in {{ }} so users can write
-// `options: .RELEASE_LIST` instead of `options: '{{.RELEASE_LIST}}'`.
+// `dir: .SUBDIR` instead of `dir: '{{.SUBDIR}}'`.
 func normalizeTmpl(s string) string {
-	if strings.HasPrefix(s, ".") && !strings.Contains(s, "{{") {
+	if bareVarRef.MatchString(s) {
 		return "{{" + s + "}}"
 	}
 	return s
@@ -182,7 +189,7 @@ func parseTaskNode(n *yaml.Node) (Task, error) {
 		case "info":
 			t.Info = n.Content[i+1].Value
 		case "dir":
-			t.Dir = n.Content[i+1].Value
+			t.Dir = normalizeTmpl(n.Content[i+1].Value)
 		case "steps":
 			steps, err := parseStepSequence(n.Content[i+1])
 			if err != nil {
@@ -223,7 +230,7 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 		switch k {
 		case "run":
 			s.Kind = KindRun
-			s.Command = v.Value
+			s.Command = normalizeTmpl(v.Value)
 		case "set":
 			s.Kind = KindSet
 			entries, err := parseSetNode(v)
@@ -285,7 +292,7 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 		case "soft":
 			s.Soft = v.Value == "true"
 		case "dir":
-			s.DirTmpl = v.Value
+			s.DirTmpl = normalizeTmpl(v.Value)
 		case "steps":
 			subSteps, err := parseStepSequence(v)
 			if err != nil {
@@ -394,7 +401,7 @@ func parseGetNode(n *yaml.Node) ([]GetEntry, error) {
 			case "check":
 				e.Check = v.Value
 			case "default":
-				e.DefaultTmpl = v.Value
+				e.DefaultTmpl = normalizeTmpl(v.Value)
 			case "secret":
 				e.Secret = v.Value == "true"
 			case "optional":
