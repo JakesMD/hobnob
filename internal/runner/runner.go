@@ -28,6 +28,19 @@ func resolveDirPath(dir, taskfileDir string) string {
 	return filepath.Join(taskfileDir, dir)
 }
 
+// displayDirPath returns dir relative to invocationDir when dir is invocationDir
+// itself or one of its subdirectories, else returns dir unchanged (full path).
+func displayDirPath(dir, invocationDir string) string {
+	rel, err := filepath.Rel(invocationDir, dir)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return dir
+	}
+	if rel == "." {
+		return "./"
+	}
+	return "./" + rel
+}
+
 // maskSecrets replaces each secret variable's value in s with "****".
 func maskSecrets(s string, scope *cli.Scope) string {
 	for name := range scope.Secrets {
@@ -70,7 +83,6 @@ func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPr
 	return executeSteps(t.Steps, scope, execCfg, taskName, noPrompts, currentDir)
 }
 
-
 func executeSteps(steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	for _, s := range steps {
 		if s.IfExpr != "" {
@@ -111,23 +123,25 @@ func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir stri
 	if err != nil {
 		return fmt.Errorf("run template: %w", err)
 	}
-	displayCmd := maskSecrets(cmd, scope)
-	for _, displayLine := range tui.RunDisplayLines(displayCmd, task) {
-		fmt.Println(displayLine)
-	}
-	prefix := tui.TaskPrefix(task)
-	stdoutLW := tui.NewLineWriter(os.Stdout, prefix)
-	stderrLW := tui.NewLineWriter(os.Stderr, prefix)
-	c := osExec.Command("sh", "-c", cmd)
-
 	runDir := currentDir
+	displayDir := ""
 	if s.DirTmpl != "" {
 		resolved, err := eval.EvalTemplate(s.DirTmpl, scope.Vars)
 		if err != nil {
 			return fmt.Errorf("run dir template: %w", err)
 		}
 		runDir = resolveDirPath(resolved, taskfileDir)
+		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"])
 	}
+
+	displayCmd := maskSecrets(cmd, scope)
+	for _, displayLine := range tui.RunDisplayLines(displayCmd, task, displayDir) {
+		fmt.Println(displayLine)
+	}
+	prefix := tui.TaskPrefix(task)
+	stdoutLW := tui.NewLineWriter(os.Stdout, prefix)
+	stderrLW := tui.NewLineWriter(os.Stderr, prefix)
+	c := osExec.Command("sh", "-c", cmd)
 	c.Dir = runDir
 
 	var stdoutBuf, stderrBuf bytes.Buffer

@@ -85,13 +85,17 @@ func printGetLine(task, varName, displayVal string) {
 	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(varName+": "+displayVal))
 }
 
-func RunDisplayLines(cmd, task string) []string {
+func RunDisplayLines(cmd, task, dir string) []string {
 	prefix := TaskPrefix(task)
 	lines := strings.Split(cmd, "\n")
 	result := make([]string, len(lines))
 	for i, line := range lines {
 		if i == 0 {
-			result[i] = SStep.Render("run:") + " " + prefix + SStep.Render(line)
+			first := SStep.Render("run:") + " " + prefix + SStep.Render(line)
+			if dir != "" {
+				first += " " + SHint.Render("(dir: "+dir+")")
+			}
+			result[i] = first
 		} else {
 			result[i] = SStep.Render(line)
 		}

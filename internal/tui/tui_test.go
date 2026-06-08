@@ -9,11 +9,13 @@ import (
 
 func TestRunDisplayLines(t *testing.T) {
 	tests := []struct {
-		name          string
-		cmd           string
-		task          string
-		wantFirstHas  string
-		wantRestLacks string
+		name           string
+		cmd            string
+		task           string
+		dir            string
+		wantFirstHas   string
+		wantFirstLacks string
+		wantRestLacks  string
 	}{
 		{
 			name:          "given single-line cmd, when rendered, then first line has run: and task prefix (why: standard display)",
@@ -29,6 +31,22 @@ func TestRunDisplayLines(t *testing.T) {
 			wantFirstHas:  "[mytask]",
 			wantRestLacks: "[mytask]",
 		},
+		{
+			name:          "given dir set, when rendered, then first line shows dir (why: lets user see where the command runs)",
+			cmd:           "echo hello",
+			task:          "mytask",
+			dir:           "./infra",
+			wantFirstHas:  "(dir: ./infra)",
+			wantRestLacks: "",
+		},
+		{
+			name:           "given dir unset, when rendered, then first line has no dir hint (why: don't clutter output for the common case)",
+			cmd:            "echo hello",
+			task:           "mytask",
+			dir:            "",
+			wantFirstHas:   "[mytask]",
+			wantFirstLacks: "(dir:",
+		},
 	}
 
 	for _, tc := range tests {
@@ -37,7 +55,7 @@ func TestRunDisplayLines(t *testing.T) {
 			// (tc fields are the arrangement)
 
 			// Act
-			got := RunDisplayLines(tc.cmd, tc.task)
+			got := RunDisplayLines(tc.cmd, tc.task, tc.dir)
 
 			// Assert
 			if len(got) == 0 {
@@ -45,6 +63,9 @@ func TestRunDisplayLines(t *testing.T) {
 			}
 			if !strings.Contains(got[0], tc.wantFirstHas) {
 				t.Errorf("line 0: want %q in %q", tc.wantFirstHas, got[0])
+			}
+			if tc.wantFirstLacks != "" && strings.Contains(got[0], tc.wantFirstLacks) {
+				t.Errorf("line 0: must not contain %q, got %q", tc.wantFirstLacks, got[0])
 			}
 			if tc.wantRestLacks != "" {
 				for i, line := range got[1:] {

@@ -352,6 +352,60 @@ func TestMaskSecrets(t *testing.T) {
 	}
 }
 
+func TestDisplayDirPath(t *testing.T) {
+	tests := []struct {
+		name          string
+		dir           string
+		invocationDir string
+		want          string
+	}{
+		{
+			name:          "given dir is invocation dir, when formatting, then returns ./ (why: dir is the cwd itself, mirror the dir: path style)",
+			dir:           "/home/user/project",
+			invocationDir: "/home/user/project",
+			want:          "./",
+		},
+		{
+			name:          "given dir is subdir of invocation dir, when formatting, then returns relative path with ./ prefix (why: mirror the dir: path style)",
+			dir:           "/home/user/project/infra",
+			invocationDir: "/home/user/project",
+			want:          "./infra",
+		},
+		{
+			name:          "given dir is nested subdir, when formatting, then returns relative path with ./ prefix (why: still inside cwd)",
+			dir:           "/home/user/project/infra/staging",
+			invocationDir: "/home/user/project",
+			want:          "./infra/staging",
+		},
+		{
+			name:          "given dir is outside invocation dir, when formatting, then returns full path (why: relative path with .. is harder to read than absolute)",
+			dir:           "/home/user/other",
+			invocationDir: "/home/user/project",
+			want:          "/home/user/other",
+		},
+		{
+			name:          "given dir is parent of invocation dir, when formatting, then returns full path (why: not within cwd or its subdirs)",
+			dir:           "/home/user",
+			invocationDir: "/home/user/project",
+			want:          "/home/user",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange (tc fields are the arrangement)
+
+			// Act
+			got := displayDirPath(tc.dir, tc.invocationDir)
+
+			// Assert
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExecSet_SecretFlag(t *testing.T) {
 	tests := []struct {
 		name          string
