@@ -293,7 +293,7 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		if m.multi {
-			var vals []string
+			vals := []string{}
 			for i, v := range m.items {
 				if m.selected[i] {
 					vals = append(vals, v)

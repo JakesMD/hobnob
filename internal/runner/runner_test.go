@@ -248,6 +248,14 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			vars:     map[string]string{},
 			wantVars: map[string]string{"NOTE": ""},
 		},
+		{
+			name: "given multi optional and no-input and var not set, when executed, then succeeds with empty JSON array (why: multi vars must stay valid JSON arrays for loop/options consumers, not empty string or null)",
+			entries: []config.GetEntry{
+				{VarName: "TAGS", Info: "Pick tags", Multi: true, Optional: true, FromList: []string{"a", "b"}},
+			},
+			vars:     map[string]string{},
+			wantVars: map[string]string{"TAGS": "[]"},
+		},
 	}
 
 	for _, tc := range tests {

@@ -3,6 +3,8 @@ package tui
 import (
 	"strings"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestRunDisplayLines(t *testing.T) {
@@ -52,5 +54,24 @@ func TestRunDisplayLines(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
+	// Arrange
+	m := selectModel{
+		varName:  "TAGS",
+		items:    []string{"a", "b", "c"},
+		multi:    true,
+		selected: make(map[int]bool),
+	}
+
+	// Act
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Assert
+	got := updated.(selectModel).value
+	if got != "[]" {
+		t.Errorf("value: got %q, want %q (why: empty multi-select must marshal to an empty JSON array, not null)", got, "[]")
 	}
 }

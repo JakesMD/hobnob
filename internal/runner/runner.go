@@ -210,7 +210,11 @@ func execGetEntry(e config.GetEntry, scope *cli.Scope, task string, noPrompts bo
 
 	if noPrompts {
 		if e.Optional {
-			scope.Vars[e.VarName] = ""
+			if e.Multi {
+				scope.Vars[e.VarName] = "[]"
+			} else {
+				scope.Vars[e.VarName] = ""
+			}
 			if e.Secret {
 				scope.Secrets[e.VarName] = true
 			}
