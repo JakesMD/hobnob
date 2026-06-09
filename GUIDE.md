@@ -61,7 +61,7 @@ A hobnob file has three optional top-level keys:
 
 ```yaml
 vars: # global variables
-  KEY: value
+  - KEY: value
 
 modules: # imported hobnob files
   - utils: ./utils.yml
@@ -201,7 +201,7 @@ value when a higher-priority one isn't set:
 
 ```yaml
 vars:
-  HOST: "{{ .HOST | default "localhost" }}"
+  - HOST: "{{ .HOST | default "localhost" }}"
 ```
 
 Or in a `set` step:
