@@ -325,7 +325,7 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			for j := 0; j+1 < len(valNode.Content); j += 2 {
 				switch valNode.Content[j].Value {
 				case "value":
-					e.ValTmpl = valNode.Content[j+1].Value
+					e.ValTmpl = normalizeTmpl(valNode.Content[j+1].Value)
 				case "secret":
 					e.Secret = valNode.Content[j+1].Value == "true"
 				}
@@ -333,7 +333,7 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			entries = append(entries, e)
 			continue
 		}
-		valTmpl := valNode.Value
+		valTmpl := normalizeTmpl(valNode.Value)
 		if valNode.Kind == yaml.SequenceNode {
 			items := make([]string, len(valNode.Content))
 			for i, child := range valNode.Content {

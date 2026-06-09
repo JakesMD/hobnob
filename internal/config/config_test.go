@@ -70,6 +70,7 @@ func TestParseConfig_SetStep(t *testing.T) {
 		{Key: "LIMIT", ValTmpl: "1048576"},
 		{Key: "LABEL", ValTmpl: `{{ run "echo hobnob" }}`},
 		{Key: "DERIVED", ValTmpl: "{{.LIMIT}}/bytes"},
+		{Key: "ALIAS", ValTmpl: "{{.LIMIT}}"},
 	}
 	if len(s.SetEntries) != len(wantEntries) {
 		t.Fatalf("want %d set entries, got %d", len(wantEntries), len(s.SetEntries))
