@@ -158,6 +158,7 @@ func TestListTasks(t *testing.T) {
 }
 
 func TestBuildScope_GlobalVars(t *testing.T) {
+	// given config with global vars, when BuildScope called with no CLI overrides, then vars resolved into scope (why: global vars are the baseline scope)
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/global_vars.yml")
 	if err != nil {
@@ -180,6 +181,7 @@ func TestBuildScope_GlobalVars(t *testing.T) {
 }
 
 func TestBuildScope_SystemVars(t *testing.T) {
+	// given any taskfile, when BuildScope called, then HOBNOB_FILE_DIR and HOBNOB_INVOCATION_DIR injected (why: built-in vars must always be available)
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/global_vars.yml")
 	if err != nil {
@@ -255,6 +257,7 @@ func TestPrintUsage(t *testing.T) {
 }
 
 func TestPrintHelp(t *testing.T) {
+	// given config with task info, when PrintHelp called, then output contains all flag docs and task descriptions (why: help output is the primary user reference)
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/task_info.yml")
 	if err != nil {
@@ -290,6 +293,7 @@ func TestPrintHelp(t *testing.T) {
 }
 
 func TestBuildScope_GlobalsWinOverCLIArgs(t *testing.T) {
+	// given global var and matching CLI arg, when BuildScope called, then global value wins (why: globals are internal wiring; CLI can't silently override them)
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/global_vars.yml")
 	if err != nil {

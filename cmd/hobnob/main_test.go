@@ -10,6 +10,7 @@ import (
 )
 
 func TestVersionFlag(t *testing.T) {
+	// given --version flag, when run, then output contains "hobnob" (why: version flag must identify the binary)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		os.Args = []string{"hobnob", "--version"}
 		main()
@@ -33,6 +34,7 @@ func TestVersionFlag(t *testing.T) {
 }
 
 func TestHelpFlagShowsVersion(t *testing.T) {
+	// given --help flag, when run, then first output line contains "hobnob" (why: version header anchors the help output)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "--help"}
@@ -62,6 +64,7 @@ func TestHelpFlagShowsVersion(t *testing.T) {
 }
 
 func TestNoArgsDefaultTaskRuns(t *testing.T) {
+	// given taskfile with default task, when run with no args, then default task executes (why: default task is the no-arg entry point)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
@@ -90,6 +93,7 @@ func TestNoArgsDefaultTaskRuns(t *testing.T) {
 }
 
 func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
+	// given taskfile with no default task, when run with no args, then shows Tip and Usage (why: guides user when no entry point is defined)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
@@ -121,6 +125,7 @@ func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
 }
 
 func TestInternalTaskRejectedByCLI(t *testing.T) {
+	// given _ prefixed task name, when run from CLI, then exits non-zero (why: internal tasks must not be directly invokable)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		os.Args = []string{"hobnob", "_helper"}
 		main()
@@ -144,6 +149,7 @@ func TestInternalTaskRejectedByCLI(t *testing.T) {
 }
 
 func TestNamedTaskSuccessPrintsSuccessMessage(t *testing.T) {
+	// given named task that succeeds, when run, then output contains ✓ and task name (why: success feedback must identify which task completed)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "deploy"}
@@ -179,6 +185,7 @@ func TestNamedTaskSuccessPrintsSuccessMessage(t *testing.T) {
 }
 
 func TestNamedTaskFailurePrintsFailureMessage(t *testing.T) {
+	// given named task that fails, when run, then output contains ✗ and task name (why: failure feedback must identify which task failed)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "deploy"}
@@ -211,6 +218,7 @@ func TestNamedTaskFailurePrintsFailureMessage(t *testing.T) {
 }
 
 func TestDefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
+	// given default task that succeeds, when run with no args, then output contains ✓ and "default" (why: success feedback applies to default task too)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
@@ -246,6 +254,7 @@ func TestDefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
 }
 
 func TestDefaultTaskFailurePrintsFailureMessage(t *testing.T) {
+	// given default task that fails, when run with no args, then output contains ✗ and "default" (why: failure feedback applies to default task too)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}

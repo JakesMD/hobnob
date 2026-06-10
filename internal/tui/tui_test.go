@@ -112,6 +112,7 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 }
 
 func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
+	// given multi-select model with no items toggled, when enter pressed, then result is empty string (why: empty selection must produce empty var not an error)
 	// Arrange
 	m := selectModel{
 		varName:  "TAGS",

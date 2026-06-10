@@ -621,6 +621,7 @@ func TestParseList(t *testing.T) {
 }
 
 func TestCopyVars(t *testing.T) {
+	// given source map, when CopyVars called and dst mutated, then source unchanged (why: scope isolation depends on deep copy semantics)
 	// Arrange
 	src := map[string]string{"A": "1", "B": "2"}
 

@@ -948,6 +948,7 @@ func TestDir_CallStep_Priorities(t *testing.T) {
 }
 
 func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
+	// given ITEM not in scope before loop, when for loop completes, then ITEM removed from scope (why: iterator must not leak into post-loop scope)
 	// Arrange
 	cfg := &config.ConfigFile{
 		Tasks: map[string]config.Task{
@@ -1014,6 +1015,7 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 }
 
 func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
+	// given matrix iterator vars not in scope before loop, when matrix loop completes, then OS and ARCH removed from scope (why: matrix iterators must not leak into post-loop scope)
 	// Arrange
 	cfg := &config.ConfigFile{
 		Tasks: map[string]config.Task{
@@ -1173,6 +1175,7 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 }
 
 func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
+	// given get step with text prompt, when executed, then var set to prompted value in scope (why: get is the primary mechanism for user input into scope)
 	// Arrange
 	orig := promptTextFn
 	defer func() { promptTextFn = orig }()
@@ -1203,6 +1206,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 }
 
 func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
+	// given get step with options list, when executed, then var set to selected value in scope (why: select prompt routes through promptSelectFn distinct from text prompt)
 	// Arrange
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
