@@ -84,7 +84,7 @@ func TestNewSelectModel_MultiWithDefault_PreSelectsDefault(t *testing.T) {
 	// (why: default must be toggled on at open, not just cursor-positioned)
 
 	// Act
-	m := newSelectModel("RELEASES", "", []string{"v0.1.0", "v0.2.0", "v0.3.0"}, true, "v0.2.0", "", false)
+	m := newSelectModel("RELEASES", "", []string{"v0.1.0", "v0.2.0", "v0.3.0"}, true, "v0.2.0")
 
 	// Assert
 	if !m.selected[1] {
@@ -100,7 +100,7 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 	// (why: single-select uses cursor position, not selected map)
 
 	// Act
-	m := newSelectModel("ENV", "", []string{"staging", "production"}, false, "production", "", false)
+	m := newSelectModel("ENV", "", []string{"staging", "production"}, false, "production")
 
 	// Assert
 	if len(m.selected) != 0 {

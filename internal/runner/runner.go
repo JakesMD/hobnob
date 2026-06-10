@@ -44,43 +44,43 @@ func displayDirPath(dir, invocationDir string) string {
 // maskSecrets replaces each secret variable's value in s with "****".
 func maskSecrets(s string, scope *cli.Scope) string {
 	for name := range scope.Secrets {
-		v := scope.Vars[name]
-		if v != "" {
-			s = strings.ReplaceAll(s, v, "****")
+		secretVal := scope.Vars[name]
+		if secretVal != "" {
+			s = strings.ReplaceAll(s, secretVal, "****")
 		}
 	}
 	return s
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
-	t, ok := cfg.Tasks[taskName]
+	task, ok := cfg.Tasks[taskName]
 	if !ok {
 		return config.Task{}, nil, fmt.Errorf("task %q not found", taskName)
 	}
 	execCfg := cfg
-	if t.Cfg != nil {
-		execCfg = t.Cfg
+	if task.Cfg != nil {
+		execCfg = task.Cfg
 	}
-	return t, execCfg, nil
+	return task, execCfg, nil
 }
 
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; execCall passes the resolved child dir.
 func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	t, execCfg, err := resolveTask(taskName, cfg)
+	task, execCfg, err := resolveTask(taskName, cfg)
 	if err != nil {
 		return err
 	}
 	currentDir := parentDir
-	if t.Dir != "" {
-		resolved, err := eval.EvalTemplate(t.Dir, scope.Vars)
+	if task.Dir != "" {
+		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
 		if err != nil {
 			return fmt.Errorf("task %q dir: %w", taskName, err)
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
-	return executeSteps(t.Steps, scope, execCfg, taskName, noPrompts, currentDir)
+	return executeSteps(task.Steps, scope, execCfg, taskName, noPrompts, currentDir)
 }
 
 func executeSteps(steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
@@ -141,37 +141,37 @@ func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir stri
 	prefix := tui.TaskPrefix(task)
 	stdoutLW := tui.NewLineWriter(os.Stdout, prefix)
 	stderrLW := tui.NewLineWriter(os.Stderr, prefix)
-	c := osExec.Command("sh", "-c", cmd)
-	c.Dir = runDir
+	shellCmd := osExec.Command("sh", "-c", cmd)
+	shellCmd.Dir = runDir
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	if len(s.IntoEntries) > 0 {
-		c.Stdout = io.MultiWriter(stdoutLW, &stdoutBuf)
-		c.Stderr = io.MultiWriter(stderrLW, &stderrBuf)
+		shellCmd.Stdout = io.MultiWriter(stdoutLW, &stdoutBuf)
+		shellCmd.Stderr = io.MultiWriter(stderrLW, &stderrBuf)
 	} else {
-		c.Stdout = stdoutLW
-		c.Stderr = stderrLW
+		shellCmd.Stdout = stdoutLW
+		shellCmd.Stderr = stderrLW
 	}
 	// Scope vars must win over inherited env. Build a map of scope keys so we
 	// can filter os.Environ() before appending scope vars (first-occurrence wins
 	// in os/exec).
 	scopeKeys := make(map[string]bool, len(scope.Vars))
-	for k := range scope.Vars {
-		scopeKeys[k] = true
+	for varName := range scope.Vars {
+		scopeKeys[varName] = true
 	}
 	env := os.Environ()
 	filtered := env[:0:len(env)]
-	for _, e := range env {
-		k, _, _ := strings.Cut(e, "=")
-		if !scopeKeys[k] {
-			filtered = append(filtered, e)
+	for _, envEntry := range env {
+		varName, _, _ := strings.Cut(envEntry, "=")
+		if !scopeKeys[varName] {
+			filtered = append(filtered, envEntry)
 		}
 	}
-	c.Env = filtered
-	for k, v := range scope.Vars {
-		c.Env = append(c.Env, k+"="+v)
+	shellCmd.Env = filtered
+	for varName, varValue := range scope.Vars {
+		shellCmd.Env = append(shellCmd.Env, varName+"="+varValue)
 	}
-	err = c.Run()
+	err = shellCmd.Run()
 	stdoutLW.Flush()
 	stderrLW.Flush()
 	if err != nil {
@@ -362,7 +362,7 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 	var callErr error
 	if s.DirTmpl != "" {
 		// Priority A: call step dir overrides task-level dir
-		t, execCfg, err := resolveTask(taskName, cfg)
+		task, execCfg, err := resolveTask(taskName, cfg)
 		if err != nil {
 			return err
 		}
@@ -371,7 +371,7 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 			return fmt.Errorf("call dir template: %w", err)
 		}
 		childDir := resolveDirPath(resolved, cfg.TaskfileDir)
-		callErr = executeSteps(t.Steps, childScope, execCfg, taskName, noPrompts, childDir)
+		callErr = executeSteps(task.Steps, childScope, execCfg, taskName, noPrompts, childDir)
 	} else {
 		// Priority B (task-level dir) or C (inherit parentDir) — handled inside ExecuteTask
 		callErr = ExecuteTask(taskName, childScope, cfg, noPrompts, parentDir)

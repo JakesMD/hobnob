@@ -35,8 +35,8 @@ func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, pr
 				loopPreset[k] = true
 			}
 			if len(s.ForMatrix) > 0 {
-				for _, m := range s.ForMatrix {
-					loopPreset[m.VarName] = true
+				for _, matrixEntry := range s.ForMatrix {
+					loopPreset[matrixEntry.VarName] = true
 				}
 			} else {
 				loopPreset["ITEM"] = true
@@ -53,8 +53,8 @@ func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, pr
 						childPreset[w.Key] = true
 					}
 					visited[s.CallTarget] = true
-					if t, ok := cfg.Tasks[s.CallTarget]; ok {
-						for _, e := range collectGetParams(t.Steps, cfg, visited, childPreset) {
+					if task, ok := cfg.Tasks[s.CallTarget]; ok {
+						for _, e := range collectGetParams(task.Steps, cfg, visited, childPreset) {
 							if !alreadySet[e.VarName] {
 								entries = append(entries, e)
 							}

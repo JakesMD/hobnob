@@ -183,22 +183,22 @@ func parseTaskNode(n *yaml.Node) (Task, error) {
 	if n.Kind != yaml.MappingNode {
 		return Task{}, fmt.Errorf("task must be a mapping")
 	}
-	var t Task
+	var task Task
 	for i := 0; i+1 < len(n.Content); i += 2 {
 		switch n.Content[i].Value {
 		case "info":
-			t.Info = n.Content[i+1].Value
+			task.Info = n.Content[i+1].Value
 		case "dir":
-			t.Dir = normalizeTmpl(n.Content[i+1].Value)
+			task.Dir = normalizeTmpl(n.Content[i+1].Value)
 		case "steps":
 			steps, err := parseStepSequence(n.Content[i+1])
 			if err != nil {
 				return Task{}, err
 			}
-			t.Steps = steps
+			task.Steps = steps
 		}
 	}
-	return t, nil
+	return task, nil
 }
 
 func parseStepSequence(n *yaml.Node) ([]Step, error) {
@@ -224,44 +224,44 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 	var s Step
 
 	for i := 0; i+1 < len(n.Content); i += 2 {
-		k := n.Content[i].Value
-		v := n.Content[i+1]
+		fieldKey := n.Content[i].Value
+		fieldVal := n.Content[i+1]
 
-		switch k {
+		switch fieldKey {
 		case "run":
 			s.Kind = KindRun
-			s.Command = normalizeTmpl(v.Value)
+			s.Command = normalizeTmpl(fieldVal.Value)
 		case "set":
 			s.Kind = KindSet
-			entries, err := parseSetNode(v)
+			entries, err := parseSetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("set: %w", err)
 			}
 			s.SetEntries = entries
 		case "get":
 			s.Kind = KindGet
-			entries, err := parseGetNode(v)
+			entries, err := parseGetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("get: %w", err)
 			}
 			s.GetEntries = entries
 		case "call":
 			s.Kind = KindCall
-			s.CallTarget = v.Value
+			s.CallTarget = fieldVal.Value
 		case "loop":
 			s.Kind = KindFor
-			switch v.Kind {
+			switch fieldVal.Kind {
 			case yaml.SequenceNode:
-				for _, item := range v.Content {
+				for _, item := range fieldVal.Content {
 					s.ForList = append(s.ForList, item.Value)
 				}
 			case yaml.MappingNode:
-				for i := 0; i+1 < len(v.Content); i += 2 {
-					varName := v.Content[i].Value
+				for i := 0; i+1 < len(fieldVal.Content); i += 2 {
+					varName := fieldVal.Content[i].Value
 					if strings.Contains(varName, "{{") {
 						return s, fmt.Errorf("variable name %q must not contain template syntax", varName)
 					}
-					valNode := v.Content[i+1]
+					valNode := fieldVal.Content[i+1]
 					entry := ForMatrixEntry{VarName: varName}
 					if valNode.Kind == yaml.SequenceNode {
 						for _, item := range valNode.Content {
@@ -273,28 +273,28 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 					s.ForMatrix = append(s.ForMatrix, entry)
 				}
 			default:
-				s.ForTarget = normalizeTmpl(v.Value)
+				s.ForTarget = normalizeTmpl(fieldVal.Value)
 			}
 		case "if":
-			s.IfExpr = v.Value
+			s.IfExpr = fieldVal.Value
 		case "with":
-			entries, err := parseSetNode(v)
+			entries, err := parseSetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("with: %w", err)
 			}
 			s.CallVars = entries
 		case "into":
-			entries, err := parseIntoNode(v)
+			entries, err := parseIntoNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("into: %w", err)
 			}
 			s.IntoEntries = entries
 		case "soft":
-			s.Soft = v.Value == "true"
+			s.Soft = fieldVal.Value == "true"
 		case "dir":
-			s.DirTmpl = normalizeTmpl(v.Value)
+			s.DirTmpl = normalizeTmpl(fieldVal.Value)
 		case "steps":
-			subSteps, err := parseStepSequence(v)
+			subSteps, err := parseStepSequence(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("steps: %w", err)
 			}
@@ -321,16 +321,16 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			if strings.Contains(key, "{{") {
 				return nil, fmt.Errorf("variable name %q must not contain template syntax", key)
 			}
-			e := SetEntry{Key: key}
+			entry := SetEntry{Key: key}
 			for j := 0; j+1 < len(valNode.Content); j += 2 {
 				switch valNode.Content[j].Value {
 				case "value":
-					e.ValTmpl = normalizeTmpl(valNode.Content[j+1].Value)
+					entry.ValTmpl = normalizeTmpl(valNode.Content[j+1].Value)
 				case "secret":
-					e.Secret = valNode.Content[j+1].Value == "true"
+					entry.Secret = valNode.Content[j+1].Value == "true"
 				}
 			}
-			entries = append(entries, e)
+			entries = append(entries, entry)
 			continue
 		}
 		valTmpl := normalizeTmpl(valNode.Value)
@@ -339,11 +339,11 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			for i, child := range valNode.Content {
 				items[i] = child.Value
 			}
-			b, err := json.Marshal(items)
+			jsonBytes, err := json.Marshal(items)
 			if err != nil {
 				return nil, fmt.Errorf("set entry %q: failed to serialize list: %w", item.Content[0].Value, err)
 			}
-			valTmpl = string(b)
+			valTmpl = string(jsonBytes)
 		}
 		rawKey := item.Content[0].Value
 		if strings.Contains(rawKey, "{{") {
@@ -383,29 +383,29 @@ func parseGetNode(n *yaml.Node) ([]GetEntry, error) {
 			return nil, fmt.Errorf("get entry %q modifiers must be a mapping", e.VarName)
 		}
 		for i := 0; i+1 < len(modifiers.Content); i += 2 {
-			k := modifiers.Content[i].Value
-			v := modifiers.Content[i+1]
-			switch k {
+			fieldKey := modifiers.Content[i].Value
+			fieldVal := modifiers.Content[i+1]
+			switch fieldKey {
 			case "info":
-				e.Info = v.Value
+				e.Info = fieldVal.Value
 			case "options":
-				if v.Kind == yaml.SequenceNode {
-					for _, fi := range v.Content {
+				if fieldVal.Kind == yaml.SequenceNode {
+					for _, fi := range fieldVal.Content {
 						e.FromList = append(e.FromList, fi.Value)
 					}
 				} else {
-					e.FromTmpl = normalizeTmpl(v.Value)
+					e.FromTmpl = normalizeTmpl(fieldVal.Value)
 				}
 			case "multi":
-				e.Multi = v.Value == "true"
+				e.Multi = fieldVal.Value == "true"
 			case "check":
-				e.Check = v.Value
+				e.Check = fieldVal.Value
 			case "default":
-				e.DefaultTmpl = normalizeTmpl(v.Value)
+				e.DefaultTmpl = normalizeTmpl(fieldVal.Value)
 			case "secret":
-				e.Secret = v.Value == "true"
+				e.Secret = fieldVal.Value == "true"
 			case "optional":
-				e.Optional = v.Value == "true"
+				e.Optional = fieldVal.Value == "true"
 			}
 		}
 		entries = append(entries, e)
@@ -447,7 +447,7 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 		if item.Kind != yaml.MappingNode {
 			return nil, fmt.Errorf("module entry must be a mapping")
 		}
-		var m ModuleEntry
+		var mod ModuleEntry
 		for i := 0; i+1 < len(item.Content); i += 2 {
 			key := item.Content[i].Value
 			val := item.Content[i+1]
@@ -457,30 +457,30 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 			// sets FlattenTmpl, leaving Prefix empty → "module entry missing prefix key".
 			switch key {
 			case "show", "hide", "flatten":
-				if err := applyModuleFlag(&m, key, val); err != nil {
+				if err := applyModuleFlag(&mod, key, val); err != nil {
 					return nil, err
 				}
 			default:
-				m.Prefix = key
+				mod.Prefix = key
 				if val.Kind == yaml.MappingNode {
 					for j := 0; j+1 < len(val.Content); j += 2 {
 						subKey := val.Content[j].Value
 						subVal := val.Content[j+1]
 						if subKey == "path" {
-							m.FileTmpl = subVal.Value
-						} else if err := applyModuleFlag(&m, subKey, subVal); err != nil {
+							mod.FileTmpl = subVal.Value
+						} else if err := applyModuleFlag(&mod, subKey, subVal); err != nil {
 							return nil, err
 						}
 					}
 				} else {
-					m.FileTmpl = val.Value
+					mod.FileTmpl = val.Value
 				}
 			}
 		}
-		if m.Prefix == "" {
+		if mod.Prefix == "" {
 			return nil, fmt.Errorf("module entry missing prefix key")
 		}
-		mods = append(mods, m)
+		mods = append(mods, mod)
 	}
 	return mods, nil
 }

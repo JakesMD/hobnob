@@ -15,11 +15,11 @@ func splitLinesJSON(s string) (string, error) {
 			lines = append(lines, trimmed)
 		}
 	}
-	b, err := json.Marshal(lines)
+	jsonBytes, err := json.Marshal(lines)
 	if err != nil {
 		return "", err
 	}
-	return string(b), nil
+	return string(jsonBytes), nil
 }
 
 func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
@@ -44,16 +44,16 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 		},
 		"split": func(sep, s string) (string, error) {
 			var parts []string
-			for _, p := range strings.Split(s, sep) {
-				if p != "" {
-					parts = append(parts, p)
+			for _, part := range strings.Split(s, sep) {
+				if part != "" {
+					parts = append(parts, part)
 				}
 			}
-			b, err := json.Marshal(parts)
+			jsonBytes, err := json.Marshal(parts)
 			if err != nil {
 				return "", err
 			}
-			return string(b), nil
+			return string(jsonBytes), nil
 		},
 		"lines": func(s string) (string, error) {
 			return splitLinesJSON(s)
@@ -69,12 +69,12 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 			return items[0], nil
 		},
 	}
-	t, err := template.New("").Funcs(funcs).Parse(tmpl)
+	parsed, err := template.New("").Funcs(funcs).Parse(tmpl)
 	if err != nil {
 		return "", err
 	}
 	var buf strings.Builder
-	if err := t.Execute(&buf, vars); err != nil {
+	if err := parsed.Execute(&buf, vars); err != nil {
 		return "", err
 	}
 	return buf.String(), nil
@@ -87,8 +87,8 @@ func EvalCondition(condTmpl string, vars map[string]string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	c := exec.Command("sh", "-c", rendered)
-	err = c.Run()
+	cmd := exec.Command("sh", "-c", rendered)
+	err = cmd.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
 			return false, nil

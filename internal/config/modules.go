@@ -80,12 +80,12 @@ func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]
 				continue
 			}
 
-			t := modCfg.Tasks[taskName]
-			if t.Cfg == nil {
-				t.Cfg = modCfg
+			task := modCfg.Tasks[taskName]
+			if task.Cfg == nil {
+				task.Cfg = modCfg
 			}
 			if isInternal {
-				t.Hidden = true
+				task.Hidden = true
 			}
 
 			prefixedName := mod.Prefix + ":" + taskName
@@ -93,20 +93,20 @@ func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]
 			if flatten && !isInternal {
 				if _, exists := cfg.Tasks[taskName]; !exists {
 					// flat alias becomes the visible name; prefixed is a hidden alias
-					cfg.Tasks[taskName] = t
+					cfg.Tasks[taskName] = task
 					cfg.TaskNames = append(cfg.TaskNames, taskName)
 
-					tHidden := t
-					tHidden.Hidden = true
-					cfg.Tasks[prefixedName] = tHidden
+					taskHidden := task
+					taskHidden.Hidden = true
+					cfg.Tasks[prefixedName] = taskHidden
 					cfg.TaskNames = append(cfg.TaskNames, prefixedName)
 				} else {
 					// collision with existing task — register prefixed name as visible
-					cfg.Tasks[prefixedName] = t
+					cfg.Tasks[prefixedName] = task
 					cfg.TaskNames = append(cfg.TaskNames, prefixedName)
 				}
 			} else {
-				cfg.Tasks[prefixedName] = t
+				cfg.Tasks[prefixedName] = task
 				cfg.TaskNames = append(cfg.TaskNames, prefixedName)
 			}
 		}

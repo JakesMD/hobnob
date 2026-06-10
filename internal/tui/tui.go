@@ -56,18 +56,18 @@ func NewLineWriter(w io.Writer, prefix string) *LineWriter {
 }
 
 func (lw *LineWriter) Write(p []byte) (int, error) {
-	n := len(p)
-	for _, b := range p {
-		if b == '\n' {
+	totalBytes := len(p)
+	for _, byteVal := range p {
+		if byteVal == '\n' {
 			lw.w.Write([]byte(lw.prefix))
 			lw.w.Write(lw.buf.Bytes())
 			lw.w.Write([]byte{'\n'})
 			lw.buf.Reset()
 		} else {
-			lw.buf.WriteByte(b)
+			lw.buf.WriteByte(byteVal)
 		}
 	}
-	return n, nil
+	return totalBytes, nil
 }
 
 // Flush writes any buffered partial line. Errors from w are discarded because
@@ -113,7 +113,7 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 		ti.SetValue(defaultVal)
 	}
 	ti.Focus()
-	m := textModel{
+	model := textModel{
 		info:       info,
 		check:      check,
 		varName:    varName,
@@ -123,8 +123,8 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 		secret:     secret,
 		optional:   optional,
 	}
-	p := tea.NewProgram(m)
-	result, err := p.Run()
+	program := tea.NewProgram(model)
+	result, err := program.Run()
 	if err != nil {
 		return "", err
 	}
@@ -140,7 +140,7 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 	return final.value, nil
 }
 
-func newSelectModel(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) selectModel {
+func newSelectModel(varName, info string, items []string, multi bool, defaultVal string) selectModel {
 	cursor := 0
 	preselected := make(map[int]bool)
 	if defaultVal != "" {
@@ -165,9 +165,9 @@ func newSelectModel(varName, info string, items []string, multi bool, defaultVal
 }
 
 func PromptSelect(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
-	m := newSelectModel(varName, info, items, multi, defaultVal, task, secret)
-	p := tea.NewProgram(m)
-	result, err := p.Run()
+	model := newSelectModel(varName, info, items, multi, defaultVal)
+	program := tea.NewProgram(model)
+	result, err := program.Run()
 	if err != nil {
 		return "", err
 	}
@@ -286,7 +286,7 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
-	n := len(m.items)
+	itemCount := len(m.items)
 	switch keyMsg.String() {
 	case "ctrl+c", "q":
 		m.quit = true
@@ -296,7 +296,7 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		}
 	case "down", "j":
-		if m.cursor < n-1 {
+		if m.cursor < itemCount-1 {
 			m.cursor++
 		}
 	case " ":
@@ -306,13 +306,13 @@ func (m selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case "enter":
 		if m.multi {
 			vals := []string{}
-			for i, v := range m.items {
+			for i, item := range m.items {
 				if m.selected[i] {
-					vals = append(vals, v)
+					vals = append(vals, item)
 				}
 			}
-			b, _ := json.Marshal(vals)
-			m.value = string(b)
+			jsonBytes, _ := json.Marshal(vals)
+			m.value = string(jsonBytes)
 		} else {
 			m.value = m.items[m.cursor]
 		}
@@ -335,7 +335,7 @@ func (m selectModel) View() string {
 	}
 	var sb strings.Builder
 	sb.WriteString(header + "\n")
-	for i, v := range m.items {
+	for i, item := range m.items {
 		if m.cursor == i {
 			sb.WriteString(SArrow.Render("▶ "))
 		} else {
@@ -348,7 +348,7 @@ func (m selectModel) View() string {
 				sb.WriteString(SInfo.Render("○ "))
 			}
 		}
-		sb.WriteString(v + "\n")
+		sb.WriteString(item + "\n")
 	}
 	if m.multi {
 		sb.WriteString(SHint.Render("↑↓ move  space toggle  enter confirm"))
