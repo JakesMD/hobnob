@@ -236,12 +236,24 @@ Two variables are automatically injected into every task's scope:
 
 ### Template filters
 
-`default`, `trim`, `upper`, `lower`, `lines`, `split` — usable anywhere
+`default`, `trim`, `upper`, `lower`, `lines`, `split`, `first` — usable anywhere
 templates are supported.
 
 ```yaml
 - run: echo "Targeting {{.ENV | upper}}"
 ```
+
+Field values that are a single variable reference — optionally with a pipe chain
+— can omit `{{ }}`:
+
+```yaml
+- get:
+    - RELEASE:
+        options: .VERSIONS
+        default: .VERSIONS | first
+```
+
+This is equivalent to `default: "{{.VERSIONS | first}}"`.
 
 ---
 
