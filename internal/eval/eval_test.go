@@ -321,6 +321,64 @@ func TestLower(t *testing.T) {
 	}
 }
 
+func TestFirst(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     string
+		vars     map[string]string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "given JSON array var, when first called via pipe, then returns first element (why: extracts first item from lines/split output)",
+			tmpl:     `{{ .LIST | first }}`,
+			vars:     map[string]string{"LIST": `["v0.3.0","v0.2.1","v0.1.0"]`},
+			expected: "v0.3.0",
+		},
+		{
+			name:     "given inline JSON array, when first called, then returns first element (why: consistent with var usage)",
+			tmpl:     `{{ first "[\"a\",\"b\",\"c\"]" }}`,
+			vars:     map[string]string{},
+			expected: "a",
+		},
+		{
+			name:     "given empty JSON array, when first called, then returns empty string (why: no panic on empty list)",
+			tmpl:     `{{ .LIST | first }}`,
+			vars:     map[string]string{"LIST": `[]`},
+			expected: "",
+		},
+		{
+			name:    "given invalid JSON, when first called, then returns error (why: fail fast on bad pipe data)",
+			tmpl:    `{{ first "not-json" }}`,
+			vars:    map[string]string{},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			// (tc fields are the arrangement)
+
+			// Act
+			got, err := EvalTemplate(tc.tmpl, tc.vars)
+
+			// Assert
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil (result: %q)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.expected {
+				t.Errorf("got %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestEvalRunIntoPipe(t *testing.T) {
 	tests := []struct {
 		name        string

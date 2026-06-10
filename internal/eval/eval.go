@@ -58,6 +58,16 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 		"lines": func(s string) (string, error) {
 			return splitLinesJSON(s)
 		},
+		"first": func(s string) (string, error) {
+			var items []string
+			if err := json.Unmarshal([]byte(s), &items); err != nil {
+				return "", fmt.Errorf("first: %w", err)
+			}
+			if len(items) == 0 {
+				return "", nil
+			}
+			return items[0], nil
+		},
 	}
 	t, err := template.New("").Funcs(funcs).Parse(tmpl)
 	if err != nil {
