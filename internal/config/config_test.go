@@ -189,6 +189,13 @@ func TestParseConfig_GetStep(t *testing.T) {
 			},
 		},
 		{
+			name:     "given get with bare var pipe default, when parsing, then defaultTmpl normalized to template (why: default: .VAR | filter should work like default: '{{.VAR | filter}}')",
+			taskName: "get_text_default_from_var_pipe",
+			wantEntries: []GetEntry{
+				{VarName: "ITEM", Info: "Pick item", DefaultTmpl: "{{.MY_LIST | first}}"},
+			},
+		},
+		{
 			name:     "given select get, when parsing, then returns fromList",
 			taskName: "get_select",
 			wantEntries: []GetEntry{

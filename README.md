@@ -16,50 +16,50 @@ for the Confluence docs nobody can find and nobody keeps current.
 # hobnob.yml
 
 tasks:
-  load-stick:
+  get-releases:
     steps:
-      - run: gh release list --repo acme/releases | cut -f1
+      - run: curl -s https://api.github.com/repos/jakesmd/hobnob/releases | awk -F'"' '/tag_name/{print $4}' | head -8
         into:
           - RELEASE_LIST: stdout | lines
       - get:
           - RELEASES:
-              info: Releases to copy
+              info: Releases to download
               options: .RELEASE_LIST
+              default: .RELEASE_LIST | first
               multi: true
-      - call: _pick-drive
+      - call: _pick-dir
         into:
-          - DRIVE: .DRIVE
+          - DIR: .FOLDER
       - loop: .RELEASES
         steps:
-          - run: gh release download {{.ITEM}} --pattern "*.zip" --dir /media/$USER/{{.DRIVE}}/
+          - run: curl -L -o {{.DIR}}/hobnob-{{.ITEM}}.tar.gz "https://github.com/jakesmd/hobnob/archive/refs/tags/{{.ITEM}}.tar.gz"
 
-  _pick-drive:
+  _pick-dir:
     steps:
-      - run: ls /media/$USER
-        into:
-          - DRIVES: stdout | lines
       - get:
-          - DRIVE:
-              info: Destination USB stick
-              options: .DRIVES
+          - FOLDER:
+              info: Folder to save the releases to
+              default: ./downloads
+      - run: mkdir -p {{.FOLDER}}
 ```
 
 ```bash
 hobnob --list
-hobnob load-stick
-hobnob load-stick DRIVE=MY_STICK   # skip the drive prompt
+hobnob get-releases
+hobnob get-releases FOLDER=./releases   # skip the folder prompt
 ```
 
 Example prompt (without the colors)
 
 ```
-% hobnob load-stick
+% hobnob get-releases
 
 Select values for RELEASES.
-Releases to copy
-  ◉ v1.2.0
-▶ ○ v1.3.0
-  ○ v1.4.0
+Releases to download
+  ◉ v0.3.0
+▶ ○ v0.2.1
+  ○ v0.2.0
+  ○ v0.1.0
 ↑↓ move  space toggle  enter confirm
 ```
 

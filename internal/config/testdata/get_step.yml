@@ -26,6 +26,13 @@ tasks:
               info: "Enter color"
               default: .FALLBACK
 
+  get_text_default_from_var_pipe:
+    steps:
+      - get:
+          - ITEM:
+              info: "Pick item"
+              default: .MY_LIST | first
+
   get_select:
     steps:
       - get:

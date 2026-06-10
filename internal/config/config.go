@@ -11,14 +11,14 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// bareVarRef matches a whole-string reference to a single ALL_CAPS variable,
-// e.g. ".RELEASE_LIST". Relative paths (./infra, ../tests) and dotfiles
-// (.git) also start with "." but never match — they contain "/" or a
+// bareVarRef matches a bare .VAR reference with an optional pipe chain,
+// e.g. ".RELEASE_LIST" or ".RELEASE_LIST | first". Relative paths (./infra,
+// ../tests) and dotfiles (.git) never match — they contain "/" or a
 // lowercase-leading segment, which this pattern excludes.
-var bareVarRef = regexp.MustCompile(`^\.[A-Z][A-Z0-9_]*$`)
+var bareVarRef = regexp.MustCompile(`^\.[A-Z][A-Z0-9_]*(\s*\|[^{]+)?$`)
 
-// normalizeTmpl wraps a bare .VAR reference in {{ }} so users can write
-// `dir: .SUBDIR` instead of `dir: '{{.SUBDIR}}'`.
+// normalizeTmpl wraps a bare .VAR or .VAR | filter expression in {{ }} so
+// users can write `default: .LIST | first` instead of `default: '{{.LIST | first}}'`.
 func normalizeTmpl(s string) string {
 	if bareVarRef.MatchString(s) {
 		return "{{" + s + "}}"
