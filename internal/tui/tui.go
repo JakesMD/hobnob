@@ -140,24 +140,32 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 	return final.value, nil
 }
 
-func PromptSelect(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
+func newSelectModel(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) selectModel {
 	cursor := 0
+	preselected := make(map[int]bool)
 	if defaultVal != "" {
 		for i, item := range items {
 			if item == defaultVal {
 				cursor = i
+				if multi {
+					preselected[i] = true
+				}
 				break
 			}
 		}
 	}
-	m := selectModel{
+	return selectModel{
 		varName:  varName,
 		info:     info,
 		items:    items,
 		multi:    multi,
 		cursor:   cursor,
-		selected: make(map[int]bool),
+		selected: preselected,
 	}
+}
+
+func PromptSelect(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
+	m := newSelectModel(varName, info, items, multi, defaultVal, task, secret)
 	p := tea.NewProgram(m)
 	result, err := p.Run()
 	if err != nil {

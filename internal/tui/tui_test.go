@@ -78,6 +78,39 @@ func TestRunDisplayLines(t *testing.T) {
 	}
 }
 
+func TestNewSelectModel_MultiWithDefault_PreSelectsDefault(t *testing.T) {
+	// given multi-select with a default value matching second item,
+	// when model is initialized, then that item is pre-selected
+	// (why: default must be toggled on at open, not just cursor-positioned)
+
+	// Act
+	m := newSelectModel("RELEASES", "", []string{"v0.1.0", "v0.2.0", "v0.3.0"}, true, "v0.2.0", "", false)
+
+	// Assert
+	if !m.selected[1] {
+		t.Errorf("selected[1]: got false, want true (why: default item v0.2.0 at index 1 must be pre-checked)")
+	}
+	if m.cursor != 1 {
+		t.Errorf("cursor: got %d, want 1", m.cursor)
+	}
+}
+
+func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
+	// given single-select with a default value, when model initialized, then selected map is empty
+	// (why: single-select uses cursor position, not selected map)
+
+	// Act
+	m := newSelectModel("ENV", "", []string{"staging", "production"}, false, "production", "", false)
+
+	// Assert
+	if len(m.selected) != 0 {
+		t.Errorf("selected: got %v, want empty (why: single-select must not pre-populate selected map)", m.selected)
+	}
+	if m.cursor != 1 {
+		t.Errorf("cursor: got %d, want 1", m.cursor)
+	}
+}
+
 func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
 	// Arrange
 	m := selectModel{
