@@ -19,6 +19,18 @@ func makeGetCfg(entries []config.GetEntry) *config.ConfigFile {
 	}
 }
 
+func copyVars(src map[string]string) map[string]string {
+	out := make(map[string]string, len(src))
+	for k, v := range src {
+		out[k] = v
+	}
+	return out
+}
+
+func makeScope(vars map[string]string) *cli.Scope {
+	return &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}
+}
+
 func TestNoInput_GetStep(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -154,13 +166,10 @@ func TestNoInput_GetStep(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			cfg := makeGetCfg(tc.entries)
-			vars := make(map[string]string)
-			for k, v := range tc.vars {
-				vars[k] = v
-			}
+			vars := copyVars(tc.vars)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
+			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -262,13 +271,10 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			cfg := makeGetCfg(tc.entries)
-			vars := make(map[string]string)
-			for k, v := range tc.vars {
-				vars[k] = v
-			}
+			vars := copyVars(tc.vars)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
+			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -504,10 +510,7 @@ func TestExecGet_SecretFlag_NoInput(t *testing.T) {
 					"t": {Steps: []config.Step{{Kind: config.KindGet, GetEntries: []config.GetEntry{tc.entry}}}},
 				},
 			}
-			vars := make(map[string]string)
-			for k, v := range tc.preset {
-				vars[k] = v
-			}
+			vars := copyVars(tc.preset)
 			secrets := make(map[string]bool)
 
 			// Act
@@ -611,13 +614,10 @@ func TestExecFor_Matrix(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			cfg := makeForMatrixCfg(tc.matrix, tc.innerTmpl)
-			vars := make(map[string]string)
-			for k, v := range tc.initVars {
-				vars[k] = v
-			}
+			vars := copyVars(tc.initVars)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
+			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -642,6 +642,14 @@ func makeForStringCfg(forList []string, forTarget, innerTmpl string) *config.Con
 					SetEntries: []config.SetEntry{{Key: "RESULT", ValTmpl: innerTmpl}},
 				}},
 			}}},
+		},
+	}
+}
+
+func makeRunCfg(command string, into []config.IntoEntry) *config.ConfigFile {
+	return &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{{Kind: config.KindRun, Command: command, IntoEntries: into}}},
 		},
 	}
 }
@@ -682,13 +690,10 @@ func TestExecFor_String(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			cfg := makeForStringCfg(tc.forList, tc.forTarget, tc.innerTmpl)
-			vars := make(map[string]string)
-			for k, v := range tc.initVars {
-				vars[k] = v
-			}
+			vars := copyVars(tc.initVars)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
+			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -723,7 +728,7 @@ func captureRunDir(t *testing.T, step config.Step, taskfileDir, parentDir string
 		},
 		TaskfileDir: taskfileDir,
 	}
-	if err := ExecuteTask("t", &cli.Scope{Vars: map[string]string{}, Secrets: make(map[string]bool)}, cfg, true, parentDir); err != nil {
+	if err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 	data, err := os.ReadFile(outFile)
@@ -783,14 +788,6 @@ func TestDir_RunStep(t *testing.T) {
 }
 
 func TestRunInto(t *testing.T) {
-	makeRunCfg := func(command string, into []config.IntoEntry) *config.ConfigFile {
-		return &config.ConfigFile{
-			Tasks: map[string]config.Task{
-				"t": {Steps: []config.Step{{Kind: config.KindRun, Command: command, IntoEntries: into}}},
-			},
-		}
-	}
-
 	tests := []struct {
 		name     string
 		command  string
@@ -858,7 +855,7 @@ func TestRunInto(t *testing.T) {
 			vars := map[string]string{}
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}, cfg, true, "")
+			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -933,7 +930,7 @@ func TestDir_CallStep_Priorities(t *testing.T) {
 			}
 
 			// Act
-			if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: make(map[string]bool)}, cfg, true, parentDir); err != nil {
+			if err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
 				t.Fatalf("ExecuteTask: %v", err)
 			}
 			data, err := os.ReadFile(outFile)
@@ -970,7 +967,7 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1005,7 +1002,7 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 	vars := map[string]string{"ITEM": "original", "RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1039,7 +1036,7 @@ func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1079,7 +1076,7 @@ func TestExecCall_IntoTemplatePath(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1123,7 +1120,7 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1164,7 +1161,7 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1194,7 +1191,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1224,7 +1221,7 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1265,7 +1262,7 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, false, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1304,7 +1301,7 @@ func TestDir_CallStep_DirUsesWithVars(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: map[string]bool{}}, cfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -1355,7 +1352,7 @@ func TestDir_CallStep_RelativeToCallerDir(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask("parent", &cli.Scope{Vars: map[string]string{}, Secrets: map[string]bool{}}, callerCfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask("parent", makeScope(map[string]string{}), callerCfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -1390,7 +1387,7 @@ func TestRunStep_ScopeVarOverridesInheritedEnv(t *testing.T) {
 	vars := map[string]string{"FOO": "from-scope"}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1418,7 +1415,7 @@ func TestRunStep_EnvVarNotInScope_StillVisible(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1448,7 +1445,7 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	vars := map[string]string{"PORT": "80"}
 
 	// Act
-	err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, t.TempDir())
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {

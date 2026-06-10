@@ -18,14 +18,23 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 
 	// Assert — _farm tasks registered, hidden, callable
 	tests := []struct {
+		name       string
 		taskName   string
 		wantHidden bool
 	}{
-		{"_farm:milk_cow", true},
-		{"_farm:feed_cow", true},
+		{
+			name:       "given internal module, when loaded, then _farm:milk_cow is hidden (why: _ prefix blocks --list)",
+			taskName:   "_farm:milk_cow",
+			wantHidden: true,
+		},
+		{
+			name:       "given internal module, when loaded, then _farm:feed_cow is hidden (why: _ prefix blocks --list)",
+			taskName:   "_farm:feed_cow",
+			wantHidden: true,
+		},
 	}
 	for _, tc := range tests {
-		t.Run("given internal module, when loaded, then task "+tc.taskName+" is hidden (why: _ prefix blocks --list)", func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			// Arrange (tc)
 
 			// Act
