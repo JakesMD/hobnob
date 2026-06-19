@@ -1456,3 +1456,144 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 		t.Fatal("expected error from failed check on preset value, got nil")
 	}
 }
+
+func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
+	// given task with if: that evaluates false, when executed,
+	// then task skipped and no steps run (why: task-level guard prevents execution)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {
+				IfExpr: `[ "{{.ENABLED}}" = "true" ]`,
+				Steps: []config.Step{
+					{Kind: config.KindSet, SetEntries: []config.SetEntry{
+						{Key: "MARKER", ValTmpl: "ran"},
+					}},
+				},
+			},
+		},
+	}
+	vars := map[string]string{"ENABLED": "false"}
+
+	// Act
+	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["MARKER"] == "ran" {
+		t.Error("task should have been skipped but steps executed")
+	}
+}
+
+func TestTaskIf_ConditionTrue_RunsTask(t *testing.T) {
+	// given task with if: that evaluates true, when executed,
+	// then steps run normally (why: guard passes, task proceeds)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"t": {
+				IfExpr: `[ "{{.ENABLED}}" = "true" ]`,
+				Steps: []config.Step{
+					{Kind: config.KindRun, Command: "echo hello"},
+				},
+			},
+		},
+	}
+	vars := map[string]string{"ENABLED": "true"}
+
+	// Act
+	err := ExecuteTask("t", makeScope(vars), cfg, true, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskIf_NoCondition_RunsTask(t *testing.T) {
+	// given task without if:, when executed,
+	// then steps run normally (why: absence of guard means unconditional)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"t": {
+				Steps: []config.Step{
+					{Kind: config.KindRun, Command: "echo hello"},
+				},
+			},
+		},
+	}
+
+	// Act
+	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskIf_TemplateVarsResolved(t *testing.T) {
+	// given task if: referencing scope var, when var matches condition,
+	// then task runs (why: template rendering must work in task-level if:)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"t": {
+				IfExpr: `[ "{{.ENV}}" = "production" ]`,
+				Steps: []config.Step{
+					{Kind: config.KindRun, Command: "echo deploy"},
+				},
+			},
+		},
+	}
+	vars := map[string]string{"ENV": "production"}
+
+	// Act
+	err := ExecuteTask("t", makeScope(vars), cfg, true, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
+	// given task with invalid if: template, when executed,
+	// then returns error (why: malformed conditions must surface, not silently skip)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {
+				IfExpr: `{{.MISSING_CLOSE_BRACE`,
+				Steps: []config.Step{
+					{Kind: config.KindRun, Command: "echo hello"},
+				},
+			},
+		},
+	}
+
+	// Act
+	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error for malformed if condition, got nil")
+	}
+	if !strings.Contains(err.Error(), "task \"t\" if:") {
+		t.Errorf("error should reference task name, got: %v", err)
+	}
+}

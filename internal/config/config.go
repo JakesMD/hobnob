@@ -29,6 +29,7 @@ func normalizeTmpl(s string) string {
 type Task struct {
 	Info   string
 	Dir    string // task-level working directory template
+	IfExpr string
 	Steps  []Step
 	Hidden bool        // true = omit from --list
 	Cfg    *ConfigFile // non-nil = use this cfg for sub-calls (module task)
@@ -188,6 +189,8 @@ func parseTaskNode(n *yaml.Node) (Task, error) {
 		switch n.Content[i].Value {
 		case "info":
 			task.Info = n.Content[i+1].Value
+		case "if":
+			task.IfExpr = n.Content[i+1].Value
 		case "dir":
 			task.Dir = normalizeTmpl(n.Content[i+1].Value)
 		case "steps":

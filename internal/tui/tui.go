@@ -85,6 +85,10 @@ func printGetLine(task, varName, displayVal string) {
 	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(varName+": "+displayVal))
 }
 
+func SkipLine(task string) string {
+	return SInfo.Render("⊘") + " " + TaskPrefix(task) + SInfo.Render("skipped")
+}
+
 func RunDisplayLines(cmd, task, dir string) []string {
 	prefix := TaskPrefix(task)
 	lines := strings.Split(cmd, "\n")

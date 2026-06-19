@@ -72,6 +72,16 @@ func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPr
 	if err != nil {
 		return err
 	}
+	if task.IfExpr != "" {
+		ok, err := eval.EvalCondition(task.IfExpr, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("task %q if: %w", taskName, err)
+		}
+		if !ok {
+			fmt.Println(tui.SkipLine(taskName))
+			return nil
+		}
+	}
 	currentDir := parentDir
 	if task.Dir != "" {
 		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)

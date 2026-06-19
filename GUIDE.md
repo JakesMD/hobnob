@@ -126,6 +126,21 @@ A task is a named sequence of steps. The name prefix controls visibility:
 - **`_` prefix** (e.g. `_compile`) — task is internal. Hidden from `--list`, not
   visible to parent files, only callable via `call`.
 
+### `if:` — conditional execution
+
+A task-level `if:` skips the entire task when the condition exits non-zero.
+Same syntax as step-level `if:` — a shell expression evaluated via `sh -c`.
+
+```yaml
+tasks:
+  deploy:
+    if: '[ "{{.ENV}}" = "production" ]'
+    steps:
+      - run: ./deploy.sh
+```
+
+When a called task is skipped, execution continues in the caller — no error.
+
 ### `dir:` — working directory
 
 When no `dir:` is set anywhere in the call chain, steps run in the directory of

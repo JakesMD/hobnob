@@ -538,6 +538,24 @@ func TestParseConfig_IfCondition(t *testing.T) {
 	}
 }
 
+func TestParseConfig_TaskIfCondition(t *testing.T) {
+	// Arrange
+	cfg, err := ParseConfig("testdata/task_if.yml")
+
+	// Act + Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	guarded := cfg.Tasks["guarded"]
+	if guarded.IfExpr != `[ "{{.ENABLED}}" = "true" ]` {
+		t.Errorf("guarded task IfExpr: got %q", guarded.IfExpr)
+	}
+	unguarded := cfg.Tasks["unguarded"]
+	if unguarded.IfExpr != "" {
+		t.Errorf("unguarded task should have no IfExpr, got %q", unguarded.IfExpr)
+	}
+}
+
 func TestParseConfig_GlobalVars(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/global_vars.yml")
