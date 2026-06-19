@@ -92,8 +92,8 @@ func TestNoArgsDefaultTaskRuns(t *testing.T) {
 	}
 }
 
-func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
-	// given taskfile with no default task, when run with no args, then shows Tip and Usage (why: guides user when no entry point is defined)
+func TestNoArgsNoDefaultTaskShowsTaskList(t *testing.T) {
+	// given taskfile with no default task, when run with no args and no TTY, then lists tasks (why: non-interactive fallback for task selector)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
@@ -106,7 +106,7 @@ func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  build:\n    steps:\n      - run: echo building\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsNoDefaultTaskShowsTip")
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsNoDefaultTaskShowsTaskList")
 	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
 
 	// Act
@@ -116,11 +116,12 @@ func TestNoArgsNoDefaultTaskShowsTip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
 	}
-	if !strings.Contains(string(out), "Tip:") {
-		t.Errorf("expected output to contain 'Tip:', got: %s", out)
-	}
-	if !strings.Contains(string(out), "Usage:") {
+	outStr := string(out)
+	if !strings.Contains(outStr, "Usage:") {
 		t.Errorf("expected output to contain 'Usage:', got: %s", out)
+	}
+	if !strings.Contains(outStr, "build") {
+		t.Errorf("expected output to contain task name 'build', got: %s", out)
 	}
 }
 
@@ -474,6 +475,71 @@ func TestParseTaskArgs(t *testing.T) {
 				t.Errorf("vars: got %v, want %v", gotVars, tc.wantVars)
 			}
 		})
+	}
+}
+
+func TestSelectFlagNoTTYFallsBackToList(t *testing.T) {
+	// given --select flag with no TTY, when run, then falls back to task list output (why: non-interactive environments must not hang)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "--select"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  build:\n    info: Build it\n    steps:\n      - run: echo building\n  deploy:\n    steps:\n      - run: echo deploying\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestSelectFlagNoTTYFallsBackToList")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "build") {
+		t.Errorf("expected output to contain 'build', got: %s", out)
+	}
+	if !strings.Contains(outStr, "deploy") {
+		t.Errorf("expected output to contain 'deploy', got: %s", out)
+	}
+	if strings.Contains(outStr, "Usage:") {
+		t.Errorf("--select should not show usage text, got: %s", out)
+	}
+}
+
+func TestSelectFlagWithNoInputFallsBackToList(t *testing.T) {
+	// given --select with --no-input, when run, then falls back to task list (why: --no-input must prevent interactive prompts)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "--select", "--no-input"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  build:\n    steps:\n      - run: echo building\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestSelectFlagWithNoInputFallsBackToList")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	if !strings.Contains(string(out), "build") {
+		t.Errorf("expected output to contain 'build', got: %s", out)
 	}
 }
 

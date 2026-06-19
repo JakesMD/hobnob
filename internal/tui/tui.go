@@ -266,6 +266,91 @@ func (m textModel) View() string {
 	return sb.String()
 }
 
+// ── task select model ────────────────────────────────────────────────
+
+type TaskItem struct {
+	Name string
+	Info string
+}
+
+func PromptTaskSelect(tasks []TaskItem) (string, error) {
+	model := taskSelectModel{tasks: tasks}
+	program := tea.NewProgram(model)
+	result, err := program.Run()
+	if err != nil {
+		return "", err
+	}
+	final := result.(taskSelectModel)
+	if final.quit {
+		return "", fmt.Errorf("aborted")
+	}
+	return final.value, nil
+}
+
+type taskSelectModel struct {
+	tasks  []TaskItem
+	cursor int
+	value  string
+	quit   bool
+}
+
+func (m taskSelectModel) Init() tea.Cmd { return nil }
+
+func (m taskSelectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	keyMsg, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch keyMsg.String() {
+	case "ctrl+c", "q":
+		m.quit = true
+		return m, tea.Quit
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.tasks)-1 {
+			m.cursor++
+		}
+	case "enter":
+		m.value = m.tasks[m.cursor].Name
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m taskSelectModel) View() string {
+	if m.value != "" {
+		return ""
+	}
+
+	maxNameLen := 0
+	for _, t := range m.tasks {
+		if len(t.Name) > maxNameLen {
+			maxNameLen = len(t.Name)
+		}
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\nSelect a task to run.\n")
+	for i, t := range m.tasks {
+		if m.cursor == i {
+			sb.WriteString(SArrow.Render("▶ "))
+		} else {
+			sb.WriteString("  ")
+		}
+		if t.Info != "" {
+			pad := strings.Repeat(" ", maxNameLen-len(t.Name))
+			sb.WriteString(t.Name + pad + "  " + SInfo.Render(t.Info) + "\n")
+		} else {
+			sb.WriteString(t.Name + "\n")
+		}
+	}
+	sb.WriteString(SHint.Render("↑↓ move  enter select"))
+	return sb.String()
+}
+
 // ── select model ─────────────────────────────────────────────────────────────
 
 type selectModel struct {

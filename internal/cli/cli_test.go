@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -289,6 +290,75 @@ func TestPrintHelp(t *testing.T) {
 		if !strings.Contains(output, want) {
 			t.Errorf("output missing %q\ngot:\n%s", want, output)
 		}
+	}
+}
+
+func TestCollectSelectableTasks(t *testing.T) {
+	tests := []struct {
+		name      string
+		fixture   string
+		wantNames []string
+		wantInfos []string
+		absentNames []string
+	}{
+		{
+			name:      "given tasks with and without info, when collected, then returns public tasks sorted with rendered info (why: selector needs display data)",
+			fixture:   "testdata/task_info.yml",
+			wantNames: []string{"adopt", "list_animals", "no_info"},
+			wantInfos: []string{"Adopt a cat from the shelter", "List all available animals", ""},
+		},
+		{
+			name:        "given internal tasks, when collected, then underscore-prefixed tasks excluded (why: internal tasks must not appear in selector)",
+			fixture:     "testdata/internal_tasks.yml",
+			wantNames:   []string{"another_public", "public"},
+			absentNames: []string{"_helper"},
+		},
+		{
+			name:      "given no public tasks, when collected, then returns empty slice (why: selector needs empty state)",
+			fixture:   "testdata/no_public_tasks.yml",
+			wantNames: []string{},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			cfg, err := config.ParseConfig(tc.fixture)
+			if err != nil {
+				t.Fatalf("parse error: %v", err)
+			}
+			scope, err := BuildScope(cfg.Vars, nil, "/tmp/taskfile", "/tmp/invocation")
+			if err != nil {
+				t.Fatalf("scope error: %v", err)
+			}
+
+			// Act
+			tasks := CollectSelectableTasks(cfg, scope)
+
+			// Assert
+			var gotNames []string
+			for _, task := range tasks {
+				gotNames = append(gotNames, task.Name)
+			}
+			if len(gotNames) == 0 {
+				gotNames = []string{}
+			}
+			if !reflect.DeepEqual(gotNames, tc.wantNames) {
+				t.Errorf("names: got %v, want %v", gotNames, tc.wantNames)
+			}
+			for i, wantInfo := range tc.wantInfos {
+				if i < len(tasks) && tasks[i].Info != wantInfo {
+					t.Errorf("info[%d]: got %q, want %q", i, tasks[i].Info, wantInfo)
+				}
+			}
+			for _, absent := range tc.absentNames {
+				for _, task := range tasks {
+					if task.Name == absent {
+						t.Errorf("should not contain %q", absent)
+					}
+				}
+			}
+		})
 	}
 }
 

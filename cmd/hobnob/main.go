@@ -11,6 +11,8 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/runner"
 	"hobnob/internal/tui"
+
+	cterm "github.com/charmbracelet/x/term"
 )
 
 var version string // injected at build time via -ldflags="-X main.version=vX.Y.Z"
@@ -87,6 +89,32 @@ func loadConfig(path string, cliVars map[string]string, invDir string) (*config.
 	return cfg, scope, nil
 }
 
+func selectAndRun(scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
+	if noPrompts || !isTerminal() {
+		if showUsage {
+			cli.PrintUsage(os.Stdout, version)
+		}
+		return cli.ListTasks(cfg, scope, os.Stdout)
+	}
+	tasks := cli.CollectSelectableTasks(cfg, scope)
+	if len(tasks) == 0 {
+		fmt.Fprintln(os.Stdout, "No tasks available.")
+		return nil
+	}
+	if showUsage {
+		cli.PrintUsage(os.Stdout, version)
+	}
+	selected, err := tui.PromptTaskSelect(tasks)
+	if err != nil {
+		return err
+	}
+	return execTask(selected, scope, cfg, false, cfg.TaskfileDir)
+}
+
+func isTerminal() bool {
+	return cterm.IsTerminal(os.Stdin.Fd())
+}
+
 func execTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, dir string) error {
 	if err := runner.ExecuteTask(taskName, scope, cfg, noPrompts, dir); err != nil {
 		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
@@ -148,13 +176,12 @@ func run(args []string) error {
 			if err != nil {
 				return err
 			}
+			noPrompts := os.Getenv("CI") != ""
 			if _, ok := cfg.Tasks["default"]; ok {
-				return execTask("default", scope, cfg, os.Getenv("CI") != "", cfg.TaskfileDir)
+				return execTask("default", scope, cfg, noPrompts, cfg.TaskfileDir)
 			}
-			fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
-			return cli.PrintHelp(cfg, scope, os.Stdout, version)
+			return selectAndRun(scope, cfg, noPrompts, true)
 		}
-		fmt.Fprintf(os.Stdout, "Tip: name a task \"default\" to run it when no task is specified.\n\n")
 		cli.PrintUsage(os.Stdout, version)
 		return nil
 	}
@@ -169,15 +196,25 @@ func run(args []string) error {
 		}
 	}
 
-	if args[0] == "--list" || args[0] == "--help" {
+	if args[0] == "--list" || args[0] == "--help" || args[0] == "--select" {
 		cfg, scope, err := loadConfig(taskfilePath, nil, invDir)
 		if err != nil {
 			return err
 		}
-		if args[0] == "--help" {
+		switch args[0] {
+		case "--help":
 			return cli.PrintHelp(cfg, scope, os.Stdout, version)
+		case "--select":
+			noPrompts := os.Getenv("CI") != ""
+			for _, arg := range args[1:] {
+				if arg == "--no-input" {
+					noPrompts = true
+				}
+			}
+			return selectAndRun(scope, cfg, noPrompts, false)
+		default:
+			return cli.ListTasks(cfg, scope, os.Stdout)
 		}
-		return cli.ListTasks(cfg, scope, os.Stdout)
 	}
 
 	taskName := args[0]

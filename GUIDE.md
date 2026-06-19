@@ -23,12 +23,13 @@ fish).
 ### Commands
 
 ```bash
-hobnob                               # run the "default" task (or show help)
+hobnob                               # run the "default" task (or select)
 hobnob deploy                        # run a task
 hobnob deploy ENV=production         # pass runtime variables
 hobnob deploy --no-input             # skip prompts, fail on missing vars
 hobnob --file ops/tasks.yml build    # target a specific file
 hobnob --list                        # list all public tasks
+hobnob --select                      # interactively select a task to run
 hobnob --help                        # show help and available tasks
 hobnob --version                     # print version and exit
 hobnob --upgrade                     # upgrade to the latest release
@@ -46,7 +47,8 @@ tasks:
       - run: echo "Hi!"
 ```
 
-If no `default` task is defined, `hobnob` shows help instead.
+If no `default` task is defined, `hobnob` opens an interactive task selector
+instead. Use `--select` to open the selector even when a `default` task exists.
 
 ### Auto-discovery
 

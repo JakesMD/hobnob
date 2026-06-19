@@ -50,7 +50,7 @@ func CompletionScript(shell string) (string, error) {
   fi
 
   if [[ "$cur" == --* ]]; then
-    compadd -- --file --list --help --no-input --version --upgrade
+    compadd -- --file --list --select --help --no-input --version --upgrade
     return
   fi
 
@@ -95,7 +95,7 @@ compdef _hobnob hobnob
   fi
 
   if [[ "$cur" == --* ]]; then
-    COMPREPLY=($(compgen -W "--file --list --help --no-input --version --upgrade" -- "$cur"))
+    COMPREPLY=($(compgen -W "--file --list --select --help --no-input --version --upgrade" -- "$cur"))
     return
   fi
 
@@ -160,6 +160,7 @@ function __fish_hobnob_tasks
 end
 complete -c hobnob -l file -r -d 'Hobnob file to use'
 complete -c hobnob -f -l list -d 'List all available tasks'
+complete -c hobnob -f -l select -d 'Interactively select a task to run'
 complete -c hobnob -f -l help -d 'Show help'
 complete -c hobnob -f -l no-input -d 'Skip interactive prompts'
 complete -c hobnob -f -l version -d 'Print version and exit'
@@ -225,6 +226,7 @@ func PrintUsage(w io.Writer, version string) {
 Usage:
   hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
   hobnob [--file <path>] --list
+  hobnob [--file <path>] --select
   hobnob [--file <path>] --help
   hobnob --version
   hobnob --upgrade
@@ -232,6 +234,7 @@ Usage:
 Flags:
   --file <path>   Hobnob file to use instead of auto-discovery
   --list          List all available tasks
+  --select        Interactively select a task to run
   --help          Show this help
   --no-input      Skip interactive prompts; fail if a required variable is missing
   --version       Print version and exit
@@ -246,6 +249,26 @@ Docs:
 func PrintHelp(cfg *config.ConfigFile, scope *Scope, w io.Writer, version string) error {
 	PrintUsage(w, version)
 	return ListTasks(cfg, scope, w)
+}
+
+func CollectSelectableTasks(cfg *config.ConfigFile, scope *Scope) []tui.TaskItem {
+	sortedNames := make([]string, len(cfg.TaskNames))
+	copy(sortedNames, cfg.TaskNames)
+	sort.Strings(sortedNames)
+
+	var tasks []tui.TaskItem
+	for _, name := range sortedNames {
+		if strings.HasPrefix(name, "_") {
+			continue
+		}
+		t := cfg.Tasks[name]
+		if t.Hidden {
+			continue
+		}
+		info := listRenderInfo(t.Info, scope.Vars)
+		tasks = append(tasks, tui.TaskItem{Name: name, Info: info})
+	}
+	return tasks
 }
 
 func ListTasks(cfg *config.ConfigFile, scope *Scope, w io.Writer) error {
