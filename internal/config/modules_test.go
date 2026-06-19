@@ -54,6 +54,39 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 	}
 }
 
+func TestLoadModules_InternalTaskNotRegistered(t *testing.T) {
+	// Arrange — public module with _-prefixed task
+	cfg := &ConfigFile{
+		Tasks:       make(map[string]Task),
+		TaskfileDir: "testdata",
+		Modules: []ModuleEntry{
+			{Prefix: "yard", FileTmpl: "modules_yard.yml"},
+		},
+	}
+
+	// Act
+	if err := LoadModules(cfg, map[string]string{}); err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	// Assert
+	t.Run("given public module, when task has _ prefix, then not registered (why: internal tasks stay private to their module)", func(t *testing.T) {
+		if _, ok := cfg.Tasks["yard:_weed"]; ok {
+			t.Error("yard:_weed should not be registered in parent config")
+		}
+	})
+
+	t.Run("given public module, when task has no _ prefix, then registered and visible", func(t *testing.T) {
+		task, ok := cfg.Tasks["yard:clean"]
+		if !ok {
+			t.Fatal("yard:clean not registered")
+		}
+		if task.Hidden {
+			t.Error("yard:clean should not be hidden")
+		}
+	})
+}
+
 func TestLoadModules_ShowFilter(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/modules_parent.yml")

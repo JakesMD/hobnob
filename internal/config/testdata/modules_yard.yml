@@ -13,3 +13,8 @@ tasks:
     info: Do nothing useful
     steps:
       - run: echo "dying"
+
+  _weed:
+    info: Internal weeding task
+    steps:
+      - run: echo "weeding"

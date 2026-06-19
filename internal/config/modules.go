@@ -80,6 +80,10 @@ func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]
 				continue
 			}
 
+			if strings.HasPrefix(taskName, "_") {
+				continue
+			}
+
 			task := modCfg.Tasks[taskName]
 			if task.Cfg == nil {
 				task.Cfg = modCfg
