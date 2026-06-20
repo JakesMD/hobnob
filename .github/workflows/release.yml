@@ -49,6 +49,9 @@ jobs:
         with:
           merge-multiple: true
 
+      - name: Stamp install script version
+        run: sed -i 's/VERSION="${HOBNOB_VERSION:-latest}"/VERSION="${HOBNOB_VERSION:-${{ github.ref_name }}}"/' install.sh
+
       - uses: softprops/action-gh-release@v2
         with:
           files: |
@@ -56,3 +59,18 @@ jobs:
             install.sh
             GUIDE.md
           generate_release_notes: true
+
+  update-major-tag:
+    name: Update major version tag
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Update major version tag
+        run: |
+          major="${GITHUB_REF_NAME%%.*}"
+          git tag -f "$major" "$GITHUB_SHA"
+          git push -f origin "$major"

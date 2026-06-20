@@ -17,8 +17,8 @@ jobs:
       - name: Check
         run: ./hobnob go:check
 
-  install-script:
-    name: Install Script (${{ matrix.runner }})
+  test-install-script:
+    name: Test Install Script (${{ matrix.runner }})
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
@@ -38,3 +38,17 @@ jobs:
 
       - name: Verify binary
         run: PATH="$HOME/.local/bin:$PATH" hobnob go:verify
+
+  test-setup-action:
+    name: Test Setup Action (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner:
+          - ubuntu-latest # linux/amd64
+          - ubuntu-24.04-arm # linux/arm64
+          - macos-latest # darwin/arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./

@@ -94,6 +94,25 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 Everything you need to know to write your first file is right here in the
 [hobnob guide](GUIDE.md).
 
+## 🤖 GitHub Action
+
+Add hobnob to any workflow:
+
+```yaml
+steps:
+  - uses: jakesmd/hobnob@v0
+
+  - run: hobnob deploy
+```
+
+Pin a specific version:
+
+```yaml
+  - uses: jakesmd/hobnob@v0
+    with:
+      version: v0.2.3
+```
+
 ## 🤝 Contributing
 
 Got ideas or fixes? Check out the [Contributing guide](CONTRIBUTING.md) to see

@@ -3,6 +3,7 @@ set -euo pipefail
 
 GITHUB_REPO="jakesmd/hobnob"
 INSTALL_DIR="${HOBNOB_INSTALL_DIR:-$HOME/.local/bin}"
+VERSION="${HOBNOB_VERSION:-latest}" # stamped at release time
 
 _detect_os() {
     case "$(uname -s)" in
@@ -47,18 +48,28 @@ _build_from_source() {
     echo "Installed: $INSTALL_DIR/hobnob"
 }
 
+_resolve_version() {
+    if [[ "$VERSION" == "latest" ]]; then
+        curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" \
+            | grep '"tag_name"' | sed 's/.*: "//;s/".*//'
+    else
+        echo "$VERSION"
+    fi
+}
+
 _download() {
-    local os arch url tmp
+    local os arch tag url tmp
     os="$(_detect_os)"
     arch="$(_detect_arch)"
     if [[ "$os" == "darwin" && "$arch" == "amd64" ]]; then
         echo "error: macOS amd64 is not supported; arm64 only" >&2
         exit 1
     fi
-    url="https://github.com/${GITHUB_REPO}/releases/latest/download/hobnob_${os}_${arch}.tar.gz"
+    tag="$(_resolve_version)"
+    url="https://github.com/${GITHUB_REPO}/releases/download/${tag}/hobnob_${os}_${arch}.tar.gz"
     tmp="$(mktemp -d)"
 
-    echo "Downloading hobnob (${os}/${arch})..."
+    echo "Downloading hobnob ${tag} (${os}/${arch})..."
     curl -fsSL "$url" | tar -xz -C "$tmp"
     install -m755 "$tmp/hobnob" "$INSTALL_DIR/hobnob"
     rm -rf "$tmp"
@@ -130,9 +141,11 @@ main() {
     echo ""
     echo "$("$INSTALL_DIR/hobnob" --version) installed."
 
-    local shell
-    shell="$(_detect_shell)"
-    _setup_shell "$shell"
+    if [[ "${CI:-}" != "true" ]]; then
+        local shell
+        shell="$(_detect_shell)"
+        _setup_shell "$shell"
+    fi
 
     echo ""
     echo "Done. hobnob installed to $INSTALL_DIR/hobnob"

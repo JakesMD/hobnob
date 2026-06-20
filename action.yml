@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-action.json
+name: Setup hobnob
+description: Download and install the hobnob CLI.
+
+inputs:
+  version:
+    description: "Version to install (e.g. v0.3.0). Defaults to latest."
+    required: false
+    default: latest
+
+runs:
+  using: composite
+  steps:
+    - name: Install hobnob
+      shell: bash
+      env:
+        HOBNOB_INSTALL_DIR: ${{ runner.temp }}
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          url="https://github.com/jakesmd/hobnob/releases/latest/download/install.sh"
+        else
+          url="https://github.com/jakesmd/hobnob/releases/download/${VERSION}/install.sh"
+        fi
+        tmp="$(mktemp -d)"
+        curl -fsSL "$url" -o "$tmp/install.sh"
+        cd "$tmp" && bash install.sh
+        rm -rf "$tmp"
+
+    - name: Add to PATH
+      shell: bash
+      run: echo "${{ runner.temp }}" >> "$GITHUB_PATH"
+
+    - name: Verify
+      shell: bash
+      run: hobnob --version
