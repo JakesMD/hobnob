@@ -101,16 +101,10 @@ Add hobnob to any workflow:
 ```yaml
 steps:
   - uses: jakesmd/hobnob@v0
+    with: # Pin a specific version (optional)
+      version: v0.2.3
 
   - run: hobnob deploy
-```
-
-Pin a specific version:
-
-```yaml
-  - uses: jakesmd/hobnob@v0
-    with:
-      version: v0.2.3
 ```
 
 ## 🤝 Contributing
