@@ -1,0 +1,14 @@
+tasks:
+  no-prompts:
+    interactive: false
+    steps:
+      - run: echo "ran"
+
+  with-prompts:
+    interactive: true
+    steps:
+      - run: echo "ran"
+
+  default-input:
+    steps:
+      - run: echo "ran"

@@ -1457,6 +1457,143 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	}
 }
 
+func boolPtr(b bool) *bool { return &b }
+
+func TestTaskInput_False_SkipsPrompts(t *testing.T) {
+	// given task with input: false and get step with default,
+	// when executed with noPrompts=false,
+	// then get step uses default without prompting (why: task-level input overrides CLI flag)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"t": {
+				Interactive: boolPtr(false),
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "FOO", Info: "Enter foo", DefaultTmpl: "bar"},
+					}},
+				},
+			},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask("t", makeScope(vars), cfg, false, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["FOO"] != "bar" {
+		t.Errorf("FOO: want %q, got %q", "bar", vars["FOO"])
+	}
+}
+
+func TestTaskInput_False_PropagesToSubTasks(t *testing.T) {
+	// given parent task with input: false calling child task with get step,
+	// when executed, then child task also skips prompts
+	// (why: input: false propagates down the entire call chain)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"parent": {
+				Interactive: boolPtr(false),
+				Steps: []config.Step{
+					{Kind: config.KindCall, CallTarget: "child"},
+				},
+			},
+			"child": {
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "FOO", Info: "Enter foo", DefaultTmpl: "default-val"},
+					}},
+				},
+			},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask("parent", makeScope(vars), cfg, false, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskInput_False_OnChildOnly(t *testing.T) {
+	// given parent without input set calling child with input: false,
+	// when executed with noPrompts=true (to avoid actual prompting in test),
+	// then child skips prompts (why: child's own input: false takes effect)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"parent": {
+				Steps: []config.Step{
+					{Kind: config.KindCall, CallTarget: "child"},
+				},
+			},
+			"child": {
+				Interactive: boolPtr(false),
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "FOO", Info: "Enter foo", DefaultTmpl: "from-child"},
+					}},
+				},
+			},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask("parent", makeScope(vars), cfg, true, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTaskInput_False_NoDefault_ReturnsError(t *testing.T) {
+	// given task with input: false and get step without default,
+	// when executed, then returns error (why: can't satisfy prompt without interaction)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"t": {
+				Interactive: boolPtr(false),
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "FOO", Info: "Enter foo"},
+					}},
+				},
+			},
+		},
+	}
+
+	// Act
+	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, false, dir)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
 func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
 	// given task with if: that evaluates false, when executed,
 	// then task skipped and no steps run (why: task-level guard prevents execution)

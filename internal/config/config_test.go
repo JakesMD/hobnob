@@ -556,6 +556,31 @@ func TestParseConfig_TaskIfCondition(t *testing.T) {
 	}
 }
 
+func TestParseConfig_TaskInput(t *testing.T) {
+	// Arrange
+	cfg, err := ParseConfig("testdata/task_input.yml")
+
+	// Act + Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+
+	noPrompts := cfg.Tasks["no-prompts"]
+	if noPrompts.Interactive == nil || *noPrompts.Interactive != false {
+		t.Errorf("no-prompts task Input: want false, got %v", noPrompts.Interactive)
+	}
+
+	withPrompts := cfg.Tasks["with-prompts"]
+	if withPrompts.Interactive == nil || *withPrompts.Interactive != true {
+		t.Errorf("with-prompts task Input: want true, got %v", withPrompts.Interactive)
+	}
+
+	defaultInput := cfg.Tasks["default-input"]
+	if defaultInput.Interactive != nil {
+		t.Errorf("default-input task Input: want nil, got %v", defaultInput.Interactive)
+	}
+}
+
 func TestParseConfig_GlobalVars(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/global_vars.yml")

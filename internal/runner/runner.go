@@ -72,6 +72,9 @@ func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPr
 	if err != nil {
 		return err
 	}
+	if task.Interactive != nil && !*task.Interactive {
+		noPrompts = true
+	}
 	if task.IfExpr != "" {
 		ok, err := eval.EvalCondition(task.IfExpr, scope.Vars)
 		if err != nil {

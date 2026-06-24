@@ -30,6 +30,7 @@ type Task struct {
 	Info   string
 	Dir    string // task-level working directory template
 	IfExpr string
+	Interactive *bool
 	Steps  []Step
 	Hidden bool        // true = omit from --list
 	Cfg    *ConfigFile // non-nil = use this cfg for sub-calls (module task)
@@ -193,6 +194,9 @@ func parseTaskNode(n *yaml.Node) (Task, error) {
 			task.IfExpr = n.Content[i+1].Value
 		case "dir":
 			task.Dir = normalizeTmpl(n.Content[i+1].Value)
+		case "interactive":
+			v := n.Content[i+1].Value == "true"
+			task.Interactive = &v
 		case "steps":
 			steps, err := parseStepSequence(n.Content[i+1])
 			if err != nil {

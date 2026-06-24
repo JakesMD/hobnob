@@ -128,8 +128,8 @@ A task is a named sequence of steps. The name prefix controls visibility:
 
 ### `if:` — conditional execution
 
-A task-level `if:` skips the entire task when the condition exits non-zero.
-Same syntax as step-level `if:` — a shell expression evaluated via `sh -c`.
+A task-level `if:` skips the entire task when the condition exits non-zero. Same
+syntax as step-level `if:` — a shell expression evaluated via `sh -c`.
 
 ```yaml
 tasks:
@@ -140,6 +140,26 @@ tasks:
 ```
 
 When a called task is skipped, execution continues in the caller — no error.
+
+### `interactive:` — disable prompts
+
+A task-level `interactive: false` disables all `get:` prompts for that task and
+every task it calls (the entire sub-tree). Prompts with a `default:` use it
+automatically; required prompts without a default abort with an error. Same
+behavior as `--no-input`, scoped to one task.
+
+```yaml
+tasks:
+  deploy:
+    interactive: false
+    steps:
+      - get:
+          - ENV:
+              default: staging # used automatically
+      - call: _setup # also runs with prompts disabled
+```
+
+Once disabled, prompts stay disabled — a called task cannot re-enable them.
 
 ### `dir:` — working directory
 
