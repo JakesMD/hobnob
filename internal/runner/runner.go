@@ -358,6 +358,10 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 }
 
 func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.ConfigFile, noPrompts bool) error {
+	if s.Interactive != nil && !*s.Interactive {
+		noPrompts = true
+	}
+
 	taskName, err := eval.EvalTemplate(s.CallTarget, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("call target template: %w", err)

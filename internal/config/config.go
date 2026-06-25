@@ -108,6 +108,7 @@ type Step struct {
 	CallVars    []SetEntry
 	IntoEntries []IntoEntry
 	Soft        bool
+	Interactive *bool
 
 	// KindFor
 	ForTarget string
@@ -298,6 +299,9 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 			s.IntoEntries = entries
 		case "soft":
 			s.Soft = fieldVal.Value == "true"
+		case "interactive":
+			v := fieldVal.Value == "true"
+			s.Interactive = &v
 		case "dir":
 			s.DirTmpl = normalizeTmpl(fieldVal.Value)
 		case "steps":

@@ -1594,6 +1594,79 @@ func TestTaskInput_False_NoDefault_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestCallStep_Interactive_False_DisablesPrompts(t *testing.T) {
+	// given call step with interactive: false,
+	// when child task has get step with default,
+	// then uses default without prompting (why: step-level interactive overrides for that sub-tree)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"parent": {
+				Steps: []config.Step{
+					{Kind: config.KindCall, CallTarget: "child", Interactive: boolPtr(false)},
+				},
+			},
+			"child": {
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "FOO", Info: "Enter foo", DefaultTmpl: "silent-val"},
+					}},
+				},
+			},
+		},
+	}
+
+	// Act
+	err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, false, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCallStep_Interactive_False_PropagatesDown(t *testing.T) {
+	// given call step with interactive: false calling task that calls another task,
+	// when grandchild has get step, then grandchild also skips prompts
+	// (why: interactive: false on call step propagates through entire sub-tree)
+
+	// Arrange
+	dir := t.TempDir()
+	cfg := &config.ConfigFile{
+		TaskfileDir: dir,
+		Tasks: map[string]config.Task{
+			"root": {
+				Steps: []config.Step{
+					{Kind: config.KindCall, CallTarget: "mid", Interactive: boolPtr(false)},
+				},
+			},
+			"mid": {
+				Steps: []config.Step{
+					{Kind: config.KindCall, CallTarget: "leaf"},
+				},
+			},
+			"leaf": {
+				Steps: []config.Step{
+					{Kind: config.KindGet, GetEntries: []config.GetEntry{
+						{VarName: "X", Info: "val", DefaultTmpl: "deep"},
+					}},
+				},
+			},
+		},
+	}
+
+	// Act
+	err := ExecuteTask("root", makeScope(map[string]string{}), cfg, false, dir)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
 	// given task with if: that evaluates false, when executed,
 	// then task skipped and no steps run (why: task-level guard prevents execution)
