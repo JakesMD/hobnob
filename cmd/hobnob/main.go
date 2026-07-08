@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
@@ -89,7 +92,7 @@ func loadConfig(path string, cliVars map[string]string, invDir string) (*config.
 	return cfg, scope, nil
 }
 
-func selectAndRun(scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
+func selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
 	if noPrompts || !isTerminal() {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, version)
@@ -104,19 +107,23 @@ func selectAndRun(scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, show
 	if showUsage {
 		cli.PrintUsage(os.Stdout, version)
 	}
-	selected, err := tui.PromptTaskSelect(tasks)
+	selected, err := tui.PromptTaskSelect(ctx, tasks)
 	if err != nil {
 		return err
 	}
-	return execTask(selected, scope, cfg, false, cfg.TaskfileDir)
+	return execTask(ctx, selected, scope, cfg, false, cfg.TaskfileDir)
 }
 
 func isTerminal() bool {
 	return cterm.IsTerminal(os.Stdin.Fd())
 }
 
-func execTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if err := runner.ExecuteTask(taskName, scope, cfg, noPrompts, dir); err != nil {
+func execTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, dir string) error {
+	if err := runner.ExecuteTask(ctx, taskName, scope, cfg, noPrompts, dir); err != nil {
+		if errors.Is(err, runner.ErrInterrupted) {
+			fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render("interrupted"))
+			return errSilent
+		}
 		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
 		return errSilent
 	}
@@ -124,7 +131,7 @@ func execTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPromp
 	return nil
 }
 
-func run(args []string) error {
+func run(ctx context.Context, args []string) error {
 	fileFlag, args, err := extractFileFlag(args)
 	if err != nil {
 		return err
@@ -178,9 +185,9 @@ func run(args []string) error {
 			}
 			noPrompts := os.Getenv("CI") != ""
 			if _, ok := cfg.Tasks["default"]; ok {
-				return execTask("default", scope, cfg, noPrompts, cfg.TaskfileDir)
+				return execTask(ctx, "default", scope, cfg, noPrompts, cfg.TaskfileDir)
 			}
-			return selectAndRun(scope, cfg, noPrompts, true)
+			return selectAndRun(ctx, scope, cfg, noPrompts, true)
 		}
 		cli.PrintUsage(os.Stdout, version)
 		return nil
@@ -211,7 +218,7 @@ func run(args []string) error {
 					noPrompts = true
 				}
 			}
-			return selectAndRun(scope, cfg, noPrompts, false)
+			return selectAndRun(ctx, scope, cfg, noPrompts, false)
 		default:
 			return cli.ListTasks(cfg, scope, os.Stdout)
 		}
@@ -228,11 +235,40 @@ func run(args []string) error {
 		return err
 	}
 
-	return execTask(taskName, scope, cfg, noPrompts, cfg.TaskfileDir)
+	return execTask(ctx, taskName, scope, cfg, noPrompts, cfg.TaskfileDir)
 }
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
+	// signal.NotifyContext's stop() does restore the OS-default disposition
+	// (go doc os/signal.NotifyContext) — a 2nd CTRL+C after stop() would go
+	// back to killing hobnob outright, not get swallowed. But that default
+	// termination happens before we'd get a chance to clean up: a run: step
+	// that's ignoring the graceful SIGTERM needs a harder signal sent to its
+	// process group first. Track both presses explicitly instead: the 1st
+	// cancels ctx for a graceful shutdown, the 2nd force-kills any stuck
+	// step's process group before exiting.
+	sigCh := make(chan os.Signal, 2)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-sigCh
+		fmt.Fprintln(os.Stderr, tui.SStep.Render("!")+" shutting down, press CTRL+C again to force")
+		cancel()
+		<-sigCh
+		// ctx cancellation already asked the running step to terminate
+		// gracefully (SIGTERM to its own process group) and, if hobnob is
+		// blocked on a get: prompt instead, already unblocks that prompt too
+		// (see tea.WithContext in tui.PromptText/PromptSelect). Only force-exit
+		// here if a step is actually running and might be ignoring SIGTERM —
+		// otherwise let run() return and unwind normally, so bubbletea gets to
+		// restore the terminal before the process exits instead of racing an
+		// unconditional os.Exit against its (async) teardown.
+		if runner.KillRunningStep() {
+			os.Exit(1)
+		}
+	}()
+
+	if err := run(ctx, os.Args[1:]); err != nil {
 		if !errors.Is(err, errSilent) {
 			fmt.Fprintln(os.Stderr, "error:", err)
 		}

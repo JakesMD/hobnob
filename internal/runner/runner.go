@@ -2,13 +2,16 @@ package runner
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	osExec "os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
@@ -19,6 +22,43 @@ import (
 // promptTextFn and promptSelectFn are package-level so tests can substitute fakes.
 var promptTextFn = tui.PromptText
 var promptSelectFn = tui.PromptSelect
+
+// ErrInterrupted is returned (wrapped) when a run: step's command is cut short
+// by ctx cancellation (first CTRL+C), so callers can distinguish a graceful
+// shutdown from an ordinary command failure.
+var ErrInterrupted = errors.New("interrupted")
+
+// wrapPromptErr classifies a promptTextFn/promptSelectFn error: one caused by
+// ctx cancellation (the prompt was torn down mid-input, e.g. a SIGTERM
+// arriving while a get: step is blocked waiting on the user) becomes
+// ErrInterrupted so callers treat it like any other graceful-shutdown exit,
+// rather than an ordinary "aborted" prompt failure.
+func wrapPromptErr(varName string, err error) error {
+	if tui.IsInterrupted(err) {
+		return fmt.Errorf("%w: %v", ErrInterrupted, err)
+	}
+	return fmt.Errorf("get %s: %w", varName, err)
+}
+
+// runningStepMu guards runningStepPID. execRun clears the PID and
+// KillRunningStep reads-and-signals it under the same lock so a 2nd CTRL+C
+// racing the exact instant a step finishes can't act on a stale PID that the
+// OS has since reused for an unrelated process (see setRunningPID /
+// clearRunningPID / KillRunningStep in the platform-specific files).
+var runningStepMu sync.Mutex
+var runningStepPID int
+
+func setRunningPID(pid int) {
+	runningStepMu.Lock()
+	runningStepPID = pid
+	runningStepMu.Unlock()
+}
+
+func clearRunningPID() {
+	runningStepMu.Lock()
+	runningStepPID = 0
+	runningStepMu.Unlock()
+}
 
 // resolveDirPath returns dir as-is if absolute, else joins it with taskfileDir.
 func resolveDirPath(dir, taskfileDir string) string {
@@ -67,7 +107,7 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; execCall passes the resolved child dir.
-func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
 	task, execCfg, err := resolveTask(taskName, cfg)
 	if err != nil {
 		return err
@@ -93,11 +133,14 @@ func ExecuteTask(taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPr
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
-	return executeSteps(task.Steps, scope, execCfg, taskName, noPrompts, currentDir)
+	return executeSteps(ctx, task.Steps, scope, execCfg, taskName, noPrompts, currentDir)
 }
 
-func executeSteps(steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	for _, s := range steps {
+		if ctx.Err() != nil {
+			return fmt.Errorf("%w: %v", ErrInterrupted, ctx.Err())
+		}
 		if s.IfExpr != "" {
 			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars)
 			if err != nil {
@@ -111,18 +154,18 @@ func executeSteps(steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile,
 		var err error
 		switch s.Kind {
 		case config.KindRun:
-			err = execRun(s, scope, task, cfg.TaskfileDir, currentDir)
+			err = execRun(ctx, s, scope, task, cfg.TaskfileDir, currentDir)
 		case config.KindSet:
 			err = execSet(s, scope)
 		case config.KindCall:
-			err = execCall(s, scope, currentDir, cfg, noPrompts)
-			if err != nil && s.Soft {
+			err = execCall(ctx, s, scope, currentDir, cfg, noPrompts)
+			if err != nil && s.Soft && !errors.Is(err, ErrInterrupted) {
 				err = nil
 			}
 		case config.KindFor:
-			err = execFor(s, scope, cfg, task, noPrompts, currentDir)
+			err = execFor(ctx, s, scope, cfg, task, noPrompts, currentDir)
 		case config.KindGet:
-			err = execGet(s, scope, task, noPrompts)
+			err = execGet(ctx, s, scope, task, noPrompts)
 		}
 		if err != nil {
 			return err
@@ -131,7 +174,7 @@ func executeSteps(steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile,
 	return nil
 }
 
-func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir string) error {
+func execRun(ctx context.Context, s config.Step, scope *cli.Scope, task, taskfileDir, currentDir string) error {
 	cmd, err := eval.EvalTemplate(s.Command, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("run template: %w", err)
@@ -154,7 +197,17 @@ func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir stri
 	prefix := tui.TaskPrefix(task)
 	stdoutLW := tui.NewLineWriter(os.Stdout, prefix)
 	stderrLW := tui.NewLineWriter(os.Stderr, prefix)
-	shellCmd := osExec.Command("sh", "-c", cmd)
+	shellCmd := osExec.CommandContext(ctx, "sh", "-c", cmd)
+	// setProcAttr (unix) puts sh in its own process group so cancelFunc can
+	// signal the whole group — otherwise SIGTERM only reaches sh itself,
+	// leaving any children it forked (multi-command scripts, pipelines,
+	// background jobs) running. No-op on windows, which has no process
+	// groups in this sense.
+	setProcAttr(shellCmd)
+	shellCmd.Cancel = cancelFunc(shellCmd)
+	// No WaitDelay: graceful shutdown waits for the step to exit on its own
+	// timeline, however long that takes. A step that ignores SIGTERM only
+	// stops via a 2nd CTRL+C, handled by KillRunningStep below.
 	shellCmd.Dir = runDir
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -184,10 +237,18 @@ func execRun(s config.Step, scope *cli.Scope, task, taskfileDir, currentDir stri
 	for varName, varValue := range scope.Vars {
 		shellCmd.Env = append(shellCmd.Env, varName+"="+varValue)
 	}
-	err = shellCmd.Run()
+	err = shellCmd.Start()
+	if err == nil {
+		setRunningPID(shellCmd.Process.Pid)
+		err = shellCmd.Wait()
+		clearRunningPID()
+	}
 	stdoutLW.Flush()
 	stderrLW.Flush()
 	if err != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("%w: %v", ErrInterrupted, err)
+		}
 		return err
 	}
 
@@ -215,16 +276,16 @@ func execSet(s config.Step, scope *cli.Scope) error {
 	return nil
 }
 
-func execGet(s config.Step, scope *cli.Scope, task string, noPrompts bool) error {
+func execGet(ctx context.Context, s config.Step, scope *cli.Scope, task string, noPrompts bool) error {
 	for _, e := range s.GetEntries {
-		if err := execGetEntry(e, scope, task, noPrompts); err != nil {
+		if err := execGetEntry(ctx, e, scope, task, noPrompts); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func execGetEntry(e config.GetEntry, scope *cli.Scope, task string, noPrompts bool) error {
+func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task string, noPrompts bool) error {
 	if _, exists := scope.Vars[e.VarName]; exists {
 		if e.Secret {
 			scope.Secrets[e.VarName] = true
@@ -282,9 +343,9 @@ func execGetEntry(e config.GetEntry, scope *cli.Scope, task string, noPrompts bo
 	var val string
 	if len(fromItems) > 0 {
 		for {
-			val, err = promptSelectFn(e.VarName, info, fromItems, e.Multi, defaultVal, task, e.Secret)
+			val, err = promptSelectFn(ctx, e.VarName, info, fromItems, e.Multi, defaultVal, task, e.Secret)
 			if err != nil {
-				return fmt.Errorf("get %s: %w", e.VarName, err)
+				return wrapPromptErr(e.VarName, err)
 			}
 			if e.Check == "" || (e.Optional && val == "") {
 				break
@@ -300,9 +361,9 @@ func execGetEntry(e config.GetEntry, scope *cli.Scope, task string, noPrompts bo
 			}
 		}
 	} else {
-		val, err = promptTextFn(info, e.Check, e.VarName, scope.Vars, defaultVal, task, e.Secret, e.Optional)
+		val, err = promptTextFn(ctx, info, e.Check, e.VarName, scope.Vars, defaultVal, task, e.Secret, e.Optional)
 		if err != nil {
-			return fmt.Errorf("get %s: %w", e.VarName, err)
+			return wrapPromptErr(e.VarName, err)
 		}
 	}
 
@@ -357,7 +418,7 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 	return nil
 }
 
-func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.ConfigFile, noPrompts bool) error {
+func execCall(ctx context.Context, s config.Step, scope *cli.Scope, parentDir string, cfg *config.ConfigFile, noPrompts bool) error {
 	if s.Interactive != nil && !*s.Interactive {
 		noPrompts = true
 	}
@@ -388,10 +449,10 @@ func execCall(s config.Step, scope *cli.Scope, parentDir string, cfg *config.Con
 			return fmt.Errorf("call dir template: %w", err)
 		}
 		childDir := resolveDirPath(resolved, cfg.TaskfileDir)
-		callErr = executeSteps(task.Steps, childScope, execCfg, taskName, noPrompts, childDir)
+		callErr = executeSteps(ctx, task.Steps, childScope, execCfg, taskName, noPrompts, childDir)
 	} else {
 		// Priority B (task-level dir) or C (inherit parentDir) — handled inside ExecuteTask
-		callErr = ExecuteTask(taskName, childScope, cfg, noPrompts, parentDir)
+		callErr = ExecuteTask(ctx, taskName, childScope, cfg, noPrompts, parentDir)
 	}
 	if callErr != nil {
 		return fmt.Errorf("call %s: %w", taskName, callErr)
@@ -432,9 +493,9 @@ func scopeSaveRestore(vars map[string]string, name string) func() {
 	}
 }
 
-func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execFor(ctx context.Context, s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	if len(s.ForMatrix) > 0 {
-		return execForMatrix(s.ForMatrix, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+		return execForMatrix(ctx, s.ForMatrix, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
 	}
 
 	items, err := eval.ResolveFromItems(s.ForList, s.ForTarget, scope.Vars, "loop")
@@ -447,7 +508,7 @@ func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task strin
 	restoreItem := scopeSaveRestore(scope.Vars, "ITEM")
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
-		if err := executeSteps(s.ForSteps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := executeSteps(ctx, s.ForSteps, scope, cfg, task, noPrompts, currentDir); err != nil {
 			restoreItem()
 			return err
 		}
@@ -456,7 +517,7 @@ func execFor(s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task strin
 	return nil
 }
 
-func execForMatrix(matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execForMatrix(ctx context.Context, matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	varNames := make([]string, len(matrix))
 	itemLists := make([][]string, len(matrix))
 	for i, entry := range matrix {
@@ -467,18 +528,18 @@ func execForMatrix(matrix []config.ForMatrixEntry, steps []config.Step, scope *c
 		varNames[i] = entry.VarName
 		itemLists[i] = items
 	}
-	return execCartesian(varNames, itemLists, 0, steps, scope, cfg, task, noPrompts, currentDir)
+	return execCartesian(ctx, varNames, itemLists, 0, steps, scope, cfg, task, noPrompts, currentDir)
 }
 
-func execCartesian(varNames []string, itemLists [][]string, idx int, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execCartesian(ctx context.Context, varNames []string, itemLists [][]string, idx int, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	if idx == len(varNames) {
-		return executeSteps(steps, scope, cfg, task, noPrompts, currentDir)
+		return executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir)
 	}
 	name := varNames[idx]
 	restore := scopeSaveRestore(scope.Vars, name)
 	for _, item := range itemLists[idx] {
 		scope.Vars[name] = item
-		if err := execCartesian(varNames, itemLists, idx+1, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := execCartesian(ctx, varNames, itemLists, idx+1, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
 			restore()
 			return err
 		}

@@ -40,6 +40,12 @@ to force the selector even when a default exists.
 for `hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same
 directory.
 
+**Stopping a run** — CTRL+C (or `SIGTERM`) starts a graceful shutdown: the
+currently running `run:` step is sent a termination signal and hobnob waits for
+it to exit on its own, however long that takes; no further steps start. Press
+CTRL+C again (or send a 2nd signal) to force-kill the running step immediately
+instead of waiting.
+
 ---
 
 ## File structure
@@ -74,9 +80,10 @@ modules:
       flatten: true
 ```
 
-**Namespaces** — imported tasks are prefixed with their module key (`call:
-docker:build`). A `_` prefix makes the module internal — its tasks are hidden
-from `--list` and parent files.
+**Namespaces** — imported tasks are prefixed with their module key
+(`call:
+docker:build`). A `_` prefix makes the module internal — its tasks are
+hidden from `--list` and parent files.
 
 **Filters** — `show:` whitelists, `hide:` blacklists which tasks to import.
 
@@ -95,8 +102,8 @@ task internal — hidden from `--list` and parent files, only callable via `call
 
 ### `if:` — conditional execution
 
-Skips the entire task when the shell condition exits non-zero. When a called task
-is skipped, execution continues in the caller — no error.
+Skips the entire task when the shell condition exits non-zero. When a called
+task is skipped, execution continues in the caller — no error.
 
 ```yaml
 tasks:
@@ -137,8 +144,8 @@ anywhere, steps run in the hobnob file's directory.
 
 - **Task `dir:`** — sets the working directory for all `run` steps and is
   inherited down the call chain, unless a descendant declares its own.
-- **Call step `dir:`** — overrides the called task's own `dir:` and becomes
-  the inherited directory for its descendants.
+- **Call step `dir:`** — overrides the called task's own `dir:` and becomes the
+  inherited directory for its descendants.
 - **Run step `dir:`** — overrides for that one step only.
 
 ```yaml
@@ -146,12 +153,12 @@ tasks:
   deploy:
     dir: ./infra
     steps:
-      - run: terraform apply          # runs in ./infra
+      - run: terraform apply # runs in ./infra
       - run: go test ./...
-        dir: ../tests                 # only this step runs in ../tests
-      - call: _verify                 # inherits ./infra
+        dir: ../tests # only this step runs in ../tests
+      - call: _verify # inherits ./infra
       - call: _verify
-        dir: ./staging                # overrides _verify's own dir:
+        dir: ./staging # overrides _verify's own dir:
 ```
 
 ---
@@ -352,7 +359,8 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 
 ## Best practices
 
-- **Task names** — use kebab-case (`deploy-production`, not `deploy_production`).
+- **Task names** — use kebab-case (`deploy-production`, not
+  `deploy_production`).
 - **Variable names** — use `ALL_CAPS` with underscores.
 - **Field ordering** — put `info:` before `steps:` in tasks, and `info:` first
   in `get:` entries.

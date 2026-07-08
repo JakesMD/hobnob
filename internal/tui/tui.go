@@ -2,7 +2,9 @@ package tui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -13,6 +15,13 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// IsInterrupted reports whether err came from a prompt's tea.Program being
+// torn down by ctx cancellation (see WithContext below), rather than the user
+// declining the prompt normally.
+func IsInterrupted(err error) bool {
+	return errors.Is(err, tea.ErrProgramKilled)
+}
 
 var (
 	SLabel   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
@@ -107,7 +116,7 @@ func RunDisplayLines(cmd, task, dir string) []string {
 	return result
 }
 
-func PromptText(info, check, varName string, vars map[string]string, defaultVal string, task string, secret bool, optional bool) (string, error) {
+func PromptText(ctx context.Context, info, check, varName string, vars map[string]string, defaultVal string, task string, secret bool, optional bool) (string, error) {
 	ti := textinput.New()
 	ti.Prompt = SArrow.Render("› ")
 	if secret {
@@ -127,7 +136,7 @@ func PromptText(info, check, varName string, vars map[string]string, defaultVal 
 		secret:     secret,
 		optional:   optional,
 	}
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
 		return "", err
@@ -168,9 +177,9 @@ func newSelectModel(varName, info string, items []string, multi bool, defaultVal
 	}
 }
 
-func PromptSelect(varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
+func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
 	model := newSelectModel(varName, info, items, multi, defaultVal)
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
 		return "", err
@@ -277,9 +286,9 @@ type TaskItem struct {
 	Info string
 }
 
-func PromptTaskSelect(tasks []TaskItem) (string, error) {
+func PromptTaskSelect(ctx context.Context, tasks []TaskItem) (string, error) {
 	model := taskSelectModel{tasks: tasks}
-	program := tea.NewProgram(model)
+	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
 		return "", err

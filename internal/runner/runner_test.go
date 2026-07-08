@@ -1,11 +1,14 @@
 package runner
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
@@ -169,7 +172,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			vars := copyVars(tc.vars)
 
 			// Act
-			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -274,7 +277,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			vars := copyVars(tc.vars)
 
 			// Act
-			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -455,7 +458,7 @@ func TestExecSet_SecretFlag(t *testing.T) {
 			secrets := make(map[string]bool)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: map[string]string{}, Secrets: secrets}, cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", &cli.Scope{Vars: map[string]string{}, Secrets: secrets}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -514,7 +517,7 @@ func TestExecGet_SecretFlag_NoInput(t *testing.T) {
 			secrets := make(map[string]bool)
 
 			// Act
-			err := ExecuteTask("t", &cli.Scope{Vars: vars, Secrets: secrets}, cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", &cli.Scope{Vars: vars, Secrets: secrets}, cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -617,7 +620,7 @@ func TestExecFor_Matrix(t *testing.T) {
 			vars := copyVars(tc.initVars)
 
 			// Act
-			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -693,7 +696,7 @@ func TestExecFor_String(t *testing.T) {
 			vars := copyVars(tc.initVars)
 
 			// Act
-			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if err != nil {
@@ -728,7 +731,7 @@ func captureRunDir(t *testing.T, step config.Step, taskfileDir, parentDir string
 		},
 		TaskfileDir: taskfileDir,
 	}
-	if err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
+	if err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 	data, err := os.ReadFile(outFile)
@@ -855,7 +858,7 @@ func TestRunInto(t *testing.T) {
 			vars := map[string]string{}
 
 			// Act
-			err := ExecuteTask("t", makeScope(vars), cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 			// Assert
 			if tc.wantErr != "" {
@@ -930,7 +933,7 @@ func TestDir_CallStep_Priorities(t *testing.T) {
 			}
 
 			// Act
-			if err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
+			if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
 				t.Fatalf("ExecuteTask: %v", err)
 			}
 			data, err := os.ReadFile(outFile)
@@ -968,7 +971,7 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1003,7 +1006,7 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 	vars := map[string]string{"ITEM": "original", "RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1038,7 +1041,7 @@ func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
 	vars := map[string]string{"RESULT": ""}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1078,7 +1081,7 @@ func TestExecCall_IntoTemplatePath(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1122,7 +1125,7 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1163,7 +1166,7 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1179,7 +1182,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	// Arrange
 	orig := promptTextFn
 	defer func() { promptTextFn = orig }()
-	promptTextFn = func(info, check, varName string, vars map[string]string, defaultVal, task string, secret, optional bool) (string, error) {
+	promptTextFn = func(ctx context.Context, info, check, varName string, vars map[string]string, defaultVal, task string, secret, optional bool) (string, error) {
 		return "typed-value", nil
 	}
 	cfg := &config.ConfigFile{
@@ -1194,7 +1197,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1210,7 +1213,7 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	// Arrange
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
-	promptSelectFn = func(varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
+	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
 		return "beta", nil
 	}
 	cfg := &config.ConfigFile{
@@ -1225,7 +1228,7 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1242,7 +1245,7 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
 	calls := 0
-	promptSelectFn = func(varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
+	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
 		calls++
 		if calls == 1 {
 			return "bad", nil
@@ -1266,7 +1269,7 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, false, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1305,7 +1308,7 @@ func TestDir_CallStep_DirUsesWithVars(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -1356,7 +1359,7 @@ func TestDir_CallStep_RelativeToCallerDir(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask("parent", makeScope(map[string]string{}), callerCfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), callerCfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -1391,7 +1394,7 @@ func TestRunStep_ScopeVarOverridesInheritedEnv(t *testing.T) {
 	vars := map[string]string{"FOO": "from-scope"}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1419,7 +1422,7 @@ func TestRunStep_EnvVarNotInScope_StillVisible(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1449,7 +1452,7 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 	vars := map[string]string{"PORT": "80"}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -1482,7 +1485,7 @@ func TestTaskInput_False_SkipsPrompts(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -1521,7 +1524,7 @@ func TestTaskInput_False_PropagesToSubTasks(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(vars), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -1557,7 +1560,7 @@ func TestTaskInput_False_OnChildOnly(t *testing.T) {
 	vars := map[string]string{}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(vars), cfg, true, dir)
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, dir)
 
 	// Assert
 	if err != nil {
@@ -1586,7 +1589,7 @@ func TestTaskInput_False_NoDefault_ReturnsError(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, false, dir)
 
 	// Assert
 	if err == nil {
@@ -1620,7 +1623,7 @@ func TestCallStep_Interactive_False_DisablesPrompts(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask("parent", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -1659,7 +1662,7 @@ func TestCallStep_Interactive_False_PropagatesDown(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask("root", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "root", makeScope(map[string]string{}), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -1687,7 +1690,7 @@ func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
 	vars := map[string]string{"ENABLED": "false"}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
 
 	// Assert
 	if err != nil {
@@ -1718,7 +1721,7 @@ func TestTaskIf_ConditionTrue_RunsTask(t *testing.T) {
 	vars := map[string]string{"ENABLED": "true"}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, dir)
 
 	// Assert
 	if err != nil {
@@ -1744,7 +1747,7 @@ func TestTaskIf_NoCondition_RunsTask(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, dir)
 
 	// Assert
 	if err != nil {
@@ -1772,7 +1775,7 @@ func TestTaskIf_TemplateVarsResolved(t *testing.T) {
 	vars := map[string]string{"ENV": "production"}
 
 	// Act
-	err := ExecuteTask("t", makeScope(vars), cfg, true, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, dir)
 
 	// Assert
 	if err != nil {
@@ -1797,7 +1800,7 @@ func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask("t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -1805,5 +1808,236 @@ func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "task \"t\" if:") {
 		t.Errorf("error should reference task name, got: %v", err)
+	}
+}
+
+func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
+	// given a run: step whose command is still executing, when ctx is
+	// cancelled, then the returned error wraps ErrInterrupted (why: callers
+	// need to distinguish a graceful shutdown from an ordinary command failure)
+
+	// Arrange
+	cfg := makeRunCfg("sleep 5", nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted, got: %v", err)
+	}
+}
+
+func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.T) {
+	// given ctx already cancelled before a step runs, when executeSteps
+	// evaluates the between-step guard, then the error wraps ErrInterrupted
+	// (why: must match execRun's wrapping so main.go's errors.Is check catches
+	// cancellation that lands between steps, not just mid-command)
+
+	// Arrange
+	cfg := makeRunCfg("echo hello", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted, got: %v", err)
+	}
+}
+
+func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
+	// given a soft: true call step whose child task is interrupted by ctx
+	// cancellation, when executed, then the interrupt still propagates (why:
+	// soft: true is meant to tolerate ordinary command failures, not mask a
+	// user-requested shutdown as false success)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{Kind: config.KindCall, CallTarget: "child", Soft: true},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindRun, Command: "sleep 5"},
+			}},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted to survive soft:true, got: %v", err)
+	}
+}
+
+func TestExecCall_Soft_SwallowsOrdinaryError(t *testing.T) {
+	// given a soft: true call step whose child task fails with an ordinary
+	// command error, when executed, then the error is swallowed and execution
+	// continues (why: regression guard for the pre-existing soft: true
+	// behavior — only ctx-cancellation errors should bypass it)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{Kind: config.KindCall, CallTarget: "child", Soft: true},
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{{Key: "AFTER", ValTmpl: "reached"}}},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindRun, Command: "exit 1"},
+			}},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["AFTER"] != "reached" {
+		t.Errorf("expected execution to continue past soft-failed call, AFTER = %q", vars["AFTER"])
+	}
+}
+
+func TestExecRun_OrdinaryFailure_NotWrappedAsInterrupted(t *testing.T) {
+	// given a run: step that fails on its own (ctx never cancelled), when
+	// executed, then the error is returned as-is, not wrapped as
+	// ErrInterrupted (why: regression guard so ordinary command failures keep
+	// their original exit-status error instead of being misreported as a
+	// graceful shutdown)
+
+	// Arrange
+	cfg := makeRunCfg("exit 3", nil)
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if errors.Is(err, ErrInterrupted) {
+		t.Fatalf("ordinary failure should not be wrapped as ErrInterrupted, got: %v", err)
+	}
+}
+
+func TestExecRun_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
+	// given a run: step whose shell forks a background child (not just the
+	// tail-exec'd sh itself), when ctx is cancelled, then the child is killed
+	// too (why: shellCmd.Cancel signals the whole process group so multi-
+	// command scripts/pipelines/background jobs don't outlive the graceful
+	// shutdown)
+
+	// Arrange
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "child-finished")
+	cfg := makeRunCfg(fmt.Sprintf("(sleep 5; touch %s) & wait", marker), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, dir)
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted, got: %v", err)
+	}
+	time.Sleep(200 * time.Millisecond) // give a leaked child a chance to finish
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("background child kept running after ctx cancellation — process group was not killed")
+	}
+}
+
+func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
+	// given a run: step whose shell (and its background child) ignore
+	// SIGTERM, when ctx is cancelled (graceful shutdown) and KillRunningStep
+	// is then called (2nd CTRL+C), then the whole still-running process group
+	// is force-killed (why: regression test for the bug where the 2nd
+	// CTRL+C targeted hobnob's own process group instead of the step's —
+	// see cmd/hobnob/main.go)
+
+	// Arrange
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "child-finished")
+	cfg := makeRunCfg(fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, dir)
+	}()
+	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
+
+	// Act
+	KillRunningStep()
+
+	// Assert
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrInterrupted) {
+			t.Fatalf("expected ErrInterrupted, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ExecuteTask did not return after KillRunningStep")
+	}
+	time.Sleep(200 * time.Millisecond) // give a leaked child a chance to finish
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("background child kept running after KillRunningStep — force-kill did not reach the step's process group")
+	}
+}
+
+func TestKillRunningStep_NoStepRunning_NoOp(t *testing.T) {
+	// given no run: step is currently executing, when KillRunningStep is
+	// called, then it does nothing and does not panic (why: the 2nd-CTRL+C
+	// handler must be able to call it unconditionally, including when
+	// hobnob is idle e.g. blocked on a get: prompt)
+
+	// Act / Assert
+	KillRunningStep()
+}
+
+func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
+	// given a loop: step with multiple slow iterations, when ctx is cancelled
+	// partway through, then the loop stops early and the error wraps
+	// ErrInterrupted (why: executeSteps' between-step guard must be reached
+	// again on each loop iteration, not just checked once before the loop
+	// starts)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{
+					Kind:    config.KindFor,
+					ForList: []string{"a", "b", "c", "d", "e"},
+					ForSteps: []config.Step{
+						{Kind: config.KindRun, Command: "sleep 0.1"},
+					},
+				},
+			}},
+		},
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted, got: %v", err)
 	}
 }
