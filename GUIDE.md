@@ -269,8 +269,9 @@ Every task is a sequence of five step types.
 
 Prompts for input. Skipped if the variable already exists in scope.
 
-> With `--no-input` or a `CI` env var set, prompts are skipped. Missing
-> variables with no `default` will abort.
+> With `--no-input`, a `CI` env var set, or stdin not attached to a terminal
+> (the case for AI coding agents and other non-interactive callers), prompts are
+> skipped. Missing variables with no `default` will abort.
 
 Bare form — prompts with no configuration:
 

@@ -403,6 +403,7 @@ func TestParseTaskArgs(t *testing.T) {
 		name          string
 		args          []string
 		ciEnv         string
+		isTerminal    bool
 		wantNoPrompts bool
 		wantVars      map[string]string
 		wantErr       bool
@@ -411,13 +412,15 @@ func TestParseTaskArgs(t *testing.T) {
 			name:          "given CI env set, when parsed, then noPrompts true (why: CI environments must not block on prompts)",
 			args:          []string{},
 			ciEnv:         "true",
+			isTerminal:    true,
 			wantNoPrompts: true,
 			wantVars:      map[string]string{},
 		},
 		{
-			name:          "given CI env empty, when parsed, then noPrompts false (why: interactive mode default outside CI)",
+			name:          "given CI env empty and stdin is a terminal, when parsed, then noPrompts false (why: interactive mode default for humans)",
 			args:          []string{},
 			ciEnv:         "",
+			isTerminal:    true,
 			wantNoPrompts: false,
 			wantVars:      map[string]string{},
 		},
@@ -425,6 +428,7 @@ func TestParseTaskArgs(t *testing.T) {
 			name:          "given --no-input flag, when parsed, then noPrompts true (why: explicit flag overrides default)",
 			args:          []string{"--no-input"},
 			ciEnv:         "",
+			isTerminal:    true,
 			wantNoPrompts: true,
 			wantVars:      map[string]string{},
 		},
@@ -432,6 +436,7 @@ func TestParseTaskArgs(t *testing.T) {
 			name:          "given CI env set and --no-input, when parsed, then noPrompts true (why: both sources agree)",
 			args:          []string{"--no-input"},
 			ciEnv:         "true",
+			isTerminal:    true,
 			wantNoPrompts: true,
 			wantVars:      map[string]string{},
 		},
@@ -439,6 +444,7 @@ func TestParseTaskArgs(t *testing.T) {
 			name:          "given KEY=VALUE args, when parsed, then vars populated (why: CLI overrides must be captured)",
 			args:          []string{"ENV=prod", "TIMEOUT=60"},
 			ciEnv:         "",
+			isTerminal:    true,
 			wantNoPrompts: false,
 			wantVars:      map[string]string{"ENV": "prod", "TIMEOUT": "60"},
 		},
@@ -448,12 +454,31 @@ func TestParseTaskArgs(t *testing.T) {
 			ciEnv:   "",
 			wantErr: true,
 		},
+		{
+			name:          "given CI env empty and stdin is not a terminal, when parsed, then noPrompts true (why: AI agents and other non-interactive callers pipe stdin and can't answer prompts)",
+			args:          []string{},
+			ciEnv:         "",
+			isTerminal:    false,
+			wantNoPrompts: true,
+			wantVars:      map[string]string{},
+		},
+		{
+			name:          "given stdin is not a terminal but --no-input is not passed, when parsed, then noPrompts still true (why: non-tty detection alone is sufficient, no flag required)",
+			args:          []string{"ENV=prod"},
+			ciEnv:         "",
+			isTerminal:    false,
+			wantNoPrompts: true,
+			wantVars:      map[string]string{"ENV": "prod"},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			// Arrange
 			t.Setenv("CI", tc.ciEnv)
+			origIsTerminalFn := isTerminalFn
+			isTerminalFn = func() bool { return tc.isTerminal }
+			defer func() { isTerminalFn = origIsTerminalFn }()
 
 			// Act
 			gotNoPrompts, gotVars, err := parseTaskArgs(tc.args)
@@ -475,6 +500,93 @@ func TestParseTaskArgs(t *testing.T) {
 				t.Errorf("vars: got %v, want %v", gotVars, tc.wantVars)
 			}
 		})
+	}
+}
+
+// TestDefaultNoPrompts covers the CI/terminal decision shared by every code
+// path that computes noPrompts (no-args default task, --select, and
+// parseTaskArgs via defaultNoPrompts). Regression for a bug where two of the
+// three call sites checked CI but not isTerminalFn, so piped/non-terminal
+// stdin still tried to open a prompt instead of failing fast.
+func TestDefaultNoPrompts(t *testing.T) {
+	tests := []struct {
+		name       string
+		ciEnv      string
+		isTerminal bool
+		want       bool
+	}{
+		{
+			name:       "given CI set, when checked, then true regardless of terminal (why: CI runners are never interactive even if stdin looks like a tty)",
+			ciEnv:      "true",
+			isTerminal: true,
+			want:       true,
+		},
+		{
+			name:       "given CI empty and stdin is not a terminal, when checked, then true (why: non-interactive callers like AI agents can't answer a prompt)",
+			ciEnv:      "",
+			isTerminal: false,
+			want:       true,
+		},
+		{
+			name:       "given CI empty and stdin is a terminal, when checked, then false (why: a human at a real terminal should still see prompts)",
+			ciEnv:      "",
+			isTerminal: true,
+			want:       false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			t.Setenv("CI", tc.ciEnv)
+			origIsTerminalFn := isTerminalFn
+			isTerminalFn = func() bool { return tc.isTerminal }
+			defer func() { isTerminalFn = origIsTerminalFn }()
+
+			// Act
+			got := defaultNoPrompts()
+
+			// Assert
+			if got != tc.want {
+				t.Errorf("defaultNoPrompts(): got %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNoArgsDefaultTaskFailsFastWhenStdinNotTerminal(t *testing.T) {
+	// given default task with a required get: and no CI/no TTY, when run with no args, then fails fast with the --no-input error instead of trying to open a prompt (why: regression — the no-args path used to compute noPrompts from CI alone, ignoring isTerminalFn)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n  default:\n    steps:\n      - get: [FOO]\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	env := []string{"CI=", "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR=" + dir}
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "CI=") {
+			env = append(env, e)
+		}
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsDefaultTaskFailsFastWhenStdinNotTerminal")
+	cmd.Env = env
+	cmd.Stdin = nil // subprocess stdin defaults to /dev/null: never a terminal
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err == nil {
+		t.Fatalf("expected failure, got success. output: %s", out)
+	}
+	if !strings.Contains(string(out), "--no-input: FOO requires input") {
+		t.Errorf("expected fail-fast --no-input error, got: %s", out)
 	}
 }
 

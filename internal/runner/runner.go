@@ -309,7 +309,7 @@ func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task
 			return nil
 		}
 		if e.DefaultTmpl == "" {
-			return fmt.Errorf("--no-input: %s requires input", e.VarName)
+			return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", e.VarName, e.VarName)
 		}
 		val, err := eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
 		if err != nil {

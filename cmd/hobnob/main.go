@@ -60,8 +60,16 @@ func extractFileFlag(args []string) (string, []string, error) {
 	return "", args, nil
 }
 
+// defaultNoPrompts reports whether prompts should be skipped based on the
+// environment alone (CI env var set, or stdin not a terminal), before any
+// --no-input flag is factored in. Every place that computes noPrompts must
+// go through this so CI/terminal detection can't drift between them.
+func defaultNoPrompts() bool {
+	return os.Getenv("CI") != "" || !isTerminalFn()
+}
+
 func parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]string, err error) {
-	noPrompts = os.Getenv("CI") != ""
+	noPrompts = defaultNoPrompts()
 	cliVars = make(map[string]string)
 	for _, arg := range args {
 		if arg == "--no-input" {
@@ -93,7 +101,7 @@ func loadConfig(path string, cliVars map[string]string, invDir string) (*config.
 }
 
 func selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
-	if noPrompts || !isTerminal() {
+	if noPrompts || !isTerminalFn() {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, version)
 		}
@@ -114,7 +122,10 @@ func selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.ConfigFile,
 	return execTask(ctx, selected, scope, cfg, false, cfg.TaskfileDir)
 }
 
-func isTerminal() bool {
+// isTerminalFn reports whether stdin is an interactive terminal. It's a
+// package-level var so tests can fake it — swapped out the same way
+// promptTextFn/promptSelectFn are in the runner package.
+var isTerminalFn = func() bool {
 	return cterm.IsTerminal(os.Stdin.Fd())
 }
 
@@ -183,7 +194,7 @@ func run(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			noPrompts := os.Getenv("CI") != ""
+			noPrompts := defaultNoPrompts()
 			if _, ok := cfg.Tasks["default"]; ok {
 				return execTask(ctx, "default", scope, cfg, noPrompts, cfg.TaskfileDir)
 			}
@@ -212,7 +223,7 @@ func run(ctx context.Context, args []string) error {
 		case "--help":
 			return cli.PrintHelp(cfg, scope, os.Stdout, version)
 		case "--select":
-			noPrompts := os.Getenv("CI") != ""
+			noPrompts := defaultNoPrompts()
 			for _, arg := range args[1:] {
 				if arg == "--no-input" {
 					noPrompts = true
