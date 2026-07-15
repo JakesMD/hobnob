@@ -270,6 +270,9 @@ func (m textModel) View() string {
 		return ""
 	}
 	header := "\nEnter a value for " + SLabel.Render(m.varName) + "."
+	if m.optional {
+		header += " " + SHint.Render("(optional, leave blank to skip)")
+	}
 	if m.info != "" {
 		header += "\n" + SInfo.Render(m.info)
 	}

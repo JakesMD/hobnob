@@ -98,6 +98,44 @@ func TestRunSkipLine(t *testing.T) {
 	}
 }
 
+func TestTextModel_View_OptionalHint(t *testing.T) {
+	tests := []struct {
+		name      string
+		optional  bool
+		wantHas   string
+		wantLacks string
+	}{
+		{
+			name:     "given optional text prompt, when rendered, then header shows leave-blank hint (why: optional fields must be obviously skippable)",
+			optional: true,
+			wantHas:  "optional, leave blank to skip",
+		},
+		{
+			name:      "given required text prompt, when rendered, then no optional hint shown",
+			optional:  false,
+			wantLacks: "optional",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			m := textModel{varName: "NOTES", optional: tt.optional}
+
+			// Act
+			got := m.View()
+
+			// Assert
+			if tt.wantHas != "" && !strings.Contains(got, tt.wantHas) {
+				t.Errorf("got %q, want it to contain %q", got, tt.wantHas)
+			}
+			if tt.wantLacks != "" && strings.Contains(got, tt.wantLacks) {
+				t.Errorf("got %q, want it to NOT contain %q", got, tt.wantLacks)
+			}
+		})
+	}
+}
+
 func TestNewSelectModel_MultiWithDefault_PreSelectsDefault(t *testing.T) {
 	// given multi-select with a default value matching second item,
 	// when model is initialized, then that item is pre-selected
