@@ -98,6 +98,10 @@ func SkipLine(task string) string {
 	return SInfo.Render("⊘") + " " + TaskPrefix(task) + SInfo.Render("skipped")
 }
 
+func RunSkipLine(task string) string {
+	return SStep.Render("run:") + " " + TaskPrefix(task) + SInfo.Render("skipped (if: false)")
+}
+
 func RunDisplayLines(cmd, task, dir string) []string {
 	prefix := TaskPrefix(task)
 	lines := strings.Split(cmd, "\n")

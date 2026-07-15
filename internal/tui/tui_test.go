@@ -78,6 +78,26 @@ func TestRunDisplayLines(t *testing.T) {
 	}
 }
 
+func TestRunSkipLine(t *testing.T) {
+	// given task name, when RunSkipLine rendered,
+	// then output has run:, task prefix, and skipped marker
+	// (why: user must see why a run: step didn't execute)
+
+	// Act
+	got := RunSkipLine("mytask")
+
+	// Assert
+	if !strings.Contains(got, "run:") {
+		t.Errorf("got %q, want it to contain %q", got, "run:")
+	}
+	if !strings.Contains(got, "[mytask]") {
+		t.Errorf("got %q, want it to contain %q", got, "[mytask]")
+	}
+	if !strings.Contains(got, "skipped") {
+		t.Errorf("got %q, want it to contain %q", got, "skipped")
+	}
+}
+
 func TestNewSelectModel_MultiWithDefault_PreSelectsDefault(t *testing.T) {
 	// given multi-select with a default value matching second item,
 	// when model is initialized, then that item is pre-selected

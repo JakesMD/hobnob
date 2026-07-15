@@ -147,6 +147,9 @@ func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cf
 				return fmt.Errorf("if condition: %w", err)
 			}
 			if !ok {
+				if s.Kind == config.KindRun {
+					fmt.Println(tui.RunSkipLine(task))
+				}
 				continue
 			}
 		}

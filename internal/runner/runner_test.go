@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -32,6 +33,26 @@ func copyVars(src map[string]string) map[string]string {
 
 func makeScope(vars map[string]string) *cli.Scope {
 	return &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}
+}
+
+func captureStdout(t *testing.T, f func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	defer func() { os.Stdout = orig }()
+
+	f()
+
+	w.Close()
+	var buf strings.Builder
+	if _, err := io.Copy(&buf, r); err != nil {
+		t.Fatalf("io.Copy: %v", err)
+	}
+	return buf.String()
 }
 
 func TestNoInput_GetStep(t *testing.T) {
@@ -1808,6 +1829,83 @@ func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "task \"t\" if:") {
 		t.Errorf("error should reference task name, got: %v", err)
+	}
+}
+
+func TestStepIf_RunConditionFalse_PrintsSkipLine(t *testing.T) {
+	// given run: step with if: that evaluates false, when executed,
+	// then prints a skip line and does not run the command
+	// (why: user should see why the command didn't execute, not silence)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {
+				Steps: []config.Step{
+					{
+						Kind:    config.KindRun,
+						Command: "echo should-not-run",
+						IfExpr:  `[ "{{.ENABLED}}" = "true" ]`,
+					},
+				},
+			},
+		},
+	}
+	vars := map[string]string{"ENABLED": "false"}
+
+	// Act
+	var err error
+	out := captureStdout(t, func() {
+		err = ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
+	})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "run:") || !strings.Contains(out, "skipped") {
+		t.Errorf("expected skip line mentioning run: and skipped, got: %q", out)
+	}
+	if !strings.Contains(out, "[t]") {
+		t.Errorf("expected skip line to include task prefix [t], got: %q", out)
+	}
+}
+
+func TestStepIf_NonRunConditionFalse_PrintsNothing(t *testing.T) {
+	// given set: step with if: that evaluates false, when executed,
+	// then nothing is printed (why: skip printing is scoped to run: steps only)
+
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {
+				Steps: []config.Step{
+					{
+						Kind:       config.KindSet,
+						SetEntries: []config.SetEntry{{Key: "MARKER", ValTmpl: "ran"}},
+						IfExpr:     `[ "{{.ENABLED}}" = "true" ]`,
+					},
+				},
+			},
+		},
+	}
+	vars := map[string]string{"ENABLED": "false"}
+
+	// Act
+	var err error
+	out := captureStdout(t, func() {
+		err = ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
+	})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "" {
+		t.Errorf("expected no output for skipped non-run step, got: %q", out)
+	}
+	if vars["MARKER"] == "ran" {
+		t.Error("set step should have been skipped")
 	}
 }
 
