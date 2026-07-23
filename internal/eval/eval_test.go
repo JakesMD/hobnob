@@ -537,7 +537,7 @@ func TestEvalCondition(t *testing.T) {
 			// (tc fields are the arrangement)
 
 			// Act
-			got, err := EvalCondition(tc.condTmpl, tc.vars)
+			got, err := EvalCondition(tc.condTmpl, tc.vars, "")
 
 			// Assert
 			if tc.wantError {

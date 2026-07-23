@@ -250,7 +250,7 @@ func (m textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.check != "" {
 			merged := eval.CopyVars(m.vars)
 			merged[m.varName] = val
-			ok, err := eval.EvalCondition(m.check, merged)
+			ok, err := eval.EvalCondition(m.check, merged, "")
 			if err != nil || !ok {
 				m.errMsg = fmt.Sprintf("validation failed: %s", m.check)
 				return m, nil

@@ -1832,6 +1832,48 @@ func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
 	}
 }
 
+func TestTaskIf_EvaluatedInTaskDir(t *testing.T) {
+	// given task with dir: and if: that checks a file relative to that dir,
+	// when executed, then if: runs in the task's dir, not the caller's
+	// (why: regression for if: being evaluated in the wrong working directory)
+
+	// Arrange
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "marker"), nil, 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	cfg := &config.ConfigFile{
+		TaskfileDir: root,
+		Tasks: map[string]config.Task{
+			"t": {
+				Dir:    "sub",
+				IfExpr: `[ -f marker ]`,
+				Steps: []config.Step{
+					{Kind: config.KindSet, SetEntries: []config.SetEntry{
+						{Key: "MARKER", ValTmpl: "ran"},
+					}},
+				},
+			},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, root)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["MARKER"] != "ran" {
+		t.Error("task should have run because marker exists in task dir, but was skipped")
+	}
+}
+
 func TestStepIf_RunConditionFalse_PrintsSkipLine(t *testing.T) {
 	// given run: step with if: that evaluates false, when executed,
 	// then prints a skip line and does not run the command
@@ -1868,6 +1910,53 @@ func TestStepIf_RunConditionFalse_PrintsSkipLine(t *testing.T) {
 	}
 	if !strings.Contains(out, "[t]") {
 		t.Errorf("expected skip line to include task prefix [t], got: %q", out)
+	}
+}
+
+func TestStepIf_EvaluatedInRunStepDir(t *testing.T) {
+	// given run: step with its own dir: and an if: that checks a file
+	// relative to that dir, when executed, then if: runs in the step's dir,
+	// not the inherited task dir (why: regression for if: being evaluated in
+	// the wrong working directory)
+
+	// Arrange
+	root := t.TempDir()
+	sub := filepath.Join(root, "sub")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "marker"), nil, 0o644); err != nil {
+		t.Fatalf("write marker: %v", err)
+	}
+	cfg := &config.ConfigFile{
+		TaskfileDir: root,
+		Tasks: map[string]config.Task{
+			"t": {
+				Steps: []config.Step{
+					{
+						Kind:    config.KindRun,
+						Command: "true",
+						DirTmpl: "sub",
+						IfExpr:  `[ -f marker ]`,
+					},
+				},
+			},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	var err error
+	out := captureStdout(t, func() {
+		err = ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, root)
+	})
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(out, "skipped") {
+		t.Errorf("step should have run because marker exists in step dir, but was skipped: %q", out)
 	}
 }
 

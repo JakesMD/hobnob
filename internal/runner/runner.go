@@ -115,16 +115,6 @@ func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *co
 	if task.Interactive != nil && !*task.Interactive {
 		noPrompts = true
 	}
-	if task.IfExpr != "" {
-		ok, err := eval.EvalCondition(task.IfExpr, scope.Vars)
-		if err != nil {
-			return fmt.Errorf("task %q if: %w", taskName, err)
-		}
-		if !ok {
-			fmt.Println(tui.SkipLine(taskName))
-			return nil
-		}
-	}
 	currentDir := parentDir
 	if task.Dir != "" {
 		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
@@ -132,6 +122,16 @@ func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *co
 			return fmt.Errorf("task %q dir: %w", taskName, err)
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
+	}
+	if task.IfExpr != "" {
+		ok, err := eval.EvalCondition(task.IfExpr, scope.Vars, currentDir)
+		if err != nil {
+			return fmt.Errorf("task %q if: %w", taskName, err)
+		}
+		if !ok {
+			fmt.Println(tui.SkipLine(taskName))
+			return nil
+		}
 	}
 	return executeSteps(ctx, task.Steps, scope, execCfg, taskName, noPrompts, currentDir)
 }
@@ -142,7 +142,15 @@ func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cf
 			return fmt.Errorf("%w: %v", ErrInterrupted, ctx.Err())
 		}
 		if s.IfExpr != "" {
-			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars)
+			ifDir := currentDir
+			if s.Kind == config.KindRun && s.DirTmpl != "" {
+				resolved, err := eval.EvalTemplate(s.DirTmpl, scope.Vars)
+				if err != nil {
+					return fmt.Errorf("run dir template: %w", err)
+				}
+				ifDir = resolveDirPath(resolved, cfg.TaskfileDir)
+			}
+			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars, ifDir)
 			if err != nil {
 				return fmt.Errorf("if condition: %w", err)
 			}
@@ -355,7 +363,7 @@ func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task
 			}
 			tmp := eval.CopyVars(scope.Vars)
 			tmp[e.VarName] = val
-			ok, checkErr := eval.EvalCondition(e.Check, tmp)
+			ok, checkErr := eval.EvalCondition(e.Check, tmp, "")
 			if checkErr != nil {
 				return fmt.Errorf("get %s check: %w", e.VarName, checkErr)
 			}
@@ -410,7 +418,7 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 		}
 	}
 	if e.Check != "" && !(e.Optional && vars[e.VarName] == "") {
-		ok, err := eval.EvalCondition(e.Check, vars)
+		ok, err := eval.EvalCondition(e.Check, vars, "")
 		if err != nil {
 			return fmt.Errorf("get %s check: %w", e.VarName, err)
 		}

@@ -81,13 +81,16 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 }
 
 // EvalCondition renders condTmpl then passes the result directly to sh -c.
-// Returns true if the shell command exits 0.
-func EvalCondition(condTmpl string, vars map[string]string) (bool, error) {
+// dir sets the working directory the condition runs in; empty uses the
+// current process's working directory. Returns true if the shell command
+// exits 0.
+func EvalCondition(condTmpl string, vars map[string]string, dir string) (bool, error) {
 	rendered, err := EvalTemplate(condTmpl, vars)
 	if err != nil {
 		return false, err
 	}
 	cmd := exec.Command("sh", "-c", rendered)
+	cmd.Dir = dir
 	err = cmd.Run()
 	if err != nil {
 		if _, ok := err.(*exec.ExitError); ok {
