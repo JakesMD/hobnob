@@ -1913,11 +1913,12 @@ func TestStepIf_RunConditionFalse_PrintsSkipLine(t *testing.T) {
 	}
 }
 
-func TestStepIf_EvaluatedInRunStepDir(t *testing.T) {
+func TestStepIf_EvaluatedInInheritedDir_NotStepDir(t *testing.T) {
 	// given run: step with its own dir: and an if: that checks a file
-	// relative to that dir, when executed, then if: runs in the step's dir,
-	// not the inherited task dir (why: regression for if: being evaluated in
-	// the wrong working directory)
+	// relative to the inherited task dir, when executed, then if: runs in
+	// the inherited dir, not the step's own dir: override (why: if: gates
+	// whether the step's dir: override even applies, so it must not depend
+	// on that override itself)
 
 	// Arrange
 	root := t.TempDir()
@@ -1925,7 +1926,7 @@ func TestStepIf_EvaluatedInRunStepDir(t *testing.T) {
 	if err := os.Mkdir(sub, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "marker"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, "marker"), nil, 0o644); err != nil {
 		t.Fatalf("write marker: %v", err)
 	}
 	cfg := &config.ConfigFile{
@@ -1956,7 +1957,7 @@ func TestStepIf_EvaluatedInRunStepDir(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if strings.Contains(out, "skipped") {
-		t.Errorf("step should have run because marker exists in step dir, but was skipped: %q", out)
+		t.Errorf("step should have run because marker exists in the inherited dir, but was skipped: %q", out)
 	}
 }
 

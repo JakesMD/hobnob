@@ -142,15 +142,7 @@ func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cf
 			return fmt.Errorf("%w: %v", ErrInterrupted, ctx.Err())
 		}
 		if s.IfExpr != "" {
-			ifDir := currentDir
-			if s.Kind == config.KindRun && s.DirTmpl != "" {
-				resolved, err := eval.EvalTemplate(s.DirTmpl, scope.Vars)
-				if err != nil {
-					return fmt.Errorf("run dir template: %w", err)
-				}
-				ifDir = resolveDirPath(resolved, cfg.TaskfileDir)
-			}
-			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars, ifDir)
+			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars, currentDir)
 			if err != nil {
 				return fmt.Errorf("if condition: %w", err)
 			}

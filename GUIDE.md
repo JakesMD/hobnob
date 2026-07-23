@@ -161,6 +161,9 @@ tasks:
         dir: ./staging # overrides _verify's own dir:
 ```
 
+`if:` always evaluates in the inherited task `dir:` — a step's own `dir:`
+override doesn't apply until the step is confirmed to run.
+
 ---
 
 ## Variables
@@ -373,6 +376,9 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
 - run: echo "Purging production cache..."
   if: '[ "{{.ENV}}" = "production" ]'
 ```
+
+Runs in the inherited task `dir:`, even on a step with its own `dir:` override.
+See [`dir:`](#dir--working-directory) above.
 
 ---
 
