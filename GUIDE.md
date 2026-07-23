@@ -265,6 +265,24 @@ Every task is a sequence of five step types.
     - ERROR_LOG: stderr
 ```
 
+> Python scripts buffer stdout when not attached to a terminal, so output from a
+> `run:` step can appear late or all at once. Fix with `PYTHONUNBUFFERED: 1` in
+> `vars:` or `python -u` for a single script.
+
+```yaml
+vars:
+  - PYTHONUNBUFFERED: 1
+```
+
+or
+
+```yaml
+- run: python -u script.py
+```
+
+See also:
+[Python `-u` option docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u)
+
 ### `get` — interactive prompts
 
 Prompts for input. Skipped if the variable already exists in scope.
