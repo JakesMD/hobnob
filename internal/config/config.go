@@ -26,6 +26,13 @@ func normalizeTmpl(s string) string {
 	return s
 }
 
+// isEmptyNode reports whether n is a YAML null (a key given with no value,
+// e.g. "vars:" followed by nothing, or explicit "vars: ~"/"vars: null").
+// Top-level vars:/modules:/tasks: blocks tolerate this as "no entries".
+func isEmptyNode(n *yaml.Node) bool {
+	return n.Kind == yaml.ScalarNode && n.Tag == "!!null"
+}
+
 type Task struct {
 	Info   string
 	Dir    string // task-level working directory template
@@ -129,11 +136,14 @@ func ParseConfig(path string) (*ConfigFile, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, err
 	}
-	if doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
-		return nil, fmt.Errorf("empty document")
+	// An empty file (or one with only comments/whitespace) yields no document
+	// node at all; a file containing just "null"/"~" yields a null root node.
+	// Both mean "no tasks", same as an explicit empty root mapping.
+	var root *yaml.Node
+	if doc.Kind == yaml.DocumentNode && len(doc.Content) > 0 {
+		root = doc.Content[0]
 	}
-	root := doc.Content[0]
-	if root.Kind != yaml.MappingNode {
+	if root != nil && !isEmptyNode(root) && root.Kind != yaml.MappingNode {
 		return nil, fmt.Errorf("root must be a mapping")
 	}
 
@@ -147,9 +157,16 @@ func ParseConfig(path string) (*ConfigFile, error) {
 		TaskfileDir: filepath.Dir(absPath),
 	}
 
-	for i := 0; i+1 < len(root.Content); i += 2 {
-		key := root.Content[i].Value
-		val := root.Content[i+1]
+	var rootContent []*yaml.Node
+	if root != nil && !isEmptyNode(root) {
+		rootContent = root.Content
+	}
+	for i := 0; i+1 < len(rootContent); i += 2 {
+		key := rootContent[i].Value
+		val := rootContent[i+1]
+		if isEmptyNode(val) {
+			continue
+		}
 		switch key {
 		case "vars":
 			entries, err := parseSetNode(val)

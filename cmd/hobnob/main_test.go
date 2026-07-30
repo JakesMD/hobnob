@@ -125,6 +125,43 @@ func TestNoArgsNoDefaultTaskShowsTaskList(t *testing.T) {
 	}
 }
 
+func TestNoArgsNoTasksShowsHelp(t *testing.T) {
+	// given taskfile with zero tasks, when run with no args on a simulated TTY, then shows the same usage+list output as --help (why: regression — the interactive zero-task path used to print a bare "No tasks available." and skip usage/list output)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		isTerminalFn = func() bool { return true }
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml")}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte("tasks:\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=TestNoArgsNoTasksShowsHelp")
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir, "CI=")
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("expected success, got: %v\noutput: %s", err, out)
+	}
+	outStr := string(out)
+	if !strings.Contains(outStr, "Usage:") {
+		t.Errorf("expected output to contain 'Usage:', got: %s", out)
+	}
+	if !strings.Contains(outStr, "No tasks found") {
+		t.Errorf("expected output to contain 'No tasks found', got: %s", out)
+	}
+	if strings.Contains(outStr, "No tasks available.") {
+		t.Errorf("stale message 'No tasks available.' should not appear, got: %s", out)
+	}
+}
+
 func TestInternalTaskRejectedByCLI(t *testing.T) {
 	// given _ prefixed task name, when run from CLI, then exits non-zero (why: internal tasks must not be directly invokable)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {

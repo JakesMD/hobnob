@@ -632,6 +632,71 @@ func TestParseConfig_MissingFile(t *testing.T) {
 	}
 }
 
+func TestParseConfig_EmptyOrNullDocument(t *testing.T) {
+	tests := []struct {
+		name    string
+		fixture string
+	}{
+		{
+			name:    "given zero-byte file, when parsing, then returns config with no tasks",
+			fixture: "testdata/empty_file.yml",
+		},
+		{
+			name:    "given comment-only file, when parsing, then returns config with no tasks",
+			fixture: "testdata/comment_only.yml",
+		},
+		{
+			name:    "given file containing only null, when parsing, then returns config with no tasks",
+			fixture: "testdata/null_root.yml",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			// (fixture path is the arrangement)
+
+			// Act
+			cfg, err := ParseConfig(tc.fixture)
+
+			// Assert
+			if err != nil {
+				t.Fatalf("unexpected parse error: %v", err)
+			}
+			if len(cfg.TaskNames) != 0 {
+				t.Errorf("TaskNames: got %v, want empty", cfg.TaskNames)
+			}
+			if len(cfg.Vars) != 0 {
+				t.Errorf("Vars: got %v, want empty", cfg.Vars)
+			}
+			if len(cfg.Modules) != 0 {
+				t.Errorf("Modules: got %v, want empty", cfg.Modules)
+			}
+		})
+	}
+}
+
+func TestParseConfig_EmptyBlocks(t *testing.T) {
+	// Arrange
+	// (testdata/empty_blocks.yml has bare vars:/modules:/tasks: keys)
+
+	// Act
+	cfg, err := ParseConfig("testdata/empty_blocks.yml")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(cfg.TaskNames) != 0 {
+		t.Errorf("TaskNames: got %v, want empty", cfg.TaskNames)
+	}
+	if len(cfg.Vars) != 0 {
+		t.Errorf("Vars: got %v, want empty", cfg.Vars)
+	}
+	if len(cfg.Modules) != 0 {
+		t.Errorf("Modules: got %v, want empty", cfg.Modules)
+	}
+}
+
 func TestParseConfig_TaskInfo(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/task_info.yml")

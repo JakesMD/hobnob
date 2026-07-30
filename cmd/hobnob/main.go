@@ -109,8 +109,8 @@ func selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.ConfigFile,
 	}
 	tasks := cli.CollectSelectableTasks(cfg, scope)
 	if len(tasks) == 0 {
-		fmt.Fprintln(os.Stdout, "No tasks available.")
-		return nil
+		cli.PrintUsage(os.Stdout, version)
+		return cli.ListTasks(cfg, scope, os.Stdout)
 	}
 	if showUsage {
 		cli.PrintUsage(os.Stdout, version)
