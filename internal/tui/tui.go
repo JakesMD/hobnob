@@ -54,10 +54,16 @@ func TaskPrefix(task string) string {
 	return "[" + TaskStyle(task).Render(task) + "] "
 }
 
+// clearLine is the ANSI "erase from cursor to end of line" sequence, used to
+// wipe leftover characters when a \r-redrawn line (e.g. rsync --progress) is
+// shorter than the one it's overwriting.
+const clearLine = "\033[K"
+
 type LineWriter struct {
-	w      io.Writer
-	prefix string
-	buf    bytes.Buffer
+	w         io.Writer
+	prefix    string
+	buf       bytes.Buffer
+	lastWasCR bool // cursor sits at column 0 over previously written content
 }
 
 func NewLineWriter(w io.Writer, prefix string) *LineWriter {
@@ -66,13 +72,34 @@ func NewLineWriter(w io.Writer, prefix string) *LineWriter {
 
 func (lw *LineWriter) Write(p []byte) (int, error) {
 	totalBytes := len(p)
-	for _, byteVal := range p {
-		if byteVal == '\n' {
+	for i := 0; i < len(p); i++ {
+		byteVal := p[i]
+		switch byteVal {
+		case '\n':
+			if lw.lastWasCR {
+				lw.w.Write([]byte(clearLine))
+			}
 			lw.w.Write([]byte(lw.prefix))
 			lw.w.Write(lw.buf.Bytes())
 			lw.w.Write([]byte{'\n'})
 			lw.buf.Reset()
-		} else {
+			lw.lastWasCR = false
+		case '\r':
+			// CRLF line endings pair \r with an immediate \n — let the \n
+			// below perform the flush as an ordinary line, since a real
+			// progress redraw (rsync --progress, etc.) uses \r alone.
+			if i+1 < len(p) && p[i+1] == '\n' {
+				continue
+			}
+			if lw.lastWasCR {
+				lw.w.Write([]byte(clearLine))
+			}
+			lw.w.Write([]byte(lw.prefix))
+			lw.w.Write(lw.buf.Bytes())
+			lw.w.Write([]byte{'\r'})
+			lw.buf.Reset()
+			lw.lastWasCR = true
+		default:
 			lw.buf.WriteByte(byteVal)
 		}
 	}
@@ -83,6 +110,10 @@ func (lw *LineWriter) Write(p []byte) (int, error) {
 // w is always os.Stdout/os.Stderr — if those fail the process is dying anyway.
 func (lw *LineWriter) Flush() {
 	if lw.buf.Len() > 0 {
+		if lw.lastWasCR {
+			lw.w.Write([]byte(clearLine))
+		}
+		lw.lastWasCR = false
 		lw.w.Write([]byte(lw.prefix))
 		lw.w.Write(lw.buf.Bytes())
 		lw.w.Write([]byte{'\n'})
