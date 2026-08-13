@@ -68,6 +68,44 @@ func TestLineWriter_Write(t *testing.T) {
 	}
 }
 
+func TestLineWriter_Write_CRLFSplitAcrossWriteCalls(t *testing.T) {
+	// given a CRLF pair split across two Write calls (\r in one, \n in the next), when both are written, then no spurious clear-to-eol or blank prefixed line appears (why: os/exec feeds LineWriter from a pipe in arbitrary chunks, so a subprocess's CRLF line ending isn't guaranteed to land in a single Write call)
+	// Arrange
+	var buf bytes.Buffer
+	lw := NewLineWriter(&buf, "[t] ")
+
+	// Act
+	lw.Write([]byte("hello\r"))
+	lw.Write([]byte("\n"))
+
+	// Assert
+	got := buf.String()
+	if strings.Contains(got, clearLine) {
+		t.Errorf("got %q: spurious clear-to-eol for a plain CRLF line ending", got)
+	}
+	want := "[t] hello\r\n"
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestLineWriter_Write_BareCRWithNoFollowingByteStaysLive(t *testing.T) {
+	// given a bare \r flushed live at the end of one Write call, when the next Write call starts with ordinary content (not \n), then it's treated as a new progress redraw, not absorbed (why: only a following \n completes a CRLF pair — anything else means the \r really was a standalone redraw)
+	// Arrange
+	var buf bytes.Buffer
+	lw := NewLineWriter(&buf, "[t] ")
+
+	// Act
+	lw.Write([]byte("100%\r"))
+	lw.Write([]byte("5%\r"))
+
+	// Assert
+	want := "[t] 100%\r" + clearLine + "[t] 5%\r"
+	if got := buf.String(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
 func TestLineWriter_Flush(t *testing.T) {
 	tests := []struct {
 		name  string

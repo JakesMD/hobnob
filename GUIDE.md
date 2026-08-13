@@ -1,7 +1,7 @@
 # hobnob guide
 
-Hobnob is a timeline-based task runner. Variables, conditions, and prompts are
-evaluated sequentially as execution reaches each step — not compiled into a
+Hobnob is a timeline-based task runner. Variables, conditions, and prompts
+evaluate sequentially as execution reaches each step — not compiled into a
 static dependency tree upfront.
 
 ---
@@ -12,7 +12,7 @@ static dependency tree upfront.
 curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
 ```
 
-Detects OS/architecture, installs to `~/.local/bin`, configures shell completion
+Detects OS/architecture, installs to `~/.local/bin`, sets up shell completion
 (bash, zsh, fish).
 
 ---
@@ -20,7 +20,7 @@ Detects OS/architecture, installs to `~/.local/bin`, configures shell completion
 ## CLI
 
 ```bash
-hobnob                               # run the "default" task (or select)
+hobnob                               # run "default" task (or select)
 hobnob deploy                        # run a task
 hobnob deploy ENV=production         # pass runtime variables
 hobnob deploy --no-input             # skip prompts, fail on missing vars
@@ -32,29 +32,27 @@ hobnob --version                     # print version and exit
 hobnob --upgrade                     # upgrade to the latest release
 ```
 
-**Default task** — name a task `default` and it runs when you call `hobnob` with
-no arguments. Without one, an interactive selector opens instead. Use `--select`
-to force the selector even when a default exists.
-
-**Auto-discovery** — no `--file`? Hobnob searches up from your current directory
-for `hobnob.yml` or `hobnob.yaml`. `.yml` wins if both exist in the same
-directory.
-
-**Stopping a run** — CTRL+C (or `SIGTERM`) starts a graceful shutdown: the
-currently running `run:` step is sent a termination signal and hobnob waits for
-it to exit on its own, however long that takes; no further steps start. Press
-CTRL+C again (or send a 2nd signal) to force-kill the running step immediately
-instead of waiting.
+- **Default task** — a task named `default` runs on bare `hobnob`. Without
+  one, the interactive selector opens. `--select` forces the selector even
+  when a default exists.
+- **Auto-discovery** — no `--file`? Hobnob searches up from cwd for
+  `hobnob.yml`/`hobnob.yaml` (`.yml` wins if both exist).
+- **Stopping a run** — CTRL+C sends the running `run:` step a termination
+  signal and waits for it to exit; no further steps start. A 2nd CTRL+C
+  force-kills it immediately.
 
 ---
 
 ## File structure
 
-A hobnob file has three optional top-level keys:
+Four optional top-level keys:
 
 ```yaml
 vars: # global variables
   - KEY: value
+
+env: # files to source (.env or .sh)
+  - .env
 
 modules: # imported hobnob files
   - utils: ./utils.yml
@@ -69,7 +67,7 @@ tasks: # task definitions
 
 ## Modules
 
-Import tasks from other files with the root-level `modules:` block.
+Import tasks from other files via `modules:`.
 
 ```yaml
 modules:
@@ -80,30 +78,27 @@ modules:
       flatten: true
 ```
 
-**Namespaces** — imported tasks are prefixed with their module key
-(`call:
-docker:build`). A `_` prefix makes the module internal — its tasks are
-hidden from `--list` and parent files.
-
-**Filters** — `show:` whitelists, `hide:` blacklists which tasks to import.
-
-**Flattening** — `flatten: true` registers tasks under both `docker:build` and
-`build`. Native tasks always win on conflicts.
-
-**Scoping** — sub-modules inherit root `vars:` as read-only. A module's own
-`vars:` block never leaks to the parent.
+- **Namespaces** — imported tasks are prefixed with their module key
+  (`call: docker:build`). A `_` prefix makes the module internal — hidden
+  from `--list` and parent files.
+- **Filters** — `show:` whitelists, `hide:` blacklists.
+- **Flattening** — `flatten: true` also registers tasks under their bare
+  name (`build` as well as `docker:build`). Native tasks win on conflicts.
+- **Scoping** — modules inherit root `vars:` read-only; a module's own
+  `vars:` never leaks to the parent. The same rule applies to a module's own
+  `env:` block — sourced for that module's own subtree only.
 
 ---
 
 ## Tasks
 
-A task is a named sequence of steps. A `_` prefix (e.g. `_compile`) makes the
-task internal — hidden from `--list` and parent files, only callable via `call`.
+A task is a named sequence of steps. A `_` prefix (`_compile`) makes it
+internal — hidden from `--list`, only callable via `call`.
 
 ### `if:` — conditional execution
 
-Skips the entire task when the shell condition exits non-zero. When a called
-task is skipped, execution continues in the caller — no error.
+Skips the whole task when the shell condition exits non-zero. A skipped
+called task doesn't error — execution just continues in the caller.
 
 ```yaml
 tasks:
@@ -115,11 +110,10 @@ tasks:
 
 ### `interactive:` — disable prompts
 
-`interactive: false` disables all `get:` prompts for the entire sub-tree —
-prompts with a `default:` use it automatically, required prompts without a
-default abort with an error. Once disabled, a called task cannot re-enable them.
-
-Works on tasks and on `call` steps:
+`interactive: false` disables all `get:` prompts for the whole sub-tree:
+prompts with a `default:` use it automatically, required prompts without one
+abort. Once disabled, a called task can't re-enable it. Works on tasks and
+`call` steps:
 
 ```yaml
 tasks:
@@ -139,13 +133,13 @@ tasks:
 
 ### `dir:` — working directory
 
-Paths are always resolved relative to the hobnob file. When no `dir:` is set
-anywhere, steps run in the hobnob file's directory.
+Paths resolve relative to the hobnob file. No `dir:` set anywhere → steps
+run in the hobnob file's directory.
 
-- **Task `dir:`** — sets the working directory for all `run` steps and is
-  inherited down the call chain, unless a descendant declares its own.
-- **Call step `dir:`** — overrides the called task's own `dir:` and becomes the
-  inherited directory for its descendants.
+- **Task `dir:`** — working dir for all `run` steps, inherited down the call
+  chain unless a descendant sets its own.
+- **Call step `dir:`** — overrides the called task's own `dir:`, becomes the
+  inherited dir for its descendants.
 - **Run step `dir:`** — overrides for that one step only.
 
 ```yaml
@@ -161,56 +155,80 @@ tasks:
         dir: ./staging # overrides _verify's own dir:
 ```
 
-`if:` always evaluates in the inherited task `dir:` — a step's own `dir:`
-override doesn't apply until the step is confirmed to run.
+`if:` always evaluates in the inherited task `dir:`, even on a step with its
+own `dir:` override.
 
 ---
 
 ## Variables
 
-Evaluated at runtime using Go templates (`{{ .VAR }}`).
+Evaluated at runtime with Go templates (`{{ .VAR }}`).
 
 ### Precedence (highest to lowest)
 
 | Priority | Scope     | Description                               |
-| -------- | --------- | ----------------------------------------- |
+| -------- | --------- | ------------------------------------------ |
 | **1**    | Local     | Set via `set`, `get`, or loop iterators.  |
 | **2**    | Passed    | Injected explicitly via `call`'s `with:`. |
 | **3**    | Inherited | Copied from the calling task.             |
 | **4**    | Global    | Declared in the root `vars:` block.       |
 | **5**    | CLI args  | `KEY=VALUE` args on the command line.     |
-| **6**    | Env       | OS environment variables.                 |
+| **6**    | Env files | Sourced via the root `env:` block.        |
+| **7**    | Env       | OS environment variables.                 |
 
 <details>
 <summary>Rationale</summary>
 
-Env is lowest because a var name in `vars:` could collide with one already in
-the caller's shell — env winning would make tasks behave differently across
-machines. CLI args sit above env so callers can explicitly override. Global vars
-sit above CLI args because `vars:` is internal wiring — silently overriding it
-would make tasks unpredictable. The intended input mechanism for callers is
-`get:` steps, which are automatically skipped when their variable already exists
-in scope.
+Env is lowest so ambient shell state can't silently change task behavior
+across machines. Env files rank above OS env (explicit project config, not
+ambient) but below CLI args (caller's explicit override wins). Global vars
+rank above CLI args because `vars:` is internal wiring that shouldn't be
+silently overridden — callers should use `get:` steps instead, which
+auto-skip once the variable is already in scope.
 
 </details>
 
-Use `{{ .VAR | default "fallback" }}` to let a lower-priority layer supply the
-value when a higher-priority one isn't set:
+Use `{{ .VAR | default "fallback" }}` to fall back to a lower-priority layer:
 
 ```yaml
 vars:
   - HOST: "{{ .HOST | default "localhost" }}"
 ```
 
+### Env files
+
+`env:` lists files to source, resolved relative to the hobnob file:
+
+```yaml
+env:
+  - .env:
+      secret: true # opt this file into masking
+  - ./secrets.sh
+  - config.txt
+```
+
+- **Plain files** (anything not ending in `.sh`) are parsed as `KEY=VALUE`
+  lines — blank lines, `#` comments, and an optional `export ` prefix are
+  supported.
+- **`.sh` files** are sourced in a subshell. Only variables the script newly
+  sets or changes are pulled into scope — inherited-but-unchanged vars are
+  ignored.
+- A referenced file that doesn't exist prints a warning and is skipped,
+  rather than failing the run.
+- Vars are not masked in output by default, regardless of filename. Add
+  `secret: true` to an entry, using the expanded `path: { secret: true }`
+  form shown above, to mask its vars.
+- Later entries override earlier ones (same ordering rule as `vars:`); if
+  two entries set the same var, masking follows whichever value won.
+
 ### Scope isolation
 
-`call` gives the child task a deep copy of the current scope. Mutations stay
-sandboxed unless pulled back with `into:`.
+`call` gives the child task a deep copy of scope. Mutations stay sandboxed
+unless pulled back with `into:`.
 
 ### Top-to-bottom resolution
 
-Variables in a `set` block resolve top-to-bottom — you can reference a key
-defined just above:
+A `set` block resolves top-to-bottom — reference a key defined just above:
 
 ```yaml
 - set:
@@ -221,19 +239,19 @@ defined just above:
 ### Built-in variables
 
 - `HOBNOB_FILE_DIR` — directory containing the hobnob file.
-- `HOBNOB_INVOCATION_DIR` — directory from which hobnob was run.
+- `HOBNOB_INVOCATION_DIR` — directory hobnob was run from.
 
 ### Template filters
 
-`default`, `trim`, `upper`, `lower`, `lines`, `split`, `first` — usable anywhere
-templates are supported.
+`default`, `trim`, `upper`, `lower`, `lines`, `split`, `first` — usable
+anywhere templates are supported.
 
 ```yaml
 - run: echo "Targeting {{.ENV | upper}}"
 ```
 
-Field values that are a single variable reference — optionally with a pipe chain
-— can omit `{{ }}`:
+A field value that's a single variable reference (optionally with a pipe
+chain) can omit `{{ }}`:
 
 ```yaml
 - get:
@@ -268,33 +286,20 @@ Every task is a sequence of five step types.
     - ERROR_LOG: stderr
 ```
 
-> Python scripts buffer stdout when not attached to a terminal, so output from a
-> `run:` step can appear late or all at once. Fix with `PYTHONUNBUFFERED: 1` in
-> `vars:` or `python -u` for a single script.
-
-```yaml
-vars:
-  - PYTHONUNBUFFERED: 1
-```
-
-or
-
-```yaml
-- run: python -u script.py
-```
-
-See also:
-[Python `-u` option docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u)
+> Unbuffered Python: scripts buffer stdout when not attached to a terminal,
+> so `run:` output can appear late or all at once. Fix with
+> `PYTHONUNBUFFERED: 1` in `vars:`, or `python -u` per script. See
+> [Python `-u` docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u).
 
 ### `get` — interactive prompts
 
-Prompts for input. Skipped if the variable already exists in scope.
+Prompts for input; skipped if the variable already exists in scope.
 
-> With `--no-input`, a `CI` env var set, or stdin not attached to a terminal
-> (the case for AI coding agents and other non-interactive callers), prompts are
-> skipped. Missing variables with no `default` will abort.
+> With `--no-input`, a `CI` env var, or non-terminal stdin (AI agents, other
+> non-interactive callers), prompts are skipped. Missing vars with no
+> `default` abort.
 
-Bare form — prompts with no configuration:
+Bare form:
 
 ```yaml
 - get: [MY_VAR]
@@ -325,7 +330,7 @@ Object form:
 
 ### `call` — sub-tasks
 
-Runs another task in an isolated scope. Pass variables in with `with:`, pull
+Runs another task in an isolated scope. Pass vars in with `with:`, pull
 results back with `into:`.
 
 ```yaml
@@ -339,8 +344,8 @@ results back with `into:`.
     - ARTIFACT_PATH: .LOG_FILE
 ```
 
-By default, a non-zero exit halts the timeline. Use `soft: true` to continue
-past a failed call:
+A non-zero exit halts the timeline by default. `soft: true` continues past
+a failed call:
 
 ```yaml
 - call: flaky_cleanup_script
@@ -350,7 +355,7 @@ past a failed call:
 
 ### `loop` — iteration
 
-**List form** — iterates a sequence, current element available as `{{.ITEM}}`:
+List form — iterates a sequence, current element as `{{.ITEM}}`:
 
 ```yaml
 - loop: .GO_FILES
@@ -358,7 +363,7 @@ past a failed call:
     - run: go fmt {{.ITEM}}
 ```
 
-**Matrix form** — runs every combination of the given arrays:
+Matrix form — runs every combination of the given arrays:
 
 ```yaml
 - loop:
@@ -377,17 +382,16 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
   if: '[ "{{.ENV}}" = "production" ]'
 ```
 
-Runs in the inherited task `dir:`, even on a step with its own `dir:` override.
-See [`dir:`](#dir--working-directory) above.
+Runs in the inherited task `dir:`, even on a step with its own `dir:`
+override — see [`dir:`](#dir--working-directory) above.
 
 ---
 
 ## Best practices
 
-- **Task names** — use kebab-case (`deploy-production`, not
-  `deploy_production`).
-- **Variable names** — use `ALL_CAPS` with underscores.
-- **Field ordering** — put `info:` before `steps:` in tasks, and `info:` first
-  in `get:` entries.
-- **Prompt placement** — put `get:` steps as early as possible. Prompts buried
-  after slow `run` steps make the user wait before they can answer.
+- **Task names** — kebab-case (`deploy-production`, not `deploy_production`).
+- **Variable names** — `ALL_CAPS` with underscores.
+- **Field ordering** — `info:` before `steps:` in tasks; `info:` first in
+  `get:` entries.
+- **Prompt placement** — put `get:` steps early. Prompts buried after slow
+  `run` steps make the user wait before they can answer.

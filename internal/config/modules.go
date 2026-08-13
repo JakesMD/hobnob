@@ -10,17 +10,20 @@ import (
 
 // LoadModules resolves module entries against scope, loads each module file,
 // and merges the resulting tasks into cfg. Must be called after BuildScope.
-func LoadModules(cfg *ConfigFile, scope map[string]string) error {
+// A module's own env: block is sourced for that module's own subtree only —
+// same rule as vars: (see GUIDE.md Modules > Scoping), so it never leaks into
+// the parent's vars/secrets.
+func LoadModules(cfg *ConfigFile, vars map[string]string, secrets map[string]bool) error {
 	ancestors := map[string]bool{}
 	if cfg.FilePath != "" {
 		ancestors[cfg.FilePath] = true
 	}
-	return loadModules(cfg, scope, ancestors)
+	return loadModules(cfg, vars, secrets, ancestors)
 }
 
-func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]bool) error {
+func loadModules(cfg *ConfigFile, vars map[string]string, secrets map[string]bool, ancestors map[string]bool) error {
 	for _, mod := range cfg.Modules {
-		filePath, err := eval.EvalTemplate(mod.FileTmpl, scope)
+		filePath, err := eval.EvalTemplate(mod.FileTmpl, vars)
 		if err != nil {
 			return fmt.Errorf("module %q file path: %w", mod.Prefix, err)
 		}
@@ -40,28 +43,47 @@ func loadModules(cfg *ConfigFile, scope map[string]string, ancestors map[string]
 			return fmt.Errorf("module %q: %w", mod.Prefix, err)
 		}
 
+		// modVars/modSecrets stay local to this module's own subtree — a
+		// module's env: file is private the same way its vars: block is.
+		modVars := eval.CopyVars(vars)
+		modSecrets := make(map[string]bool, len(secrets))
+		for k, v := range secrets {
+			modSecrets[k] = v
+		}
+
+		envVars, envSecrets, err := LoadEnvFiles(modCfg.EnvFileTmpls, modCfg.TaskfileDir, modVars)
+		if err != nil {
+			return fmt.Errorf("module %q: %w", mod.Prefix, err)
+		}
+		for k, v := range envVars {
+			modVars[k] = v
+			if envSecrets[k] {
+				modSecrets[k] = true
+			}
+		}
+
 		newAncestors := make(map[string]bool, len(ancestors)+1)
 		for k := range ancestors {
 			newAncestors[k] = true
 		}
 		newAncestors[absPath] = true
 
-		if err := loadModules(modCfg, scope, newAncestors); err != nil {
+		if err := loadModules(modCfg, modVars, modSecrets, newAncestors); err != nil {
 			return fmt.Errorf("module %q: %w", mod.Prefix, err)
 		}
 
-		showSet, err := evalStringSet(mod.ShowTmpls, scope)
+		showSet, err := evalStringSet(mod.ShowTmpls, vars)
 		if err != nil {
 			return fmt.Errorf("module %q show: %w", mod.Prefix, err)
 		}
-		hideSet, err := evalStringSet(mod.HideTmpls, scope)
+		hideSet, err := evalStringSet(mod.HideTmpls, vars)
 		if err != nil {
 			return fmt.Errorf("module %q hide: %w", mod.Prefix, err)
 		}
 
 		flatten := false
 		if mod.FlattenTmpl != "" {
-			flatVal, err := eval.EvalTemplate(mod.FlattenTmpl, scope)
+			flatVal, err := eval.EvalTemplate(mod.FlattenTmpl, vars)
 			if err != nil {
 				return fmt.Errorf("module %q flatten: %w", mod.Prefix, err)
 			}

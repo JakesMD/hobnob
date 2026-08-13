@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os/exec"
@@ -99,6 +100,57 @@ func EvalCondition(condTmpl string, vars map[string]string, dir string) (bool, e
 		return false, err
 	}
 	return true, nil
+}
+
+// SourceShellFile sources path in a subshell (dir sets its working directory)
+// and returns the vars it set or changed, compared against a baseline `env`
+// snapshot taken the same way. This filters out ambient shell noise (e.g.
+// SHLVL) that a plain post-source `env` dump would otherwise include.
+func SourceShellFile(path, dir string) (map[string]string, error) {
+	baseline, err := captureEnv(dir, "env -0")
+	if err != nil {
+		return nil, fmt.Errorf("capture baseline env: %w", err)
+	}
+	sourced, err := captureEnv(dir, fmt.Sprintf("set -a; . %s; env -0", shellQuote(path)))
+	if err != nil {
+		return nil, fmt.Errorf("source: %w", err)
+	}
+	diff := make(map[string]string)
+	for k, v := range sourced {
+		if baseline[k] != v {
+			diff[k] = v
+		}
+	}
+	return diff, nil
+}
+
+// shellQuote wraps s in single quotes for safe interpolation into a POSIX
+// `sh -c` script, escaping any embedded single quotes.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func captureEnv(dir, script string) (map[string]string, error) {
+	cmd := exec.Command("sh", "-c", script)
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		if stderr.Len() > 0 {
+			return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+		}
+		return nil, err
+	}
+	vars := make(map[string]string)
+	for _, entry := range strings.Split(stdout.String(), "\x00") {
+		idx := strings.IndexByte(entry, '=')
+		if idx <= 0 {
+			continue
+		}
+		vars[entry[:idx]] = entry[idx+1:]
+	}
+	return vars, nil
 }
 
 // ParseList parses a JSON array string or a single value into a []string.

@@ -606,6 +606,67 @@ func TestParseConfig_GlobalVars(t *testing.T) {
 	}
 }
 
+func TestParseConfig_EnvBlock(t *testing.T) {
+	// Arrange
+	cfg, err := ParseConfig("testdata/env_block.yml")
+
+	// Act + Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	wantPaths := []string{".env", "./scripts/setup.sh"}
+	if len(cfg.EnvFileTmpls) != len(wantPaths) {
+		t.Fatalf("EnvFileTmpls len: got %d, want %d", len(cfg.EnvFileTmpls), len(wantPaths))
+	}
+	for i, w := range wantPaths {
+		if cfg.EnvFileTmpls[i].PathTmpl != w {
+			t.Errorf("EnvFileTmpls[%d].PathTmpl: got %q, want %q", i, cfg.EnvFileTmpls[i].PathTmpl, w)
+		}
+		if cfg.EnvFileTmpls[i].SecretOverride != nil {
+			t.Errorf("EnvFileTmpls[%d].SecretOverride: got %v, want nil (no explicit secret: given)", i, *cfg.EnvFileTmpls[i].SecretOverride)
+		}
+	}
+}
+
+func TestParseConfig_EnvBlockSecretOverride(t *testing.T) {
+	// given an env: entry in expanded form with an explicit secret: override, when parsed, then SecretOverride reflects the given value (why: lets callers opt individual files in or out of the default secret status)
+	// Arrange
+	cfg, err := ParseConfig("testdata/env_block_secret_override.yml")
+
+	// Act + Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	if len(cfg.EnvFileTmpls) != 2 {
+		t.Fatalf("EnvFileTmpls len: got %d, want 2", len(cfg.EnvFileTmpls))
+	}
+	entry := cfg.EnvFileTmpls[0]
+	if entry.PathTmpl != ".env" {
+		t.Errorf("EnvFileTmpls[0].PathTmpl: got %q, want %q", entry.PathTmpl, ".env")
+	}
+	if entry.SecretOverride == nil || *entry.SecretOverride != false {
+		t.Errorf("EnvFileTmpls[0].SecretOverride: got %v, want false", entry.SecretOverride)
+	}
+	entry = cfg.EnvFileTmpls[1]
+	if entry.PathTmpl != "setup.sh" {
+		t.Errorf("EnvFileTmpls[1].PathTmpl: got %q, want %q", entry.PathTmpl, "setup.sh")
+	}
+	if entry.SecretOverride == nil || *entry.SecretOverride != true {
+		t.Errorf("EnvFileTmpls[1].SecretOverride: got %v, want true", entry.SecretOverride)
+	}
+}
+
+func TestParseConfig_EnvBlockMalformedMultiKeyEntryErrors(t *testing.T) {
+	// given an env: sequence item with two sibling path keys (a mis-indented mapping), when parsed, then an error is returned (why: silently keeping only the first pair would drop a declared file with no warning)
+	// Arrange
+	cfg, err := ParseConfig("testdata/env_block_malformed_multikey.yml")
+
+	// Act + Assert
+	if err == nil {
+		t.Fatalf("expected parse error, got cfg with EnvFileTmpls=%v", cfg.EnvFileTmpls)
+	}
+}
+
 func TestParseConfig_MissingTask(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/run_step.yml")

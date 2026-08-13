@@ -90,11 +90,11 @@ func loadConfig(path string, cliVars map[string]string, invDir string) (*config.
 	if err != nil {
 		return nil, nil, err
 	}
-	scope, err := cli.BuildScope(cfg.Vars, cliVars, cfg.TaskfileDir, invDir)
+	scope, err := cli.BuildScope(cfg.Vars, cfg.EnvFileTmpls, cliVars, cfg.TaskfileDir, invDir)
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := config.LoadModules(cfg, scope.Vars); err != nil {
+	if err := config.LoadModules(cfg, scope.Vars, scope.Secrets); err != nil {
 		return nil, nil, err
 	}
 	return cfg, scope, nil

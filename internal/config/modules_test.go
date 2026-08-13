@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"testing"
 )
 
@@ -12,7 +13,7 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -65,7 +66,7 @@ func TestLoadModules_InternalTaskNotRegistered(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -95,7 +96,7 @@ func TestLoadModules_ShowFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -140,7 +141,7 @@ func TestLoadModules_HideFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -188,7 +189,7 @@ func TestLoadModules_Flatten(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -247,7 +248,7 @@ func TestLoadModules_ModuleCfgIsolation(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -284,7 +285,7 @@ func TestLoadModules_TemplatePath(t *testing.T) {
 	}
 
 	// Act — default kicks in since FARM_FILE is not set
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -320,7 +321,7 @@ func TestLoadModules_FlattenCollision(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -358,7 +359,7 @@ func TestLoadModules_SubdirRelativePath(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -405,7 +406,7 @@ func TestLoadModules_NestedFormat(t *testing.T) {
 		t.Fatalf("parse error: %v", err)
 	}
 
-	err = LoadModules(cfg, map[string]string{})
+	err = LoadModules(cfg, map[string]string{}, map[string]bool{})
 	if err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
@@ -459,7 +460,7 @@ func TestLoadModules_NestedImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -507,7 +508,7 @@ func TestLoadModules_DiamondImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -561,7 +562,7 @@ func TestLoadModules_SharedDirectImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}); err != nil {
+	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -605,10 +606,45 @@ func TestLoadModules_CycleDetection(t *testing.T) {
 	}
 
 	// Act
-	err = LoadModules(cfg, map[string]string{})
+	err = LoadModules(cfg, map[string]string{}, map[string]bool{})
 
 	// Assert
 	if err == nil {
 		t.Fatal("given circular import A->B->A, when loaded, then error expected (why: infinite loop without cycle detection)")
+	}
+}
+
+func TestLoadModules_ModuleEnvFileStaysPrivateToModule(t *testing.T) {
+	// given a module declaring its own env: block, when the module loads, then its vars do NOT leak into the parent's vars/secrets (why: a module's env: file is private the same way its vars: block is — see GUIDE.md Modules > Scoping)
+	// Arrange
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/module.env", []byte("MODULE_VAR=from_module\n"), 0o644); err != nil {
+		t.Fatalf("write env file: %v", err)
+	}
+	modYml := "env:\n  - module.env:\n      secret: true\n\ntasks:\n  ping:\n    steps:\n      - run: echo ping\n"
+	if err := os.WriteFile(dir+"/module.yml", []byte(modYml), 0o644); err != nil {
+		t.Fatalf("write module file: %v", err)
+	}
+	cfg := &ConfigFile{
+		Tasks:       make(map[string]Task),
+		TaskfileDir: dir,
+		Modules: []ModuleEntry{
+			{Prefix: "mod", FileTmpl: "module.yml"},
+		},
+	}
+	vars := map[string]string{}
+	secrets := map[string]bool{}
+
+	// Act
+	if err := LoadModules(cfg, vars, secrets); err != nil {
+		t.Fatalf("LoadModules error: %v", err)
+	}
+
+	// Assert
+	if _, ok := vars["MODULE_VAR"]; ok {
+		t.Errorf("MODULE_VAR leaked into parent vars: %q", vars["MODULE_VAR"])
+	}
+	if secrets["MODULE_VAR"] {
+		t.Error("MODULE_VAR leaked into parent secrets")
 	}
 }

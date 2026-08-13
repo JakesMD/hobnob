@@ -1,6 +1,7 @@
 package eval
 
 import (
+	"os"
 	"testing"
 )
 
@@ -635,5 +636,116 @@ func TestCopyVars(t *testing.T) {
 	}
 	if dst["B"] != "2" {
 		t.Errorf("CopyVars missing key: dst[B]=%q", dst["B"])
+	}
+}
+
+func TestSourceShellFile(t *testing.T) {
+	tests := []struct {
+		name       string
+		script     string
+		presetEnv  map[string]string
+		wantVar    string
+		wantValue  string
+		wantAbsent bool
+	}{
+		{
+			name:      "given script exports a new var, when sourced, then var is captured (why: the whole point of env: is picking up vars a script defines)",
+			script:    "export NEWVAR=hello\n",
+			wantVar:   "NEWVAR",
+			wantValue: "hello",
+		},
+		{
+			name:       "given script re-exports an existing var unchanged, when sourced, then var is not reported as set (why: diffing against baseline filters out ambient noise)",
+			script:     "export SAMEVAR=same\n",
+			presetEnv:  map[string]string{"SAMEVAR": "same"},
+			wantVar:    "SAMEVAR",
+			wantAbsent: true,
+		},
+		{
+			name:      "given script changes an existing var's value, when sourced, then the new value is captured (why: a script overriding an inherited var is a deliberate change)",
+			script:    "export CHANGEDVAR=newvalue\n",
+			presetEnv: map[string]string{"CHANGEDVAR": "oldvalue"},
+			wantVar:   "CHANGEDVAR",
+			wantValue: "newvalue",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			for k, v := range tc.presetEnv {
+				t.Setenv(k, v)
+			}
+			dir := t.TempDir()
+			scriptPath := dir + "/script.sh"
+			if err := os.WriteFile(scriptPath, []byte(tc.script), 0o644); err != nil {
+				t.Fatalf("write script: %v", err)
+			}
+
+			// Act
+			got, err := SourceShellFile(scriptPath, dir)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			// Assert
+			if tc.wantAbsent {
+				if _, ok := got[tc.wantVar]; ok {
+					t.Errorf("%s: expected absent from diff, got %q", tc.wantVar, got[tc.wantVar])
+				}
+				return
+			}
+			if got[tc.wantVar] != tc.wantValue {
+				t.Errorf("%s: got %q, want %q", tc.wantVar, got[tc.wantVar], tc.wantValue)
+			}
+		})
+	}
+}
+
+func TestSourceShellFile_PathWithShellMetacharactersNotExecuted(t *testing.T) {
+	// given a path containing shell command substitution syntax, when sourced, then the substitution is not executed (why: a templated env: path built from an untrusted var must not let shell metacharacters run arbitrary commands)
+	// Arrange
+	dir := t.TempDir()
+	scriptName := "$(touch injected).sh"
+	scriptPath := dir + "/" + scriptName
+	if err := os.WriteFile(scriptPath, []byte("export FOO=bar\n"), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	// Act
+	got, err := SourceShellFile(scriptPath, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Assert
+	if got["FOO"] != "bar" {
+		t.Errorf("FOO: got %q, want %q", got["FOO"], "bar")
+	}
+	if _, err := os.Stat(dir + "/injected"); err == nil {
+		t.Error("canary file exists: command substitution in path was executed")
+	}
+}
+
+func TestSourceShellFile_MultiLineValuePreserved(t *testing.T) {
+	// given a script exporting a value with embedded newlines, when sourced, then the full multi-line value is captured (why: env: files are used to load secrets like PEM certs/keys, which are commonly multi-line)
+	// Arrange
+	dir := t.TempDir()
+	script := "export CERT=\"$(printf 'line1\\nline2\\nline3')\"\n"
+	scriptPath := dir + "/script.sh"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	// Act
+	got, err := SourceShellFile(scriptPath, dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Assert
+	want := "line1\nline2\nline3"
+	if got["CERT"] != want {
+		t.Errorf("CERT: got %q, want %q", got["CERT"], want)
 	}
 }

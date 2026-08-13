@@ -1,0 +1,10 @@
+env:
+  - .env:
+      secret: true
+    ./other.env:
+      secret: false
+
+tasks:
+  check:
+    steps:
+      - run: echo "{{.FOO}}"

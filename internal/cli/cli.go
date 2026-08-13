@@ -173,12 +173,16 @@ complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)
 }
 
 // BuildScope constructs the initial variable scope: env vars as the base,
-// then system vars (HOBNOB_FILE_DIR, HOBNOB_INVOCATION_DIR), then CLI KEY=VALUE
-// args, then global vars evaluated on top (highest priority).
-// Globals win over CLI args because vars: is implementation detail — the public
-// API for caller input is get: steps, which are skipped when a var is already set.
-// Also returns a secrets map for any global vars marked secret: true.
-func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, invocationDir string) (*Scope, error) {
+// then system vars (HOBNOB_FILE_DIR, HOBNOB_INVOCATION_DIR), then vars sourced
+// from env: files, then CLI KEY=VALUE args, then global vars evaluated on top
+// (highest priority).
+// CLI args win over env: files so a caller's explicit override always beats a
+// sourced default. Globals win over CLI args because vars: is implementation
+// detail — the public API for caller input is get: steps, which are skipped
+// when a var is already set.
+// Also returns a secrets map for any global vars marked secret: true, and for
+// any var sourced from an env: file per its default/override (see config.LoadEnvFiles).
+func BuildScope(vars []config.SetEntry, envFileEntries []config.EnvFileEntry, cliVars map[string]string, taskfileDir, invocationDir string) (*Scope, error) {
 	s := &Scope{
 		Vars:    make(map[string]string),
 		Secrets: make(map[string]bool),
@@ -193,6 +197,17 @@ func BuildScope(vars []config.SetEntry, cliVars map[string]string, taskfileDir, 
 
 	s.Vars["HOBNOB_FILE_DIR"] = taskfileDir
 	s.Vars["HOBNOB_INVOCATION_DIR"] = invocationDir
+
+	envFileVars, envFileSecrets, err := config.LoadEnvFiles(envFileEntries, taskfileDir, s.Vars)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range envFileVars {
+		s.Vars[k] = v
+		if envFileSecrets[k] {
+			s.Secrets[k] = true
+		}
+	}
 
 	for k, v := range cliVars {
 		s.Vars[k] = v

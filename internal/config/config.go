@@ -52,12 +52,21 @@ type ModuleEntry struct {
 }
 
 type ConfigFile struct {
-	FilePath    string
-	Vars        []SetEntry
-	Tasks       map[string]Task
-	TaskNames   []string
-	TaskfileDir string
-	Modules     []ModuleEntry
+	FilePath     string
+	Vars         []SetEntry
+	EnvFileTmpls []EnvFileEntry
+	Tasks        map[string]Task
+	TaskNames    []string
+	TaskfileDir  string
+	Modules      []ModuleEntry
+}
+
+// EnvFileEntry is one env: block entry. SecretOverride is nil unless the
+// entry explicitly sets secret: true/false; nil means "use the default,
+// secret: false" (see config.LoadEnvFiles).
+type EnvFileEntry struct {
+	PathTmpl       string
+	SecretOverride *bool
 }
 
 type StepKind int
@@ -174,6 +183,12 @@ func ParseConfig(path string) (*ConfigFile, error) {
 				return nil, fmt.Errorf("vars: %w", err)
 			}
 			cfg.Vars = entries
+		case "env":
+			paths, err := parseEnvNode(val)
+			if err != nil {
+				return nil, fmt.Errorf("env: %w", err)
+			}
+			cfg.EnvFileTmpls = paths
 		case "modules":
 			mods, err := parseModulesNode(val)
 			if err != nil {
@@ -381,6 +396,36 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			Key:     rawKey,
 			ValTmpl: valTmpl,
 		})
+	}
+	return entries, nil
+}
+
+func parseEnvNode(n *yaml.Node) ([]EnvFileEntry, error) {
+	if n.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("env must be a sequence of file paths")
+	}
+	var entries []EnvFileEntry
+	for _, item := range n.Content {
+		if item.Kind == yaml.ScalarNode {
+			entries = append(entries, EnvFileEntry{PathTmpl: item.Value})
+			continue
+		}
+		// expanded form: - path: { secret: false }
+		if item.Kind != yaml.MappingNode || len(item.Content) != 2 {
+			return nil, fmt.Errorf("each env entry must be a file path or a single path: modifiers pair")
+		}
+		entry := EnvFileEntry{PathTmpl: item.Content[0].Value}
+		modifiers := item.Content[1]
+		if modifiers.Kind != yaml.MappingNode {
+			return nil, fmt.Errorf("env entry %q modifiers must be a mapping", entry.PathTmpl)
+		}
+		for i := 0; i+1 < len(modifiers.Content); i += 2 {
+			if modifiers.Content[i].Value == "secret" {
+				v := modifiers.Content[i+1].Value == "true"
+				entry.SecretOverride = &v
+			}
+		}
+		entries = append(entries, entry)
 	}
 	return entries, nil
 }

@@ -76,29 +76,27 @@ func (lw *LineWriter) Write(p []byte) (int, error) {
 		byteVal := p[i]
 		switch byteVal {
 		case '\n':
-			if lw.lastWasCR {
-				lw.w.Write([]byte(clearLine))
+			if lw.lastWasCR && lw.buf.Len() == 0 {
+				// Completes a CRLF pair whose \r was already flushed live
+				// (in this Write call or an earlier one, per the '\r' case
+				// below) — just advance past it, nothing new to flush.
+				lw.w.Write([]byte{'\n'})
+				lw.lastWasCR = false
+				continue
 			}
-			lw.w.Write([]byte(lw.prefix))
-			lw.w.Write(lw.buf.Bytes())
-			lw.w.Write([]byte{'\n'})
-			lw.buf.Reset()
-			lw.lastWasCR = false
+			lw.flush('\n')
 		case '\r':
-			// CRLF line endings pair \r with an immediate \n — let the \n
-			// below perform the flush as an ordinary line, since a real
-			// progress redraw (rsync --progress, etc.) uses \r alone.
+			// A \r immediately followed by \n in the same chunk is an
+			// ordinary CRLF line ending — let the \n above flush it as a
+			// plain line, since a real progress redraw (rsync --progress,
+			// etc.) uses \r alone. A \r landing at the end of this chunk
+			// still has to flush live (its pairing \n, if any, may not
+			// arrive for a while) — the lastWasCR+empty-buf check above
+			// absorbs that \n correctly if it turns up in a later call.
 			if i+1 < len(p) && p[i+1] == '\n' {
 				continue
 			}
-			if lw.lastWasCR {
-				lw.w.Write([]byte(clearLine))
-			}
-			lw.w.Write([]byte(lw.prefix))
-			lw.w.Write(lw.buf.Bytes())
-			lw.w.Write([]byte{'\r'})
-			lw.buf.Reset()
-			lw.lastWasCR = true
+			lw.flush('\r')
 		default:
 			lw.buf.WriteByte(byteVal)
 		}
@@ -106,18 +104,22 @@ func (lw *LineWriter) Write(p []byte) (int, error) {
 	return totalBytes, nil
 }
 
+func (lw *LineWriter) flush(terminator byte) {
+	if lw.lastWasCR {
+		lw.w.Write([]byte(clearLine))
+	}
+	lw.w.Write([]byte(lw.prefix))
+	lw.w.Write(lw.buf.Bytes())
+	lw.w.Write([]byte{terminator})
+	lw.buf.Reset()
+	lw.lastWasCR = terminator == '\r'
+}
+
 // Flush writes any buffered partial line. Errors from w are discarded because
 // w is always os.Stdout/os.Stderr — if those fail the process is dying anyway.
 func (lw *LineWriter) Flush() {
 	if lw.buf.Len() > 0 {
-		if lw.lastWasCR {
-			lw.w.Write([]byte(clearLine))
-		}
-		lw.lastWasCR = false
-		lw.w.Write([]byte(lw.prefix))
-		lw.w.Write(lw.buf.Bytes())
-		lw.w.Write([]byte{'\n'})
-		lw.buf.Reset()
+		lw.flush('\n')
 	}
 }
 
