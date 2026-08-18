@@ -1,5 +1,6 @@
 CLAUDE.md
-/hobnob
-/hobnob_release
+.claude/
+hobnob/
+hobnob_release/
 .DS_Store
 TODO.md
