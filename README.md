@@ -1,12 +1,19 @@
 # hobnob
 
-Replace the step-by-step docs nobody reads — write a YAML task once that anyone
-can run.
+A YAML task runner built around 3 things most others get wrong:
 
-Other task runners are either predictable **_or_** interactive. Hobnob is both.
+- **Prompts** — text input or select menus, dropped anywhere in a task.
+- **JSON, natively** — query, filter, slice, no `jq` needed.
+- **Tasks return values** — capture a command's output or a sub-task's results,
+  explicitly, back into the caller.
 
-Built for CI/CD pipelines, interactive developer CLIs, and a drop-in replacement
-for the Confluence docs nobody can find and nobody keeps current.
+---
+
+## 📦 Install
+
+```bash
+curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
+```
 
 ---
 
@@ -16,76 +23,60 @@ for the Confluence docs nobody can find and nobody keeps current.
 # hobnob.yml
 
 tasks:
-  get-releases:
+  tell-joke:
+    info: Tell a joke from a category you pick
     steps:
-      - run: curl -s https://api.github.com/repos/jakesmd/hobnob/releases | awk -F'"' '/tag_name/{print $4}' | head -8
+      # Returning vars: curl's stdout captured straight into a var
+      - run: curl -s https://official-joke-api.appspot.com/types
         into:
-          - RELEASE_LIST: stdout | lines
-      - get:
-          - RELEASES:
-              info: Releases to download
-              options: .RELEASE_LIST
-              default: .RELEASE_LIST | first
-              multi: true
-      - call: _pick-dir
-        into:
-          - DIR: .FOLDER
-      - loop: .RELEASES
-        steps:
-          - run: curl -L -o {{.DIR}}/hobnob-{{.ITEM}}.tar.gz "https://github.com/jakesmd/hobnob/archive/refs/tags/{{.ITEM}}.tar.gz"
+          - CATEGORIES: stdout
 
-  _pick-dir:
+      # Interactive prompts: options pulled from the step above
+      - get:
+          - CATEGORY:
+              options: .CATEGORIES
+
+      # Returning vars: whole JSON blob pulled back from an isolated sub-task
+      - call: _fetch-joke
+        into:
+          - JOKE: .RESP
+
+      # JSON handling: pluck fields out of the blob, no jq
+      - run: 'echo "{{ .JOKE | pluck "[0].setup" }} ... {{ .JOKE | pluck "[0].punchline" }}"'
+
+  _fetch-joke:
     steps:
-      - get:
-          - FOLDER:
-              info: Folder to save the releases to
-              default: ./downloads
-      - run: mkdir -p {{.FOLDER}}
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.CATEGORY}}/random
+        into:
+          - RESP: stdout
 ```
 
-```bash
-hobnob --list
-hobnob get-releases
-hobnob get-releases FOLDER=./releases   # skip the folder prompt
-```
+```shell
+% hobnob --file example.yml tell-joke
 
-Example prompt (without the colors)
+run: [tell-joke] curl -s https://official-joke-api.appspot.com/types
+[tell-joke] ["general","knock-knock","programming","dad"]
 
-```
-% hobnob get-releases
-
-Select values for RELEASES.
-Releases to download
-  ◉ v0.3.0
-▶ ○ v0.2.1
-  ○ v0.2.0
-  ○ v0.1.0
-↑↓ move  space toggle  enter confirm
+Select a value for CATEGORY.
+▶ general
+  knock-knock
+  programming
+  dad
+↑↓ move  enter select
 ```
 
 ---
 
-## ✨ Top features
+## ✨ Other features
 
-**Prompts** — text input or selection menus, placed anywhere in the timeline.
-Options can pull from a previous step's output.
-
-**Sub-task returns** — run separate tasks and explicitly pull their variables
-back into the parent context, ensuring predictable data flow without accidental
-leaks.
-
-**Modules** — pull tasks from other files.
-
-**Dynamic everywhere** — set variables at any point, not just upfront. Go
-templates in values, conditions, options, ...
-
----
-
-## 📦 Install
-
-```bash
-curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
-```
+- **Modules** — import tasks from other files, namespaced by prefix.
+- **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
+- **Env files** — load vars from `.env` files or sourced shell scripts.
+- **Working dir inheritance** — set it once, override per-call or per-step.
+- **Secret masking** — flag any var as secret to mask it in output.
+- **CI mode** — skip prompts, fail fast on missing vars.
+- **Task listing** — see or interactively pick from available tasks.
+- ...and much more in the [hobnob guide](GUIDE.md).
 
 ---
 

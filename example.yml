@@ -1,0 +1,27 @@
+tasks:
+  tell-joke:
+    info: Tell a joke from a category you pick
+    steps:
+      # 🔁 Return vars: curl's stdout captured straight into a var
+      - run: curl -s https://official-joke-api.appspot.com/types
+        into:
+          - CATEGORIES: stdout 
+
+      # 💬 Interactive prompts: options pulled from the step above
+      - get:
+          - CATEGORY:
+              options: .CATEGORIES
+
+      # 🔁 Return vars: whole JSON blob pulled back from an isolated sub-task
+      - call: _fetch-joke
+        into:
+          - JOKE: .RESP
+
+      # 🧩 JSON handling: pluck fields out of the blob, no jq
+      - run: 'echo "{{ .JOKE | pluck "[0].setup" }} ... {{ .JOKE | pluck "[0].punchline" }}"' 
+
+  _fetch-joke:
+    steps:
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.CATEGORY}}/random
+        into:
+          - RESP: stdout
