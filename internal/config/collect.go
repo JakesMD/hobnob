@@ -6,12 +6,19 @@ func CollectGetParams(steps []Step, cfg *ConfigFile) []GetEntry {
 	return collectGetParams(steps, cfg, make(map[string]bool), make(map[string]bool))
 }
 
+// cloneSet returns a shallow copy of src, so a callee can extend its own
+// picture of "already set" vars without mutating the caller's.
+func cloneSet(src map[string]bool) map[string]bool {
+	dst := make(map[string]bool, len(src))
+	for k := range src {
+		dst[k] = true
+	}
+	return dst
+}
+
 func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, preset map[string]bool) []GetEntry {
 	var entries []GetEntry
-	alreadySet := make(map[string]bool, len(preset))
-	for k := range preset {
-		alreadySet[k] = true
-	}
+	alreadySet := cloneSet(preset)
 	for _, s := range steps {
 		switch s.Kind {
 		case KindSet:
@@ -30,10 +37,7 @@ func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, pr
 				alreadySet[e.ParentKey] = true
 			}
 		case KindFor:
-			loopPreset := make(map[string]bool, len(alreadySet))
-			for k := range alreadySet {
-				loopPreset[k] = true
-			}
+			loopPreset := cloneSet(alreadySet)
 			if len(s.ForMatrix) > 0 {
 				for _, matrixEntry := range s.ForMatrix {
 					loopPreset[matrixEntry.VarName] = true
@@ -45,10 +49,7 @@ func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, pr
 		case KindCall:
 			if cfg != nil && !strings.Contains(s.CallTarget, "{{") {
 				if !visited[s.CallTarget] {
-					childPreset := make(map[string]bool, len(alreadySet)+len(s.CallVars))
-					for k := range alreadySet {
-						childPreset[k] = true
-					}
+					childPreset := cloneSet(alreadySet)
 					for _, w := range s.CallVars {
 						childPreset[w.Key] = true
 					}

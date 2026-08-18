@@ -68,6 +68,16 @@ func defaultNoPrompts() bool {
 	return os.Getenv("CI") != "" || !isTerminalFn()
 }
 
+// hasNoInputFlag reports whether args contains the --no-input flag.
+func hasNoInputFlag(args []string) bool {
+	for _, arg := range args {
+		if arg == "--no-input" {
+			return true
+		}
+	}
+	return false
+}
+
 func parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]string, err error) {
 	noPrompts = defaultNoPrompts()
 	cliVars = make(map[string]string)
@@ -223,12 +233,7 @@ func run(ctx context.Context, args []string) error {
 		case "--help":
 			return cli.PrintHelp(cfg, scope, os.Stdout, version)
 		case "--select":
-			noPrompts := defaultNoPrompts()
-			for _, arg := range args[1:] {
-				if arg == "--no-input" {
-					noPrompts = true
-				}
-			}
+			noPrompts := defaultNoPrompts() || hasNoInputFlag(args[1:])
 			return selectAndRun(ctx, scope, cfg, noPrompts, false)
 		default:
 			return cli.ListTasks(cfg, scope, os.Stdout)

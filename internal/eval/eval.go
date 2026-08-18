@@ -125,121 +125,126 @@ func ParseMapEntries(s string) (keys []string, values []string, err error) {
 	return keys, values, nil
 }
 
-func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
-	funcs := template.FuncMap{
-		"default": func(def string, given ...interface{}) string {
-			if len(given) == 0 || given[0] == nil {
-				return def
-			}
-			if s, ok := given[0].(string); ok && s != "" {
-				return s
-			}
+// templateFuncs is computed once and reused across EvalTemplate calls —
+// EvalTemplate is the hottest path in the codebase (called per var/condition/
+// dir template), and rebuilding this map on every call showed up as overhead
+// under loop-heavy tasks.
+var templateFuncs = template.FuncMap{
+	"default": func(def string, given ...interface{}) string {
+		if len(given) == 0 || given[0] == nil {
 			return def
-		},
-		"trim": func(s string) string {
-			return strings.TrimSpace(s)
-		},
-		"upper": func(s string) string {
-			return strings.ToUpper(s)
-		},
-		"lower": func(s string) string {
-			return strings.ToLower(s)
-		},
-		"split": func(sep, s string) (string, error) {
-			var parts []string
-			for _, part := range strings.Split(s, sep) {
-				if part != "" {
-					parts = append(parts, part)
-				}
+		}
+		if s, ok := given[0].(string); ok && s != "" {
+			return s
+		}
+		return def
+	},
+	"trim": func(s string) string {
+		return strings.TrimSpace(s)
+	},
+	"upper": func(s string) string {
+		return strings.ToUpper(s)
+	},
+	"lower": func(s string) string {
+		return strings.ToLower(s)
+	},
+	"split": func(sep, s string) (string, error) {
+		var parts []string
+		for _, part := range strings.Split(s, sep) {
+			if part != "" {
+				parts = append(parts, part)
 			}
-			jsonBytes, err := json.Marshal(parts)
+		}
+		jsonBytes, err := json.Marshal(parts)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonBytes), nil
+	},
+	"lines": func(s string) (string, error) {
+		return splitLinesJSON(s)
+	},
+	"first": func(s string) (string, error) {
+		var items []string
+		if err := json.Unmarshal([]byte(s), &items); err != nil {
+			return "", fmt.Errorf("first: %w", err)
+		}
+		if len(items) == 0 {
+			return "", nil
+		}
+		return items[0], nil
+	},
+	// pluck takes the piped JSON value as its last arg (Go template
+	// pipeline convention). An optional default before it — pluck "path"
+	// "fallback" — swallows a missing key/index or invalid JSON and
+	// returns the fallback instead of erroring; omit it to fail fast.
+	"pluck": func(path string, rest ...string) (string, error) {
+		var s string
+		var def *string
+		switch len(rest) {
+		case 1:
+			s = rest[0]
+		case 2:
+			d := rest[0]
+			def = &d
+			s = rest[1]
+		default:
+			return "", fmt.Errorf("pluck: expected a value and an optional default, got %d extra args", len(rest))
+		}
+		v, err := decodeJSON(s)
+		if err != nil {
+			if def != nil {
+				return *def, nil
+			}
+			return "", fmt.Errorf("pluck: %w", err)
+		}
+		p, err := jsonPathParser.Parse(normalizeJSONPath(path))
+		if err != nil {
+			return "", fmt.Errorf("pluck %q: %w", path, err)
+		}
+		nodes := p.Select(v)
+		switch len(nodes) {
+		case 0:
+			if def != nil {
+				return *def, nil
+			}
+			return "", fmt.Errorf("pluck %q: no match", path)
+		case 1:
+			return stringifyJSONValue(nodes[0])
+		default:
+			b, err := json.Marshal(nodes)
 			if err != nil {
 				return "", err
 			}
-			return string(jsonBytes), nil
-		},
-		"lines": func(s string) (string, error) {
-			return splitLinesJSON(s)
-		},
-		"first": func(s string) (string, error) {
-			var items []string
-			if err := json.Unmarshal([]byte(s), &items); err != nil {
-				return "", fmt.Errorf("first: %w", err)
-			}
-			if len(items) == 0 {
-				return "", nil
-			}
-			return items[0], nil
-		},
-		// pluck takes the piped JSON value as its last arg (Go template
-		// pipeline convention). An optional default before it — pluck "path"
-		// "fallback" — swallows a missing key/index or invalid JSON and
-		// returns the fallback instead of erroring; omit it to fail fast.
-		"pluck": func(path string, rest ...string) (string, error) {
-			var s string
-			var def *string
-			switch len(rest) {
-			case 1:
-				s = rest[0]
-			case 2:
-				d := rest[0]
-				def = &d
-				s = rest[1]
-			default:
-				return "", fmt.Errorf("pluck: expected a value and an optional default, got %d extra args", len(rest))
-			}
-			v, err := decodeJSON(s)
-			if err != nil {
-				if def != nil {
-					return *def, nil
-				}
-				return "", fmt.Errorf("pluck: %w", err)
-			}
-			p, err := jsonPathParser.Parse(normalizeJSONPath(path))
-			if err != nil {
-				return "", fmt.Errorf("pluck %q: %w", path, err)
-			}
-			nodes := p.Select(v)
-			switch len(nodes) {
-			case 0:
-				if def != nil {
-					return *def, nil
-				}
-				return "", fmt.Errorf("pluck %q: no match", path)
-			case 1:
-				return stringifyJSONValue(nodes[0])
-			default:
-				b, err := json.Marshal(nodes)
-				if err != nil {
-					return "", err
-				}
-				return string(b), nil
-			}
-		},
-		"keys": func(s string) (string, error) {
-			keys, _, err := sortedMapEntries(s)
-			if err != nil {
-				return "", fmt.Errorf("keys: %w", err)
-			}
-			jsonBytes, err := json.Marshal(keys)
-			if err != nil {
-				return "", err
-			}
-			return string(jsonBytes), nil
-		},
-		"values": func(s string) (string, error) {
-			_, values, err := sortedMapEntries(s)
-			if err != nil {
-				return "", fmt.Errorf("values: %w", err)
-			}
-			jsonBytes, err := json.Marshal(values)
-			if err != nil {
-				return "", err
-			}
-			return string(jsonBytes), nil
-		},
-	}
-	parsed, err := template.New("").Funcs(funcs).Parse(tmpl)
+			return string(b), nil
+		}
+	},
+	"keys": func(s string) (string, error) {
+		keys, _, err := sortedMapEntries(s)
+		if err != nil {
+			return "", fmt.Errorf("keys: %w", err)
+		}
+		jsonBytes, err := json.Marshal(keys)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonBytes), nil
+	},
+	"values": func(s string) (string, error) {
+		_, values, err := sortedMapEntries(s)
+		if err != nil {
+			return "", fmt.Errorf("values: %w", err)
+		}
+		jsonBytes, err := json.Marshal(values)
+		if err != nil {
+			return "", err
+		}
+		return string(jsonBytes), nil
+	},
+}
+
+func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
+	parsed, err := template.New("").Funcs(templateFuncs).Parse(tmpl)
 	if err != nil {
 		return "", err
 	}

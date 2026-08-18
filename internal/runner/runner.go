@@ -92,6 +92,17 @@ func maskSecrets(s string, scope *cli.Scope) string {
 	return s
 }
 
+// execCtx bundles the state threaded through every step-execution function.
+// scope is kept separate — a call step swaps in a childScope while
+// cfg/task/noPrompts/dir change together as a unit.
+type execCtx struct {
+	ctx       context.Context
+	cfg       *config.ConfigFile
+	task      string
+	noPrompts bool
+	dir       string
+}
+
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
 	task, ok := cfg.Tasks[taskName]
 	if !ok {
@@ -133,22 +144,22 @@ func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *co
 			return nil
 		}
 	}
-	return executeSteps(ctx, task.Steps, scope, execCfg, taskName, noPrompts, currentDir)
+	return executeSteps(execCtx{ctx: ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: currentDir}, task.Steps, scope)
 }
 
-func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func executeSteps(ec execCtx, steps []config.Step, scope *cli.Scope) error {
 	for _, s := range steps {
-		if ctx.Err() != nil {
-			return fmt.Errorf("%w: %v", ErrInterrupted, ctx.Err())
+		if ec.ctx.Err() != nil {
+			return fmt.Errorf("%w: %v", ErrInterrupted, ec.ctx.Err())
 		}
 		if s.IfExpr != "" {
-			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars, currentDir)
+			ok, err := eval.EvalCondition(s.IfExpr, scope.Vars, ec.dir)
 			if err != nil {
 				return fmt.Errorf("if condition: %w", err)
 			}
 			if !ok {
 				if s.Kind == config.KindRun {
-					fmt.Println(tui.RunSkipLine(task))
+					fmt.Println(tui.RunSkipLine(ec.task))
 				}
 				continue
 			}
@@ -157,18 +168,18 @@ func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cf
 		var err error
 		switch s.Kind {
 		case config.KindRun:
-			err = execRun(ctx, s, scope, task, cfg.TaskfileDir, currentDir)
+			err = execRun(ec, s, scope)
 		case config.KindSet:
 			err = execSet(s, scope)
 		case config.KindCall:
-			err = execCall(ctx, s, scope, currentDir, cfg, noPrompts)
+			err = execCall(ec, s, scope)
 			if err != nil && s.Soft && !errors.Is(err, ErrInterrupted) {
 				err = nil
 			}
 		case config.KindFor:
-			err = execFor(ctx, s, scope, cfg, task, noPrompts, currentDir)
+			err = execFor(ec, s, scope)
 		case config.KindGet:
-			err = execGet(ctx, s, scope, task, noPrompts)
+			err = execGet(ec, s, scope)
 		}
 		if err != nil {
 			return err
@@ -177,30 +188,30 @@ func executeSteps(ctx context.Context, steps []config.Step, scope *cli.Scope, cf
 	return nil
 }
 
-func execRun(ctx context.Context, s config.Step, scope *cli.Scope, task, taskfileDir, currentDir string) error {
+func execRun(ec execCtx, s config.Step, scope *cli.Scope) error {
 	cmd, err := eval.EvalTemplate(s.Command, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("run template: %w", err)
 	}
-	runDir := currentDir
+	runDir := ec.dir
 	displayDir := ""
 	if s.DirTmpl != "" {
 		resolved, err := eval.EvalTemplate(s.DirTmpl, scope.Vars)
 		if err != nil {
 			return fmt.Errorf("run dir template: %w", err)
 		}
-		runDir = resolveDirPath(resolved, taskfileDir)
+		runDir = resolveDirPath(resolved, ec.cfg.TaskfileDir)
 		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"])
 	}
 
 	displayCmd := maskSecrets(cmd, scope)
-	for _, displayLine := range tui.RunDisplayLines(displayCmd, task, displayDir) {
+	for _, displayLine := range tui.RunDisplayLines(displayCmd, ec.task, displayDir) {
 		fmt.Println(displayLine)
 	}
-	prefix := tui.TaskPrefix(task)
+	prefix := tui.TaskPrefix(ec.task)
 	stdoutLW := tui.NewLineWriter(os.Stdout, prefix)
 	stderrLW := tui.NewLineWriter(os.Stderr, prefix)
-	shellCmd := osExec.CommandContext(ctx, "sh", "-c", cmd)
+	shellCmd := osExec.CommandContext(ec.ctx, "sh", "-c", cmd)
 	// setProcAttr (unix) puts sh in its own process group so cancelFunc can
 	// signal the whole group — otherwise SIGTERM only reaches sh itself,
 	// leaving any children it forked (multi-command scripts, pipelines,
@@ -221,11 +232,32 @@ func execRun(ctx context.Context, s config.Step, scope *cli.Scope, task, taskfil
 		shellCmd.Stdout = stdoutLW
 		shellCmd.Stderr = stderrLW
 	}
-	// Scope vars must win over inherited env. Build a map of scope keys so we
-	// can filter os.Environ() before appending scope vars (first-occurrence wins
-	// in os/exec).
-	scopeKeys := make(map[string]bool, len(scope.Vars))
-	for varName := range scope.Vars {
+	shellCmd.Env = envWithScopeOverrides(scope.Vars)
+
+	err = shellCmd.Start()
+	if err == nil {
+		setRunningPID(shellCmd.Process.Pid)
+		err = shellCmd.Wait()
+		clearRunningPID()
+	}
+	stdoutLW.Flush()
+	stderrLW.Flush()
+	if err != nil {
+		if ec.ctx.Err() != nil {
+			return fmt.Errorf("%w: %v", ErrInterrupted, err)
+		}
+		return err
+	}
+
+	return captureRunInto(s.IntoEntries, scope, stdoutBuf.String(), stderrBuf.String())
+}
+
+// envWithScopeOverrides strips any os.Environ() var also present in scope
+// before appending scope's vars — os/exec uses first-occurrence-wins for Env,
+// and scope vars must win over inherited env.
+func envWithScopeOverrides(vars map[string]string) []string {
+	scopeKeys := make(map[string]bool, len(vars))
+	for varName := range vars {
 		scopeKeys[varName] = true
 	}
 	env := os.Environ()
@@ -236,27 +268,15 @@ func execRun(ctx context.Context, s config.Step, scope *cli.Scope, task, taskfil
 			filtered = append(filtered, envEntry)
 		}
 	}
-	shellCmd.Env = filtered
-	for varName, varValue := range scope.Vars {
-		shellCmd.Env = append(shellCmd.Env, varName+"="+varValue)
+	for varName, varValue := range vars {
+		filtered = append(filtered, varName+"="+varValue)
 	}
-	err = shellCmd.Start()
-	if err == nil {
-		setRunningPID(shellCmd.Process.Pid)
-		err = shellCmd.Wait()
-		clearRunningPID()
-	}
-	stdoutLW.Flush()
-	stderrLW.Flush()
-	if err != nil {
-		if ctx.Err() != nil {
-			return fmt.Errorf("%w: %v", ErrInterrupted, err)
-		}
-		return err
-	}
+	return filtered
+}
 
-	for _, e := range s.IntoEntries {
-		val, err := eval.EvalRunIntoPipe(e.ValueTmpl, stdoutBuf.String(), stderrBuf.String())
+func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string) error {
+	for _, e := range entries {
+		val, err := eval.EvalRunIntoPipe(e.ValueTmpl, stdout, stderr)
 		if err != nil {
 			return fmt.Errorf("run into %q: %w", e.ParentKey, err)
 		}
@@ -279,16 +299,16 @@ func execSet(s config.Step, scope *cli.Scope) error {
 	return nil
 }
 
-func execGet(ctx context.Context, s config.Step, scope *cli.Scope, task string, noPrompts bool) error {
+func execGet(ec execCtx, s config.Step, scope *cli.Scope) error {
 	for _, e := range s.GetEntries {
-		if err := execGetEntry(ctx, e, scope, task, noPrompts); err != nil {
+		if err := execGetEntry(ec, e, scope); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task string, noPrompts bool) error {
+func execGetEntry(ec execCtx, e config.GetEntry, scope *cli.Scope) error {
 	if _, exists := scope.Vars[e.VarName]; exists {
 		if e.Secret {
 			scope.Secrets[e.VarName] = true
@@ -296,35 +316,41 @@ func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task
 		if e.Optional && scope.Vars[e.VarName] == "" {
 			return nil
 		}
-		return validateGetValue(e, scope.Vars, noPrompts)
+		return validateGetValue(e, scope.Vars, ec.noPrompts)
 	}
+	if ec.noPrompts {
+		return getFromNoPrompts(e, scope)
+	}
+	return getInteractive(ec, e, scope)
+}
 
-	if noPrompts {
-		if e.Optional {
-			if e.Multi {
-				scope.Vars[e.VarName] = "[]"
-			} else {
-				scope.Vars[e.VarName] = ""
-			}
-			if e.Secret {
-				scope.Secrets[e.VarName] = true
-			}
-			return nil
+func getFromNoPrompts(e config.GetEntry, scope *cli.Scope) error {
+	if e.Optional {
+		if e.Multi {
+			scope.Vars[e.VarName] = "[]"
+		} else {
+			scope.Vars[e.VarName] = ""
 		}
-		if e.DefaultTmpl == "" {
-			return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", e.VarName, e.VarName)
-		}
-		val, err := eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
-		if err != nil {
-			return fmt.Errorf("get %s default: %w", e.VarName, err)
-		}
-		scope.Vars[e.VarName] = val
 		if e.Secret {
 			scope.Secrets[e.VarName] = true
 		}
-		return validateGetValue(e, scope.Vars, true)
+		return nil
 	}
+	if e.DefaultTmpl == "" {
+		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", e.VarName, e.VarName)
+	}
+	val, err := eval.EvalTemplate(e.DefaultTmpl, scope.Vars)
+	if err != nil {
+		return fmt.Errorf("get %s default: %w", e.VarName, err)
+	}
+	scope.Vars[e.VarName] = val
+	if e.Secret {
+		scope.Secrets[e.VarName] = true
+	}
+	return validateGetValue(e, scope.Vars, true)
+}
 
+func getInteractive(ec execCtx, e config.GetEntry, scope *cli.Scope) error {
 	info, err := eval.EvalTemplate(e.Info, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("get %s info: %w", e.VarName, err)
@@ -346,7 +372,7 @@ func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task
 	var val string
 	if len(fromItems) > 0 {
 		for {
-			val, err = promptSelectFn(ctx, e.VarName, info, fromItems, e.Multi, defaultVal, task, e.Secret)
+			val, err = promptSelectFn(ec.ctx, e.VarName, info, fromItems, e.Multi, defaultVal, ec.task, e.Secret)
 			if err != nil {
 				return wrapPromptErr(e.VarName, err)
 			}
@@ -364,7 +390,7 @@ func execGetEntry(ctx context.Context, e config.GetEntry, scope *cli.Scope, task
 			}
 		}
 	} else {
-		val, err = promptTextFn(ctx, info, e.Check, e.VarName, scope.Vars, defaultVal, task, e.Secret, e.Optional)
+		val, err = promptTextFn(ec.ctx, info, e.Check, e.VarName, scope.Vars, defaultVal, ec.task, e.Secret, e.Optional)
 		if err != nil {
 			return wrapPromptErr(e.VarName, err)
 		}
@@ -384,14 +410,14 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 		if err != nil {
 			return err
 		}
+		optSet := make(map[string]bool, len(items))
+		for _, opt := range items {
+			optSet[opt] = true
+		}
 		if e.Multi {
 			var selected []string
 			if err := json.Unmarshal([]byte(vars[e.VarName]), &selected); err != nil {
 				return fmt.Errorf("--no-input: %s value is not a valid JSON array: %w", e.VarName, err)
-			}
-			optSet := make(map[string]bool, len(items))
-			for _, opt := range items {
-				optSet[opt] = true
 			}
 			for _, sel := range selected {
 				if !optSet[sel] {
@@ -400,10 +426,6 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 			}
 		} else {
 			val := vars[e.VarName]
-			optSet := make(map[string]bool, len(items))
-			for _, opt := range items {
-				optSet[opt] = true
-			}
 			if !optSet[val] {
 				return fmt.Errorf("--no-input: %s value %q not in options", e.VarName, val)
 			}
@@ -421,7 +443,8 @@ func validateGetValue(e config.GetEntry, vars map[string]string, noPrompts bool)
 	return nil
 }
 
-func execCall(ctx context.Context, s config.Step, scope *cli.Scope, parentDir string, cfg *config.ConfigFile, noPrompts bool) error {
+func execCall(ec execCtx, s config.Step, scope *cli.Scope) error {
+	noPrompts := ec.noPrompts
 	if s.Interactive != nil && !*s.Interactive {
 		noPrompts = true
 	}
@@ -443,7 +466,7 @@ func execCall(ctx context.Context, s config.Step, scope *cli.Scope, parentDir st
 	var callErr error
 	if s.DirTmpl != "" {
 		// Priority A: call step dir overrides task-level dir
-		task, execCfg, err := resolveTask(taskName, cfg)
+		task, execCfg, err := resolveTask(taskName, ec.cfg)
 		if err != nil {
 			return err
 		}
@@ -451,11 +474,11 @@ func execCall(ctx context.Context, s config.Step, scope *cli.Scope, parentDir st
 		if err != nil {
 			return fmt.Errorf("call dir template: %w", err)
 		}
-		childDir := resolveDirPath(resolved, cfg.TaskfileDir)
-		callErr = executeSteps(ctx, task.Steps, childScope, execCfg, taskName, noPrompts, childDir)
+		childDir := resolveDirPath(resolved, ec.cfg.TaskfileDir)
+		callErr = executeSteps(execCtx{ctx: ec.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: childDir}, task.Steps, childScope)
 	} else {
 		// Priority B (task-level dir) or C (inherit parentDir) — handled inside ExecuteTask
-		callErr = ExecuteTask(ctx, taskName, childScope, cfg, noPrompts, parentDir)
+		callErr = ExecuteTask(ec.ctx, taskName, childScope, ec.cfg, noPrompts, ec.dir)
 	}
 	if callErr != nil {
 		return fmt.Errorf("call %s: %w", taskName, callErr)
@@ -496,9 +519,9 @@ func scopeSaveRestore(vars map[string]string, name string) func() {
 	}
 }
 
-func execFor(ctx context.Context, s config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execFor(ec execCtx, s config.Step, scope *cli.Scope) error {
 	if len(s.ForMatrix) > 0 {
-		return execForMatrix(ctx, s.ForMatrix, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+		return execForMatrix(ec, s.ForMatrix, s.ForSteps, scope)
 	}
 
 	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to a JSON
@@ -509,13 +532,13 @@ func execFor(ctx context.Context, s config.Step, scope *cli.Scope, cfg *config.C
 			return fmt.Errorf("loop from template: %w", err)
 		}
 		if eval.IsJSONObject(rendered) {
-			return execForMap(ctx, rendered, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+			return execForMap(ec, rendered, s.ForSteps, scope)
 		}
 		items, err := eval.ParseList(rendered)
 		if err != nil {
 			return fmt.Errorf("loop from list: %w", err)
 		}
-		return execForList(ctx, items, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+		return execForList(ec, items, s.ForSteps, scope)
 	}
 
 	items, err := eval.ResolveFromItems(s.ForList, s.ForTarget, scope.Vars, "loop")
@@ -524,14 +547,14 @@ func execFor(ctx context.Context, s config.Step, scope *cli.Scope, cfg *config.C
 	}
 	// items == nil means the source var/list resolved to empty — zero iterations
 	// is the correct semantic result (e.g. loop: .FILES where FILES is empty).
-	return execForList(ctx, items, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+	return execForList(ec, items, s.ForSteps, scope)
 }
 
-func execForList(ctx context.Context, items []string, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execForList(ec execCtx, items []string, steps []config.Step, scope *cli.Scope) error {
 	restoreItem := scopeSaveRestore(scope.Vars, "ITEM")
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
-		if err := executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := executeSteps(ec, steps, scope); err != nil {
 			restoreItem()
 			return err
 		}
@@ -540,7 +563,7 @@ func execForList(ctx context.Context, items []string, steps []config.Step, scope
 	return nil
 }
 
-func execForMap(ctx context.Context, rendered string, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execForMap(ec execCtx, rendered string, steps []config.Step, scope *cli.Scope) error {
 	keys, values, err := eval.ParseMapEntries(rendered)
 	if err != nil {
 		return fmt.Errorf("loop: %w", err)
@@ -551,7 +574,7 @@ func execForMap(ctx context.Context, rendered string, steps []config.Step, scope
 	for i, key := range keys {
 		scope.Vars["KEY"] = key
 		scope.Vars["VALUE"] = values[i]
-		if err := executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := executeSteps(ec, steps, scope); err != nil {
 			restoreValue()
 			restoreKey()
 			return err
@@ -562,7 +585,7 @@ func execForMap(ctx context.Context, rendered string, steps []config.Step, scope
 	return nil
 }
 
-func execForMatrix(ctx context.Context, matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execForMatrix(ec execCtx, matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope) error {
 	varNames := make([]string, len(matrix))
 	itemLists := make([][]string, len(matrix))
 	for i, entry := range matrix {
@@ -573,18 +596,18 @@ func execForMatrix(ctx context.Context, matrix []config.ForMatrixEntry, steps []
 		varNames[i] = entry.VarName
 		itemLists[i] = items
 	}
-	return execCartesian(ctx, varNames, itemLists, 0, steps, scope, cfg, task, noPrompts, currentDir)
+	return execCartesian(ec, varNames, itemLists, 0, steps, scope)
 }
 
-func execCartesian(ctx context.Context, varNames []string, itemLists [][]string, idx int, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+func execCartesian(ec execCtx, varNames []string, itemLists [][]string, idx int, steps []config.Step, scope *cli.Scope) error {
 	if idx == len(varNames) {
-		return executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir)
+		return executeSteps(ec, steps, scope)
 	}
 	name := varNames[idx]
 	restore := scopeSaveRestore(scope.Vars, name)
 	for _, item := range itemLists[idx] {
 		scope.Vars[name] = item
-		if err := execCartesian(ctx, varNames, itemLists, idx+1, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := execCartesian(ec, varNames, itemLists, idx+1, steps, scope); err != nil {
 			restore()
 			return err
 		}

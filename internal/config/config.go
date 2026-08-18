@@ -1,12 +1,10 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -31,6 +29,14 @@ func normalizeTmpl(s string) string {
 // Top-level vars:/modules:/tasks: blocks tolerate this as "no entries".
 func isEmptyNode(n *yaml.Node) bool {
 	return n.Kind == yaml.ScalarNode && n.Tag == "!!null"
+}
+
+// parseBool reports whether n's scalar value is the literal string "true" —
+// hobnob's YAML bool fields (interactive, secret, multi, soft, optional)
+// only ever hold unquoted true/false, so any other value (including a
+// template) is simply false rather than an error.
+func parseBool(n *yaml.Node) bool {
+	return n.Value == "true"
 }
 
 type Task struct {
@@ -228,7 +234,7 @@ func parseTaskNode(n *yaml.Node) (Task, error) {
 		case "dir":
 			task.Dir = normalizeTmpl(n.Content[i+1].Value)
 		case "interactive":
-			v := n.Content[i+1].Value == "true"
+			v := parseBool(n.Content[i+1])
 			task.Interactive = &v
 		case "steps":
 			steps, err := parseStepSequence(n.Content[i+1])
@@ -256,187 +262,6 @@ func parseStepSequence(n *yaml.Node) ([]Step, error) {
 	return steps, nil
 }
 
-func parseStepNode(n *yaml.Node) (Step, error) {
-	if n.Kind != yaml.MappingNode {
-		return Step{}, fmt.Errorf("step must be a mapping")
-	}
-
-	var s Step
-
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		fieldKey := n.Content[i].Value
-		fieldVal := n.Content[i+1]
-
-		switch fieldKey {
-		case "run":
-			s.Kind = KindRun
-			s.Command = normalizeTmpl(fieldVal.Value)
-		case "set":
-			s.Kind = KindSet
-			entries, err := parseSetNode(fieldVal)
-			if err != nil {
-				return Step{}, fmt.Errorf("set: %w", err)
-			}
-			s.SetEntries = entries
-		case "get":
-			s.Kind = KindGet
-			entries, err := parseGetNode(fieldVal)
-			if err != nil {
-				return Step{}, fmt.Errorf("get: %w", err)
-			}
-			s.GetEntries = entries
-		case "call":
-			s.Kind = KindCall
-			s.CallTarget = fieldVal.Value
-		case "loop":
-			s.Kind = KindFor
-			switch fieldVal.Kind {
-			case yaml.SequenceNode:
-				for _, item := range fieldVal.Content {
-					s.ForList = append(s.ForList, item.Value)
-				}
-			case yaml.MappingNode:
-				for i := 0; i+1 < len(fieldVal.Content); i += 2 {
-					varName := fieldVal.Content[i].Value
-					if strings.Contains(varName, "{{") {
-						return s, fmt.Errorf("variable name %q must not contain template syntax", varName)
-					}
-					valNode := fieldVal.Content[i+1]
-					entry := ForMatrixEntry{VarName: varName}
-					if valNode.Kind == yaml.SequenceNode {
-						for _, item := range valNode.Content {
-							entry.List = append(entry.List, item.Value)
-						}
-					} else {
-						entry.ListTmpl = normalizeTmpl(valNode.Value)
-					}
-					s.ForMatrix = append(s.ForMatrix, entry)
-				}
-			default:
-				s.ForTarget = normalizeTmpl(fieldVal.Value)
-			}
-		case "if":
-			s.IfExpr = fieldVal.Value
-		case "with":
-			entries, err := parseSetNode(fieldVal)
-			if err != nil {
-				return Step{}, fmt.Errorf("with: %w", err)
-			}
-			s.CallVars = entries
-		case "into":
-			entries, err := parseIntoNode(fieldVal)
-			if err != nil {
-				return Step{}, fmt.Errorf("into: %w", err)
-			}
-			s.IntoEntries = entries
-		case "soft":
-			s.Soft = fieldVal.Value == "true"
-		case "interactive":
-			v := fieldVal.Value == "true"
-			s.Interactive = &v
-		case "dir":
-			s.DirTmpl = normalizeTmpl(fieldVal.Value)
-		case "steps":
-			subSteps, err := parseStepSequence(fieldVal)
-			if err != nil {
-				return Step{}, fmt.Errorf("steps: %w", err)
-			}
-			s.ForSteps = subSteps
-		}
-	}
-
-	return s, nil
-}
-
-// isExpandedSetForm reports whether the yaml mapping node m is the expanded
-// set-entry form ({ value: ..., secret: true }) rather than a plain map
-// literal. True only when m has a "value" key and every key is one of the
-// reserved words "value"/"secret" — a map literal that happens to use one of
-// those words alongside other keys (e.g. { value: x, count: y }) still reads
-// as a map literal.
-func isExpandedSetForm(m *yaml.Node) bool {
-	hasValue := false
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		switch m.Content[i].Value {
-		case "value":
-			hasValue = true
-		case "secret":
-		default:
-			return false
-		}
-	}
-	return hasValue
-}
-
-func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
-	if n.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("set must be a sequence of key-value maps")
-	}
-	var entries []SetEntry
-	for _, item := range n.Content {
-		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
-			return nil, fmt.Errorf("each set entry must be a single key: value pair")
-		}
-		valNode := item.Content[1]
-		if valNode.Kind == yaml.MappingNode && isExpandedSetForm(valNode) {
-			// expanded form: { value: ..., secret: true }
-			key := item.Content[0].Value
-			if strings.Contains(key, "{{") {
-				return nil, fmt.Errorf("variable name %q must not contain template syntax", key)
-			}
-			entry := SetEntry{Key: key}
-			for j := 0; j+1 < len(valNode.Content); j += 2 {
-				switch valNode.Content[j].Value {
-				case "value":
-					entry.ValTmpl = normalizeTmpl(valNode.Content[j+1].Value)
-				case "secret":
-					entry.Secret = valNode.Content[j+1].Value == "true"
-				}
-			}
-			entries = append(entries, entry)
-			continue
-		}
-		if valNode.Kind == yaml.MappingNode {
-			// map literal: { key: value, ... } -> JSON object template string
-			rawKey := item.Content[0].Value
-			if strings.Contains(rawKey, "{{") {
-				return nil, fmt.Errorf("variable name %q must not contain template syntax", rawKey)
-			}
-			var raw interface{}
-			if err := valNode.Decode(&raw); err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to decode map: %w", rawKey, err)
-			}
-			jsonBytes, err := json.Marshal(raw)
-			if err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to serialize map: %w", rawKey, err)
-			}
-			entries = append(entries, SetEntry{Key: rawKey, ValTmpl: string(jsonBytes)})
-			continue
-		}
-		valTmpl := normalizeTmpl(valNode.Value)
-		if valNode.Kind == yaml.SequenceNode {
-			items := make([]string, len(valNode.Content))
-			for i, child := range valNode.Content {
-				items[i] = child.Value
-			}
-			jsonBytes, err := json.Marshal(items)
-			if err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to serialize list: %w", item.Content[0].Value, err)
-			}
-			valTmpl = string(jsonBytes)
-		}
-		rawKey := item.Content[0].Value
-		if strings.Contains(rawKey, "{{") {
-			return nil, fmt.Errorf("variable name %q must not contain template syntax", rawKey)
-		}
-		entries = append(entries, SetEntry{
-			Key:     rawKey,
-			ValTmpl: valTmpl,
-		})
-	}
-	return entries, nil
-}
-
 func parseEnvNode(n *yaml.Node) ([]EnvFileEntry, error) {
 	if n.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("env must be a sequence of file paths")
@@ -458,67 +283,11 @@ func parseEnvNode(n *yaml.Node) ([]EnvFileEntry, error) {
 		}
 		for i := 0; i+1 < len(modifiers.Content); i += 2 {
 			if modifiers.Content[i].Value == "secret" {
-				v := modifiers.Content[i+1].Value == "true"
+				v := parseBool(modifiers.Content[i+1])
 				entry.SecretOverride = &v
 			}
 		}
 		entries = append(entries, entry)
-	}
-	return entries, nil
-}
-
-func parseGetNode(n *yaml.Node) ([]GetEntry, error) {
-	if n.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("get must be a sequence")
-	}
-	var entries []GetEntry
-	for _, item := range n.Content {
-		if item.Kind == yaml.ScalarNode {
-			if strings.Contains(item.Value, "{{") {
-				return nil, fmt.Errorf("variable name %q must not contain template syntax", item.Value)
-			}
-			entries = append(entries, GetEntry{VarName: item.Value})
-			continue
-		}
-		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
-			return nil, fmt.Errorf("each get entry must be a single key: modifiers pair")
-		}
-		varName := item.Content[0].Value
-		if strings.Contains(varName, "{{") {
-			return nil, fmt.Errorf("variable name %q must not contain template syntax", varName)
-		}
-		e := GetEntry{VarName: varName}
-		modifiers := item.Content[1]
-		if modifiers.Kind != yaml.MappingNode {
-			return nil, fmt.Errorf("get entry %q modifiers must be a mapping", e.VarName)
-		}
-		for i := 0; i+1 < len(modifiers.Content); i += 2 {
-			fieldKey := modifiers.Content[i].Value
-			fieldVal := modifiers.Content[i+1]
-			switch fieldKey {
-			case "info":
-				e.Info = fieldVal.Value
-			case "options":
-				if fieldVal.Kind == yaml.SequenceNode {
-					for _, fi := range fieldVal.Content {
-						e.FromList = append(e.FromList, fi.Value)
-					}
-				} else {
-					e.FromTmpl = normalizeTmpl(fieldVal.Value)
-				}
-			case "multi":
-				e.Multi = fieldVal.Value == "true"
-			case "check":
-				e.Check = fieldVal.Value
-			case "default":
-				e.DefaultTmpl = normalizeTmpl(fieldVal.Value)
-			case "secret":
-				e.Secret = fieldVal.Value == "true"
-			case "optional":
-				e.Optional = fieldVal.Value == "true"
-			}
-		}
-		entries = append(entries, e)
 	}
 	return entries, nil
 }
@@ -593,25 +362,4 @@ func parseModulesNode(n *yaml.Node) ([]ModuleEntry, error) {
 		mods = append(mods, mod)
 	}
 	return mods, nil
-}
-
-func parseIntoNode(n *yaml.Node) ([]IntoEntry, error) {
-	if n.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("into must be a sequence of key: value maps")
-	}
-	var entries []IntoEntry
-	for _, item := range n.Content {
-		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
-			return nil, fmt.Errorf("each into entry must be a single key: value pair")
-		}
-		parentKey := item.Content[0].Value
-		if strings.Contains(parentKey, "{{") {
-			return nil, fmt.Errorf("variable name %q must not contain template syntax", parentKey)
-		}
-		entries = append(entries, IntoEntry{
-			ParentKey: parentKey,
-			ValueTmpl: item.Content[1].Value,
-		})
-	}
-	return entries, nil
 }
