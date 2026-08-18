@@ -1,3 +1,8 @@
+modules:
+  - example:
+      path: example.yml
+      flatten: true
+
 tasks:
   install:
     info: Installs hobnob with tab completion

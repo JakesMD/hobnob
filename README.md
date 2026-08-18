@@ -1,11 +1,11 @@
 # hobnob
 
-A YAML task runner built around 3 things most others get wrong:
+A yaml task runner built around 3 things others get wrong:
 
-- **Prompts** — text input or select menus, dropped anywhere in a task.
-- **JSON, natively** — query, filter, slice, no `jq` needed.
-- **Tasks return values** — capture a command's output or a sub-task's results,
+- **JSON, natively.** Query, filter, slice — no `jq` needed.
+- **Tasks return values.** Capture a command's output or a sub-task's results,
   explicitly, back into the caller.
+- **Prompts.** Text input or select menus, dropped anywhere in a task.
 
 ---
 
@@ -26,6 +26,7 @@ tasks:
   tell-joke:
     info: Tell a joke from a category you pick
     steps:
+
       # Returning vars: curl's stdout captured straight into a var
       - run: curl -s https://official-joke-api.appspot.com/types
         into:
@@ -52,7 +53,7 @@ tasks:
 ```
 
 ```shell
-% hobnob --file example.yml tell-joke
+% hobnob tell-joke
 
 run: [tell-joke] curl -s https://official-joke-api.appspot.com/types
 [tell-joke] ["general","knock-knock","programming","dad"]

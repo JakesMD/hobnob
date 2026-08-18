@@ -2,6 +2,7 @@ tasks:
   tell-joke:
     info: Tell a joke from a category you pick
     steps:
+
       # 🔁 Return vars: curl's stdout captured straight into a var
       - run: curl -s https://official-joke-api.appspot.com/types
         into:
