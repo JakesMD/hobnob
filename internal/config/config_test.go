@@ -1051,6 +1051,66 @@ func TestParseConfig_SecretGetStep(t *testing.T) {
 	}
 }
 
+func TestParseConfig_SetStep_MapValue(t *testing.T) {
+	// Arrange
+	cfg, err := ParseConfig("testdata/set_map_value.yml")
+
+	// Act + Assert
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	tsk, ok := cfg.Tasks["setup"]
+	if !ok {
+		t.Fatal("task 'setup' not found")
+	}
+	steps := tsk.Steps
+	if len(steps) != 1 {
+		t.Fatalf("want 1 step, got %d", len(steps))
+	}
+	entries := steps[0].SetEntries
+	if len(entries) != 3 {
+		t.Fatalf("want 3 entries, got %d", len(entries))
+	}
+
+	tests := []struct {
+		name    string
+		key     string
+		wantVal string
+	}{
+		{
+			name:    "given YAML mapping value, when parsed, then serialized as JSON object (why: scope is map[string]string; JSON round-trips through pluck/keys/values)",
+			key:     "REGION_MAP",
+			wantVal: `{"eu":"eu-west-1","us":"us-east-1"}`,
+		},
+		{
+			name:    "given nested mapping with typed values, when parsed, then types preserved in the JSON object (why: numbers/bools/nested lists must survive for pluck to return them faithfully)",
+			key:     "NESTED_MAP",
+			wantVal: `{"active":true,"count":3,"tags":["a","b"]}`,
+		},
+		{
+			name:    "given scalar value, when parsed, then stored as-is (why: non-mapping path unchanged)",
+			key:     "SCALAR",
+			wantVal: "just a string",
+		},
+	}
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			got := entries[i]
+
+			// Act (none)
+
+			// Assert
+			if got.Key != tc.key {
+				t.Errorf("key[%d]: got %q, want %q", i, got.Key, tc.key)
+			}
+			if got.ValTmpl != tc.wantVal {
+				t.Errorf("val[%d]: got %q, want %q", i, got.ValTmpl, tc.wantVal)
+			}
+		})
+	}
+}
+
 func TestParseConfig_SecretSetStep(t *testing.T) {
 	// Arrange
 	cfg, err := ParseConfig("testdata/secret_set.yml")

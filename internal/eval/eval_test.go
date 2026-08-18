@@ -380,6 +380,194 @@ func TestFirst(t *testing.T) {
 	}
 }
 
+func TestPluck(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     string
+		vars     map[string]string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "given top-level key, when plucked, then returns string value (why: basic flat-map lookup)",
+			tmpl:     `{{ .DATA | pluck "name" }}`,
+			vars:     map[string]string{"DATA": `{"name":"hobnob"}`},
+			expected: "hobnob",
+		},
+		{
+			name:     "given nested path with array index, when plucked, then traverses object and array (why: real API responses nest objects inside arrays)",
+			tmpl:     `{{ .DATA | pluck "data.items[0].name" }}`,
+			vars:     map[string]string{"DATA": `{"data":{"items":[{"name":"first"},{"name":"second"}]}}`},
+			expected: "first",
+		},
+		{
+			name:     "given numeric leaf, when plucked, then returns plain number text (why: no float precision artifacts like 3.0)",
+			tmpl:     `{{ .DATA | pluck "count" }}`,
+			vars:     map[string]string{"DATA": `{"count":3}`},
+			expected: "3",
+		},
+		{
+			name:     "given bool leaf, when plucked, then returns plain bool text (why: chainable into shell if: conditions)",
+			tmpl:     `{{ .DATA | pluck "active" }}`,
+			vars:     map[string]string{"DATA": `{"active":true}`},
+			expected: "true",
+		},
+		{
+			name:     "given object leaf, when plucked, then returns compact JSON so result stays chainable (why: pluck | pluck)",
+			tmpl:     `{{ .DATA | pluck "meta" | pluck "region" }}`,
+			vars:     map[string]string{"DATA": `{"meta":{"region":"eu"}}`},
+			expected: "eu",
+		},
+		{
+			name:    "given missing key, when plucked, then returns error (why: fail fast rather than silently returning empty)",
+			tmpl:    `{{ .DATA | pluck "missing" }}`,
+			vars:    map[string]string{"DATA": `{"name":"hobnob"}`},
+			wantErr: true,
+		},
+		{
+			name:    "given out-of-range array index, when plucked, then returns error (why: fail fast on bad path)",
+			tmpl:    `{{ .DATA | pluck "items[5]" }}`,
+			vars:    map[string]string{"DATA": `{"items":["a"]}`},
+			wantErr: true,
+		},
+		{
+			name:    "given malformed JSON, when plucked, then returns error (why: fail fast on bad source data)",
+			tmpl:    `{{ .DATA | pluck "name" }}`,
+			vars:    map[string]string{"DATA": `not-json`},
+			wantErr: true,
+		},
+		{
+			name:     "given missing key with a default, when plucked, then returns the default instead of erroring (why: caller opts into a fallback per-call)",
+			tmpl:     `{{ .DATA | pluck "missing" "fallback" }}`,
+			vars:     map[string]string{"DATA": `{"name":"hobnob"}`},
+			expected: "fallback",
+		},
+		{
+			name:     "given malformed JSON with a default, when plucked, then returns the default instead of erroring (why: bad source data is also covered by the fallback)",
+			tmpl:     `{{ .DATA | pluck "name" "fallback" }}`,
+			vars:     map[string]string{"DATA": `not-json`},
+			expected: "fallback",
+		},
+		{
+			name:     "given present key with a default, when plucked, then returns the actual value, not the default (why: default only kicks in on failure)",
+			tmpl:     `{{ .DATA | pluck "name" "fallback" }}`,
+			vars:     map[string]string{"DATA": `{"name":"hobnob"}`},
+			expected: "hobnob",
+		},
+		{
+			name:     "given a slice path, when plucked, then returns matched elements as a JSON array (why: RFC 9535 slice selector, multi-match results stay chainable like keys/values)",
+			tmpl:     `{{ .DATA | pluck "items[1:3]" }}`,
+			vars:     map[string]string{"DATA": `{"items":["a","b","c","d"]}`},
+			expected: `["b","c"]`,
+		},
+		{
+			name:     "given a negative index, when plucked, then counts from the end (why: RFC 9535 negative index selector)",
+			tmpl:     `{{ .DATA | pluck "items[-1]" }}`,
+			vars:     map[string]string{"DATA": `{"items":["a","b","c"]}`},
+			expected: "c",
+		},
+		{
+			name:     "given a wildcard path segment, when plucked, then returns every matched value as a JSON array (why: RFC 9535 wildcard selector)",
+			tmpl:     `{{ .DATA | pluck "items[*].name" }}`,
+			vars:     map[string]string{"DATA": `{"items":[{"name":"a"},{"name":"b"}]}`},
+			expected: `["a","b"]`,
+		},
+		{
+			name:     "given a filter expression matching one element, when plucked, then returns that element unwrapped, same as any single match (why: RFC 9535 filter selector; bare @.field is an existence test, not truthy, so the comparison is explicit)",
+			tmpl:     `{{ .DATA | pluck "items[?@.active == true]" }}`,
+			vars:     map[string]string{"DATA": `{"items":[{"name":"a","active":true},{"name":"b","active":false}]}`},
+			expected: `{"active":true,"name":"a"}`,
+		},
+		{
+			name:     "given a filter expression matching multiple elements, when plucked, then returns a JSON array (why: multi-match results stay chainable like keys/values)",
+			tmpl:     `{{ .DATA | pluck "items[?@.active == true]" }}`,
+			vars:     map[string]string{"DATA": `{"items":[{"name":"a","active":true},{"name":"b","active":false},{"name":"c","active":true}]}`},
+			expected: `[{"active":true,"name":"a"},{"active":true,"name":"c"}]`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			// (tc fields are the arrangement)
+
+			// Act
+			got, err := EvalTemplate(tc.tmpl, tc.vars)
+
+			// Assert
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil (result: %q)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.expected {
+				t.Errorf("got %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}
+
+func TestKeysValues(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     string
+		vars     map[string]string
+		expected string
+		wantErr  bool
+	}{
+		{
+			name:     "given JSON object, when keys called, then returns sorted JSON array of keys (why: deterministic iteration order)",
+			tmpl:     `{{ .DATA | keys }}`,
+			vars:     map[string]string{"DATA": `{"us":"us-east-1","eu":"eu-west-1"}`},
+			expected: `["eu","us"]`,
+		},
+		{
+			name:     "given JSON object, when values called, then returns values in sorted-key order (why: pairs with keys for consistent zipping)",
+			tmpl:     `{{ .DATA | values }}`,
+			vars:     map[string]string{"DATA": `{"us":"us-east-1","eu":"eu-west-1"}`},
+			expected: `["eu-west-1","us-east-1"]`,
+		},
+		{
+			name:     "given keys result, when piped into loop-style first, then chains like any other list (why: keys/values compose with existing list filters)",
+			tmpl:     `{{ .DATA | keys | first }}`,
+			vars:     map[string]string{"DATA": `{"b":1,"a":2}`},
+			expected: "a",
+		},
+		{
+			name:    "given JSON array (not object), when keys called, then returns error (why: keys only makes sense on objects)",
+			tmpl:    `{{ .DATA | keys }}`,
+			vars:    map[string]string{"DATA": `["a","b"]`},
+			wantErr: true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Arrange
+			// (tc fields are the arrangement)
+
+			// Act
+			got, err := EvalTemplate(tc.tmpl, tc.vars)
+
+			// Assert
+			if tc.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil (result: %q)", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tc.expected {
+				t.Errorf("got %q, want %q", got, tc.expected)
+			}
+		})
+	}
+}
+
 func TestEvalRunIntoPipe(t *testing.T) {
 	tests := []struct {
 		name        string

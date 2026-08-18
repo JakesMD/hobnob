@@ -501,22 +501,64 @@ func execFor(ctx context.Context, s config.Step, scope *cli.Scope, cfg *config.C
 		return execForMatrix(ctx, s.ForMatrix, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
 	}
 
+	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to a JSON
+	// object — a literal YAML sequence in loop: can never be a map.
+	if len(s.ForList) == 0 && s.ForTarget != "" {
+		rendered, err := eval.EvalTemplate(s.ForTarget, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("loop from template: %w", err)
+		}
+		if eval.IsJSONObject(rendered) {
+			return execForMap(ctx, rendered, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+		}
+		items, err := eval.ParseList(rendered)
+		if err != nil {
+			return fmt.Errorf("loop from list: %w", err)
+		}
+		return execForList(ctx, items, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+	}
+
 	items, err := eval.ResolveFromItems(s.ForList, s.ForTarget, scope.Vars, "loop")
 	if err != nil {
 		return err
 	}
 	// items == nil means the source var/list resolved to empty — zero iterations
 	// is the correct semantic result (e.g. loop: .FILES where FILES is empty).
+	return execForList(ctx, items, s.ForSteps, scope, cfg, task, noPrompts, currentDir)
+}
 
+func execForList(ctx context.Context, items []string, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
 	restoreItem := scopeSaveRestore(scope.Vars, "ITEM")
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
-		if err := executeSteps(ctx, s.ForSteps, scope, cfg, task, noPrompts, currentDir); err != nil {
+		if err := executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
 			restoreItem()
 			return err
 		}
 	}
 	restoreItem()
+	return nil
+}
+
+func execForMap(ctx context.Context, rendered string, steps []config.Step, scope *cli.Scope, cfg *config.ConfigFile, task string, noPrompts bool, currentDir string) error {
+	keys, values, err := eval.ParseMapEntries(rendered)
+	if err != nil {
+		return fmt.Errorf("loop: %w", err)
+	}
+
+	restoreKey := scopeSaveRestore(scope.Vars, "KEY")
+	restoreValue := scopeSaveRestore(scope.Vars, "VALUE")
+	for i, key := range keys {
+		scope.Vars["KEY"] = key
+		scope.Vars["VALUE"] = values[i]
+		if err := executeSteps(ctx, steps, scope, cfg, task, noPrompts, currentDir); err != nil {
+			restoreValue()
+			restoreKey()
+			return err
+		}
+	}
+	restoreValue()
+	restoreKey()
 	return nil
 }
 

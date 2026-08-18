@@ -243,12 +243,116 @@ A `set` block resolves top-to-bottom — reference a key defined just above:
 
 ### Template filters
 
-`default`, `trim`, `upper`, `lower`, `lines`, `split`, `first` — usable
-anywhere templates are supported.
+Usable anywhere templates are supported.
+
+#### `default`
+
+Falls back to a lower-priority layer when the piped value is empty — see
+[Variables](#variables) for the precedence chain this is typically used with:
+
+```yaml
+vars:
+  - HOST: "{{ .HOST | default "localhost" }}"
+```
+
+#### `trim`
+
+Strips leading/trailing whitespace:
+
+```yaml
+- run: echo "{{ .NAME | trim }}"
+```
+
+#### `upper` / `lower`
+
+Changes case:
 
 ```yaml
 - run: echo "Targeting {{.ENV | upper}}"
 ```
+
+#### `split`
+
+Splits a string on a separator into a JSON array, dropping empty parts:
+
+```yaml
+- set:
+    - PARTS: '{{ .PATH | split ":" }}' # "a:b:c" -> ["a","b","c"]
+```
+
+#### `lines`
+
+Splits a string on newlines into a JSON array, trimming each line and
+dropping blank ones — handy for turning multi-line `stdout` into a list:
+
+```yaml
+- run: ls
+  into:
+    - FILES: stdout | lines
+```
+
+#### `first`
+
+Returns the first element of a JSON array:
+
+```yaml
+- set:
+    - LATEST: "{{ .VERSIONS | first }}"
+```
+
+#### `pluck`
+
+Queries a variable holding JSON — either a map literal (see
+[`set`](#set--assign-variables)) or JSON captured from a command, e.g.
+`run: curl ... into: RESP: stdout`:
+
+```yaml
+- run: curl -s https://api.example.com/user
+  into:
+    - RESP: stdout
+- set:
+    - NAME: '{{ .RESP | pluck "profile.name" }}' # dot/bracket path: a.b[0].c
+```
+
+Path is [RFC 9535 JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html)
+(via [github.com/theory/jsonpath](https://github.com/theory/jsonpath)), minus
+the leading `$` — implied, since pluck always addresses from the root. Beyond
+`a.b[0].c`, that also covers slices, negative indices, wildcards, and filters:
+
+```yaml
+- set:
+    - PAIR: '{{ .RESP | pluck "items[1:3]" }}'          # slice -> ["b","c"]
+    - LAST: '{{ .RESP | pluck "items[-1]" }}'            # negative index -> "c"
+    - NAMES: '{{ .RESP | pluck "items[*].name" }}'       # wildcard -> ["a","b","c"]
+    - ACTIVE: '{{ .RESP | pluck "items[?@.active == true]" }}' # filter
+```
+
+One match returns unwrapped; multiple return a JSON array (chains into other
+filters and `loop:`, same as `keys`/`values`). In filters, `@` is the node
+under test — bare `@.field` only checks existence, so compare explicitly for
+a truthy check: `@.active == true`.
+
+Missing key, bad index, or invalid JSON errors by default. Add a fallback to
+opt out per call: `pluck "profile.name" "unknown"` returns `"unknown"`
+instead of failing.
+
+Also works on plain lists — `pluck "[2]"` grabs the 3rd item. Prefer `first`
+for the first item.
+
+#### `keys` / `values`
+
+Query a variable holding a JSON object — either a map literal or JSON
+captured from a command, same sources as `pluck`:
+
+```yaml
+- set:
+    - FIELDS: "{{ .RESP | keys }}" # sorted JSON array of top-level keys
+    - VALUES: "{{ .RESP | values }}" # values in that same sorted-key order
+```
+
+Results are JSON-array strings, so they chain into other filters:
+`{{ .RESP | keys | first }}`. Invalid JSON, or a value that isn't a JSON
+object, is an error.
 
 A field value that's a single variable reference (optionally with a pipe
 chain) can omit `{{ }}`:
@@ -274,7 +378,12 @@ Every task is a sequence of five step types.
     - APPLICATION_KEY:
         value: .VAULT_TOKEN
         secret: true # masked in terminal output
+    - REGION_MAP: { us: us-east-1, eu: eu-west-1 } # map literal -> JSON object
 ```
+
+A map literal is stored as a JSON object string (same trick lists use —
+see [Template filters](#template-filters)), queried with `pluck`/`keys`/
+`values` or iterated with `loop:`.
 
 ### `run` — shell commands
 
@@ -371,6 +480,15 @@ Matrix form — runs every combination of the given arrays:
     ARCH: [amd64, arm64]
   steps:
     - run: echo "Compiling for {{.OS}} on {{.ARCH}}"
+```
+
+Map form — when the variable resolves to a JSON object instead of an array,
+iterates its entries in sorted-key order as `{{.KEY}}` / `{{.VALUE}}`:
+
+```yaml
+- loop: .REGION_MAP
+  steps:
+    - run: deploy --region {{.VALUE}} # e.g. KEY=eu, VALUE=eu-west-1
 ```
 
 ### `if:` — conditional steps

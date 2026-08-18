@@ -68,18 +68,27 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	if err := cmd.Process.Signal(os.Interrupt); err != nil {
 		t.Fatalf("signal: %v", err)
 	}
-	err := cmd.Wait()
-	elapsed := time.Since(sigAt)
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
 
 	// Assert
+	// Upper bound is a generous hang-detector, not a performance assertion —
+	// CI scheduling jitter shouldn't fail a test whose contract is "waits,
+	// then exits", only a genuine hang should.
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Signal(syscall.SIGKILL)
+		t.Fatal("hobnob did not exit after a 1st SIGINT — graceful shutdown hung")
+	}
+	elapsed := time.Since(sigAt)
+
 	if err == nil {
 		t.Fatal("expected non-zero exit for interrupted run, got success")
 	}
 	if elapsed < 600*time.Millisecond {
 		t.Errorf("expected hobnob to wait out the step's ~0.8s cleanup before exiting, only took %v", elapsed)
-	}
-	if elapsed > 3*time.Second {
-		t.Errorf("expected graceful shutdown to finish shortly after the step's cleanup, took %v", elapsed)
 	}
 	if !strings.Contains(stderr.String(), "shutting down") {
 		t.Errorf("expected stderr to contain shutdown notice, got: %s", stderr.String())

@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 	"text/template"
+
+	"github.com/theory/jsonpath"
 )
 
 func splitLinesJSON(s string) (string, error) {
@@ -21,6 +25,104 @@ func splitLinesJSON(s string) (string, error) {
 		return "", err
 	}
 	return string(jsonBytes), nil
+}
+
+// decodeJSON parses a JSON string into an interface{} tree, preserving
+// numbers as json.Number so pluck/keys/values round-trip them exactly
+// (no float64 precision loss, no unwanted ".0" suffix).
+func decodeJSON(s string) (interface{}, error) {
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+	var v interface{}
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// stringifyJSONValue renders a decoded JSON leaf as a hobnob scope string:
+// strings pass through unquoted, numbers/bools use their plain text form,
+// and nested objects/arrays re-marshal to compact JSON so results stay
+// chainable (pluck | pluck, pluck | loop, ...).
+func stringifyJSONValue(v interface{}) (string, error) {
+	switch t := v.(type) {
+	case nil:
+		return "", nil
+	case string:
+		return t, nil
+	case bool:
+		return strconv.FormatBool(t), nil
+	case json.Number:
+		return t.String(), nil
+	default:
+		b, err := json.Marshal(t)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	}
+}
+
+// jsonPathParser parses pluck's path argument as an RFC 9535 JSONPath query
+// (https://www.rfc-editor.org/rfc/rfc9535.html). Reused across calls — safe
+// for concurrent use, parsing is the expensive part.
+var jsonPathParser = jsonpath.NewParser()
+
+// normalizeJSONPath lets pluck callers write "profile.name" or "[2]" instead
+// of the RFC-required "$.profile.name" / "$[2]" — pluck always addresses
+// from the root, so the "$" is implied rather than typed out each time.
+func normalizeJSONPath(path string) string {
+	switch {
+	case strings.HasPrefix(path, "$"):
+		return path
+	case strings.HasPrefix(path, "["):
+		return "$" + path
+	default:
+		return "$." + path
+	}
+}
+
+// sortedMapEntries decodes s as a JSON object and returns its keys (sorted)
+// alongside their stringified values, so iteration order is deterministic.
+func sortedMapEntries(s string) (keys []string, values []string, err error) {
+	v, err := decodeJSON(s)
+	if err != nil {
+		return nil, nil, err
+	}
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("not a JSON object")
+	}
+	keys = make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	values = make([]string, 0, len(keys))
+	for _, k := range keys {
+		sv, err := stringifyJSONValue(m[k])
+		if err != nil {
+			return nil, nil, err
+		}
+		values = append(values, sv)
+	}
+	return keys, values, nil
+}
+
+// IsJSONObject reports whether s (trimmed) looks like a JSON object, used
+// by execFor to pick list vs. map loop iteration.
+func IsJSONObject(s string) bool {
+	return strings.HasPrefix(strings.TrimSpace(s), "{")
+}
+
+// ParseMapEntries decodes a JSON object string into sorted keys and their
+// stringified values, for loop: map iteration (.KEY / .VALUE per pass).
+func ParseMapEntries(s string) (keys []string, values []string, err error) {
+	keys, values, err = sortedMapEntries(s)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid map %q: %w", s, err)
+	}
+	return keys, values, nil
 }
 
 func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
@@ -68,6 +170,73 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 				return "", nil
 			}
 			return items[0], nil
+		},
+		// pluck takes the piped JSON value as its last arg (Go template
+		// pipeline convention). An optional default before it — pluck "path"
+		// "fallback" — swallows a missing key/index or invalid JSON and
+		// returns the fallback instead of erroring; omit it to fail fast.
+		"pluck": func(path string, rest ...string) (string, error) {
+			var s string
+			var def *string
+			switch len(rest) {
+			case 1:
+				s = rest[0]
+			case 2:
+				d := rest[0]
+				def = &d
+				s = rest[1]
+			default:
+				return "", fmt.Errorf("pluck: expected a value and an optional default, got %d extra args", len(rest))
+			}
+			v, err := decodeJSON(s)
+			if err != nil {
+				if def != nil {
+					return *def, nil
+				}
+				return "", fmt.Errorf("pluck: %w", err)
+			}
+			p, err := jsonPathParser.Parse(normalizeJSONPath(path))
+			if err != nil {
+				return "", fmt.Errorf("pluck %q: %w", path, err)
+			}
+			nodes := p.Select(v)
+			switch len(nodes) {
+			case 0:
+				if def != nil {
+					return *def, nil
+				}
+				return "", fmt.Errorf("pluck %q: no match", path)
+			case 1:
+				return stringifyJSONValue(nodes[0])
+			default:
+				b, err := json.Marshal(nodes)
+				if err != nil {
+					return "", err
+				}
+				return string(b), nil
+			}
+		},
+		"keys": func(s string) (string, error) {
+			keys, _, err := sortedMapEntries(s)
+			if err != nil {
+				return "", fmt.Errorf("keys: %w", err)
+			}
+			jsonBytes, err := json.Marshal(keys)
+			if err != nil {
+				return "", err
+			}
+			return string(jsonBytes), nil
+		},
+		"values": func(s string) (string, error) {
+			_, values, err := sortedMapEntries(s)
+			if err != nil {
+				return "", fmt.Errorf("values: %w", err)
+			}
+			jsonBytes, err := json.Marshal(values)
+			if err != nil {
+				return "", err
+			}
+			return string(jsonBytes), nil
 		},
 	}
 	parsed, err := template.New("").Funcs(funcs).Parse(tmpl)

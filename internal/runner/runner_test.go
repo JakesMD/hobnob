@@ -730,6 +730,74 @@ func TestExecFor_String(t *testing.T) {
 	}
 }
 
+func TestExecFor_Map(t *testing.T) {
+	// given loop: target resolves to a JSON object, when executed, then iterates sorted keys binding KEY/VALUE (why: map iteration is the object counterpart to list iteration's ITEM)
+	// Arrange
+	cfg := makeForStringCfg(nil, "{{.REGIONS}}", "{{.RESULT}} {{.KEY}}={{.VALUE}}")
+	vars := copyVars(map[string]string{"RESULT": "", "REGIONS": `{"us":"us-east-1","eu":"eu-west-1"}`})
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if vars["RESULT"] != " eu=eu-west-1 us=us-east-1" {
+		t.Errorf("RESULT: got %q, want %q", vars["RESULT"], " eu=eu-west-1 us=us-east-1")
+	}
+}
+
+func TestExecFor_Map_MalformedJSON(t *testing.T) {
+	// given loop: target resolves to a string starting with { that isn't valid JSON, when executed, then returns error (why: fail fast rather than silently skipping the loop)
+	// Arrange
+	cfg := makeForStringCfg(nil, "{{.BAD}}", "{{.RESULT}}{{.KEY}}")
+	vars := copyVars(map[string]string{"RESULT": "", "BAD": `{not valid json`})
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestExecFor_Map_IteratorVarsRemovedAfterLoop(t *testing.T) {
+	// given KEY/VALUE not in scope before loop, when map loop completes, then both removed from scope (why: map iterators must not leak into post-loop scope, mirrors ITEM behavior)
+	// Arrange
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{
+				{
+					Kind:      config.KindFor,
+					ForTarget: "{{.MAP}}",
+					ForSteps: []config.Step{
+						{Kind: config.KindSet, SetEntries: []config.SetEntry{
+							{Key: "RESULT", ValTmpl: "{{.RESULT}}{{.KEY}}"},
+						}},
+					},
+				},
+			}},
+		},
+	}
+	vars := map[string]string{"RESULT": "", "MAP": `{"a":"1"}`}
+
+	// Act
+	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, exists := vars["KEY"]; exists {
+		t.Errorf("KEY should not exist after loop, got %q", vars["KEY"])
+	}
+	if _, exists := vars["VALUE"]; exists {
+		t.Errorf("VALUE should not exist after loop, got %q", vars["VALUE"])
+	}
+}
+
 // realPath resolves symlinks so macOS /var/folders paths compare correctly.
 func realPath(t *testing.T, p string) string {
 	t.Helper()

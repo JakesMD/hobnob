@@ -348,6 +348,26 @@ func parseStepNode(n *yaml.Node) (Step, error) {
 	return s, nil
 }
 
+// isExpandedSetForm reports whether the yaml mapping node m is the expanded
+// set-entry form ({ value: ..., secret: true }) rather than a plain map
+// literal. True only when m has a "value" key and every key is one of the
+// reserved words "value"/"secret" — a map literal that happens to use one of
+// those words alongside other keys (e.g. { value: x, count: y }) still reads
+// as a map literal.
+func isExpandedSetForm(m *yaml.Node) bool {
+	hasValue := false
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		switch m.Content[i].Value {
+		case "value":
+			hasValue = true
+		case "secret":
+		default:
+			return false
+		}
+	}
+	return hasValue
+}
+
 func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 	if n.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("set must be a sequence of key-value maps")
@@ -358,7 +378,7 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			return nil, fmt.Errorf("each set entry must be a single key: value pair")
 		}
 		valNode := item.Content[1]
-		if valNode.Kind == yaml.MappingNode {
+		if valNode.Kind == yaml.MappingNode && isExpandedSetForm(valNode) {
 			// expanded form: { value: ..., secret: true }
 			key := item.Content[0].Value
 			if strings.Contains(key, "{{") {
@@ -374,6 +394,23 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 				}
 			}
 			entries = append(entries, entry)
+			continue
+		}
+		if valNode.Kind == yaml.MappingNode {
+			// map literal: { key: value, ... } -> JSON object template string
+			rawKey := item.Content[0].Value
+			if strings.Contains(rawKey, "{{") {
+				return nil, fmt.Errorf("variable name %q must not contain template syntax", rawKey)
+			}
+			var raw interface{}
+			if err := valNode.Decode(&raw); err != nil {
+				return nil, fmt.Errorf("set entry %q: failed to decode map: %w", rawKey, err)
+			}
+			jsonBytes, err := json.Marshal(raw)
+			if err != nil {
+				return nil, fmt.Errorf("set entry %q: failed to serialize map: %w", rawKey, err)
+			}
+			entries = append(entries, SetEntry{Key: rawKey, ValTmpl: string(jsonBytes)})
 			continue
 		}
 		valTmpl := normalizeTmpl(valNode.Value)
