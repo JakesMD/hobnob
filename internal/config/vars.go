@@ -1,7 +1,6 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"gopkg.in/yaml.v3"
@@ -25,6 +24,62 @@ func isExpandedSetForm(mapping *yaml.Node) bool {
 		}
 	}
 	return hasValue
+}
+
+// parseJSONLiteralNode recursively parses a YAML mapping/sequence/scalar into
+// a JSONNode tree. transformLeaf is applied to every string-scalar leaf's raw
+// text before it's stored — set:/with: pass normalizeTmpl (so bare .VAR
+// shorthand keeps working inside map/list literals the same as it does for a
+// plain scalar entry); into: passes an identity function, since its leaves
+// are its own stdout|filter / .FIELD grammar, never Go templates.
+//
+// path is the dotted field path to n, used only to prefix error messages so
+// a failure several levels deep (e.g. CUSTOM.profile.name) doesn't just
+// report the top-level key.
+func parseJSONLiteralNode(n *yaml.Node, transformLeaf func(string) string, path string) (JSONNode, error) {
+	if n.Kind == yaml.AliasNode {
+		return parseJSONLiteralNode(n.Alias, transformLeaf, path)
+	}
+	switch n.Kind {
+	case yaml.MappingNode:
+		fields := make([]JSONField, 0, len(n.Content)/2)
+		for _, entry := range mapEntries(n.Content) {
+			childPath := entry.Key
+			if path != "" {
+				childPath = path + "." + entry.Key
+			}
+			if err := validateVarName(entry.Key); err != nil {
+				return JSONNode{}, fmt.Errorf("%s: %w", childPath, err)
+			}
+			child, err := parseJSONLiteralNode(entry.Val, transformLeaf, childPath)
+			if err != nil {
+				return JSONNode{}, err
+			}
+			fields = append(fields, JSONField{Key: entry.Key, Node: child})
+		}
+		return JSONNode{Kind: JSONObject, Fields: fields}, nil
+	case yaml.SequenceNode:
+		elements := make([]JSONNode, len(n.Content))
+		for i, item := range n.Content {
+			child, err := parseJSONLiteralNode(item, transformLeaf, fmt.Sprintf("%s[%d]", path, i))
+			if err != nil {
+				return JSONNode{}, err
+			}
+			elements[i] = child
+		}
+		return JSONNode{Kind: JSONArray, Elements: elements}, nil
+	case yaml.ScalarNode:
+		if n.Tag == "!!str" {
+			return JSONNode{Kind: JSONString, Tmpl: transformLeaf(n.Value)}, nil
+		}
+		var literal any
+		if err := n.Decode(&literal); err != nil {
+			return JSONNode{}, fmt.Errorf("%s: failed to decode literal %q: %w", path, n.Value, err)
+		}
+		return JSONNode{Kind: JSONLiteral, Literal: literal}, nil
+	default:
+		return JSONNode{}, fmt.Errorf("%s: unsupported YAML node in JSON literal", path)
+	}
 }
 
 // parseSetNode parses the sequence form shared by set:, with:, and vars:.
@@ -56,34 +111,19 @@ func parseSetNode(node *yaml.Node) ([]SetEntry, error) {
 			entries = append(entries, entry)
 			continue
 		}
-		if valNode.Kind == yaml.MappingNode {
-			// map literal: { key: value, ... } -> JSON object template string
+		if valNode.Kind == yaml.MappingNode || valNode.Kind == yaml.SequenceNode {
+			// map/list literal -> deferred JSON tree, evaluated and
+			// marshaled once at runtime (see JSONNode).
 			rawKey := item.Content[0].Value
 			if err := validateVarName(rawKey); err != nil {
 				return nil, err
 			}
-			var raw interface{}
-			if err := valNode.Decode(&raw); err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to decode map: %w", rawKey, err)
-			}
-			jsonBytes, err := json.Marshal(raw)
+			node, err := parseJSONLiteralNode(valNode, normalizeTmpl, rawKey)
 			if err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to serialize map: %w", rawKey, err)
+				return nil, fmt.Errorf("set entry %q: %w", rawKey, err)
 			}
-			entries = append(entries, SetEntry{Key: rawKey, ValTmpl: string(jsonBytes)})
+			entries = append(entries, SetEntry{Key: rawKey, ValNode: &node})
 			continue
-		}
-		valTmpl := normalizeTmpl(valNode.Value)
-		if valNode.Kind == yaml.SequenceNode {
-			items := make([]string, len(valNode.Content))
-			for i, child := range valNode.Content {
-				items[i] = child.Value
-			}
-			jsonBytes, err := json.Marshal(items)
-			if err != nil {
-				return nil, fmt.Errorf("set entry %q: failed to serialize list: %w", item.Content[0].Value, err)
-			}
-			valTmpl = string(jsonBytes)
 		}
 		rawKey := item.Content[0].Value
 		if err := validateVarName(rawKey); err != nil {
@@ -91,7 +131,7 @@ func parseSetNode(node *yaml.Node) ([]SetEntry, error) {
 		}
 		entries = append(entries, SetEntry{
 			Key:     rawKey,
-			ValTmpl: valTmpl,
+			ValTmpl: normalizeTmpl(valNode.Value),
 		})
 	}
 	return entries, nil
@@ -110,9 +150,18 @@ func parseIntoNode(node *yaml.Node) ([]IntoEntry, error) {
 		if err := validateVarName(parentKey); err != nil {
 			return nil, err
 		}
+		valNode := item.Content[1]
+		if valNode.Kind == yaml.MappingNode || valNode.Kind == yaml.SequenceNode {
+			node, err := parseJSONLiteralNode(valNode, func(s string) string { return s }, parentKey)
+			if err != nil {
+				return nil, fmt.Errorf("into entry %q: %w", parentKey, err)
+			}
+			entries = append(entries, IntoEntry{ParentKey: parentKey, ValNode: &node})
+			continue
+		}
 		entries = append(entries, IntoEntry{
 			ParentKey: parentKey,
-			ValueTmpl: item.Content[1].Value,
+			ValueTmpl: valNode.Value,
 		})
 	}
 	return entries, nil

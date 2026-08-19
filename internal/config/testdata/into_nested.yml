@@ -1,0 +1,10 @@
+tasks:
+  parent:
+    steps:
+      - run: echo hi
+        into:
+          - CUSTOM:
+              id: stdout | pluck "id"
+              profile:
+                name: stdout | pluck "profile.name"
+          - PLAIN: stdout

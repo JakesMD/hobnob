@@ -319,6 +319,58 @@ func TestLower(t *testing.T) {
 	}
 }
 
+func TestJSONEscape(t *testing.T) {
+	tests := []struct {
+		name     string
+		tmpl     string
+		vars     map[string]string
+		expected string
+	}{
+		{
+			name:     "given a value with a double quote, when jsonEscape called, then quote is backslash-escaped (why: embedding raw data inside hand-written JSON text must not terminate the string early)",
+			tmpl:     `{"name": "{{ .VAL | jsonEscape }}"}`,
+			vars:     map[string]string{"VAL": `he said "hi"`},
+			expected: `{"name": "he said \"hi\""}`,
+		},
+		{
+			name:     "given a value with backslashes, when jsonEscape called, then each backslash is doubled (why: a Windows path must survive as valid JSON without the caller manually doubling anything)",
+			tmpl:     `{"path": "{{ .VAL | jsonEscape }}"}`,
+			vars:     map[string]string{"VAL": `C:\Users\foo`},
+			expected: `{"path": "C:\\Users\\foo"}`,
+		},
+		{
+			name:     "given a value with no special characters, when jsonEscape called, then unchanged (why: jsonEscape must be a no-op on already-safe strings)",
+			tmpl:     `{{ "hello" | jsonEscape }}`,
+			vars:     map[string]string{},
+			expected: "hello",
+		},
+		{
+			name:     "given a value with a newline, when jsonEscape called, then newline becomes \\n (why: a literal newline is invalid inside a JSON string)",
+			tmpl:     `{{ .VAL | jsonEscape }}`,
+			vars:     map[string]string{"VAL": "line1\nline2"},
+			expected: `line1\nline2`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			// (test fields are the arrangement)
+
+			// Act
+			got, err := EvalTemplate(test.tmpl, test.vars)
+
+			// Assert
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
+			}
+		})
+	}
+}
+
 func TestFirst(t *testing.T) {
 	tests := []struct {
 		name     string

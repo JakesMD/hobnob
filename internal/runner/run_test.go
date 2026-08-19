@@ -161,6 +161,51 @@ func TestRunInto(t *testing.T) {
 			into:    []config.IntoEntry{{ParentKey: "OUT", ValueTmpl: "stdout | nope"}},
 			wantErr: "run into",
 		},
+		{
+			name:    "given a nested object into entry with pluck leaves, when command outputs JSON, then assembles one JSON var from several plucked fields (why: into: leaves keep their normal stdout|filter grammar, just nested under keys instead of flattened to separate vars)",
+			command: `printf '{"id":42,"profile":{"name":"Ada"}}'`,
+			into: []config.IntoEntry{
+				{ParentKey: "CUSTOM", ValNode: &config.JSONNode{
+					Kind: config.JSONObject,
+					Fields: []config.JSONField{
+						{Key: "id", Node: config.JSONNode{Kind: config.JSONString, Tmpl: `stdout | pluck "id"`}},
+						{Key: "name", Node: config.JSONNode{Kind: config.JSONString, Tmpl: `stdout | pluck "profile.name"`}},
+					},
+				}},
+			},
+			wantVars: map[string]string{"CUSTOM": `{"id":"42","name":"Ada"}`},
+		},
+		{
+			name:    "given a two-level-deep nested into entry, when command outputs JSON, then arbitrary nesting is preserved (why: json is json — the same object/array recursion applies at any depth)",
+			command: `printf '{"a":"x","b":"y"}'`,
+			into: []config.IntoEntry{
+				{ParentKey: "SHAPE", ValNode: &config.JSONNode{
+					Kind: config.JSONObject,
+					Fields: []config.JSONField{
+						{Key: "outer", Node: config.JSONNode{
+							Kind: config.JSONObject,
+							Fields: []config.JSONField{
+								{Key: "a", Node: config.JSONNode{Kind: config.JSONString, Tmpl: `stdout | pluck "a"`}},
+							},
+						}},
+					},
+				}},
+			},
+			wantVars: map[string]string{"SHAPE": `{"outer":{"a":"x"}}`},
+		},
+		{
+			name:    "given a nested into entry whose plucked value contains a double quote, when executed, then the quote is escaped by json.Marshal rather than corrupting the JSON (why: regression for the same injection bug fixed on the set:/with: side — marshal happens once, after every leaf is evaluated)",
+			command: `printf '%s' '{"msg":"he said \"hi\""}'`,
+			into: []config.IntoEntry{
+				{ParentKey: "OUT", ValNode: &config.JSONNode{
+					Kind: config.JSONObject,
+					Fields: []config.JSONField{
+						{Key: "msg", Node: config.JSONNode{Kind: config.JSONString, Tmpl: `stdout | pluck "msg"`}},
+					},
+				}},
+			},
+			wantVars: map[string]string{"OUT": `{"msg":"he said \"hi\""}`},
+		},
 	}
 
 	for _, test := range tests {

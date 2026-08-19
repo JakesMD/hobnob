@@ -40,7 +40,15 @@ func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, error) {
 	childScope := scope.Copy()
 	for _, callVar := range callVars {
-		val, err := eval.EvalTemplate(callVar.ValTmpl, childScope.Vars)
+		var val string
+		var err error
+		if callVar.ValNode != nil {
+			val, err = evalJSONNodeToJSON(*callVar.ValNode, func(tmpl string) (string, error) {
+				return eval.EvalTemplate(tmpl, childScope.Vars)
+			})
+		} else {
+			val, err = eval.EvalTemplate(callVar.ValTmpl, childScope.Vars)
+		}
 		if err != nil {
 			return nil, fmt.Errorf("call var %q: %w", callVar.Key, err)
 		}
@@ -73,13 +81,27 @@ func runCallSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, c
 // scope, either by re-evaluating a template against the caller's own vars or
 // by reading a bare .KEY reference straight out of childScope.
 func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) error {
+	evalLeaf := func(valueTmpl string) (string, error) {
+		if strings.Contains(valueTmpl, "{{") {
+			return eval.EvalTemplate(valueTmpl, scope.Vars)
+		}
+		key := strings.TrimPrefix(valueTmpl, ".")
+		return childScope.Vars[key], nil
+	}
 	for _, intoEntry := range entries {
 		parentKey := intoEntry.ParentKey
 
-		var val string
-		var err error
+		if intoEntry.ValNode != nil {
+			val, err := evalJSONNodeToJSON(*intoEntry.ValNode, evalLeaf)
+			if err != nil {
+				return fmt.Errorf("into value %q: %w", parentKey, err)
+			}
+			scope.Vars[parentKey] = val
+			continue
+		}
+
 		if strings.Contains(intoEntry.ValueTmpl, "{{") {
-			val, err = eval.EvalTemplate(intoEntry.ValueTmpl, scope.Vars)
+			val, err := eval.EvalTemplate(intoEntry.ValueTmpl, scope.Vars)
 			if err != nil {
 				return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
 			}
@@ -87,8 +109,7 @@ func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) e
 			continue
 		}
 		key := strings.TrimPrefix(intoEntry.ValueTmpl, ".")
-		val = childScope.Vars[key]
-		scope.Set(parentKey, val, childScope.Secrets[key])
+		scope.Set(parentKey, childScope.Vars[key], childScope.Secrets[key])
 	}
 	return nil
 }

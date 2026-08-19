@@ -88,6 +88,13 @@ func TestMaskSecrets(t *testing.T) {
 			secrets: map[string]bool{"PASS": true, "TOKEN": true},
 			want:    "connect --user=root --pass=**** --token=****",
 		},
+		{
+			name:    `given secret containing a quote embedded in a JSON literal (json.Marshal-escaped), when masking, then the escaped form is also replaced (why: a set:/into: JSON literal leaf marshals its value, so the escaped form can differ from the raw secret and must be matched too)`,
+			input:   `echo 'literal={"token":"ab\"cd"} raw=ab"cd'`,
+			vars:    map[string]string{"TOK": `ab"cd`},
+			secrets: map[string]bool{"TOK": true},
+			want:    `echo 'literal={"token":"****"} raw=****'`,
+		},
 	}
 
 	for _, test := range tests {

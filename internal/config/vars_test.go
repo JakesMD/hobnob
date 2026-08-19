@@ -1,8 +1,44 @@
 package config
 
 import (
+	"encoding/json"
 	"testing"
 )
+
+// renderJSONNode mirrors runner.evalJSONNode/evalJSONNodeToJSON (which
+// vars_test.go can't import — runner already imports config) for fixtures
+// with no template leaves, so these parse-level tests can still assert on
+// the resulting JSON string rather than raw tree shape.
+func renderJSONNode(t *testing.T, n JSONNode) any {
+	t.Helper()
+	switch n.Kind {
+	case JSONObject:
+		obj := make(map[string]any, len(n.Fields))
+		for _, field := range n.Fields {
+			obj[field.Key] = renderJSONNode(t, field.Node)
+		}
+		return obj
+	case JSONArray:
+		arr := make([]any, len(n.Elements))
+		for i, elem := range n.Elements {
+			arr[i] = renderJSONNode(t, elem)
+		}
+		return arr
+	case JSONLiteral:
+		return n.Literal
+	default: // JSONString
+		return n.Tmpl
+	}
+}
+
+func renderJSONNodeString(t *testing.T, n JSONNode) string {
+	t.Helper()
+	jsonBytes, err := json.Marshal(renderJSONNode(t, n))
+	if err != nil {
+		t.Fatalf("failed to marshal JSONNode: %v", err)
+	}
+	return string(jsonBytes)
+}
 
 func TestParseConfig_SetStep(t *testing.T) {
 	// Arrange
@@ -73,19 +109,22 @@ func TestParseConfig_SetStep_ListValue(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		key     string
-		wantVal string
+		name       string
+		key        string
+		wantIsNode bool
+		wantVal    string
 	}{
 		{
-			name:    "given YAML sequence value, when parsed, then serialized as JSON array (why: scope is map[string]string; JSON round-trips through parseList)",
-			key:     "PACKAGES",
-			wantVal: `["packages/data/platform_client/","packages/data/database_client/","packages/data/auth_client/"]`,
+			name:       "given YAML sequence value, when parsed, then deferred as a JSON array node (why: leaves must be evaluated before the array is marshaled, not before)",
+			key:        "PACKAGES",
+			wantIsNode: true,
+			wantVal:    `["packages/data/platform_client/","packages/data/database_client/","packages/data/auth_client/"]`,
 		},
 		{
-			name:    "given scalar value, when parsed, then stored as-is (why: non-sequence path unchanged)",
-			key:     "SCALAR",
-			wantVal: "just a string",
+			name:       "given scalar value, when parsed, then stored as-is (why: non-sequence path unchanged)",
+			key:        "SCALAR",
+			wantIsNode: false,
+			wantVal:    "just a string",
 		},
 	}
 	for i, test := range tests {
@@ -98,6 +137,18 @@ func TestParseConfig_SetStep_ListValue(t *testing.T) {
 			// Assert
 			if got.Key != test.key {
 				t.Errorf("key: got %q, want %q", got.Key, test.key)
+			}
+			if test.wantIsNode {
+				if got.ValNode == nil {
+					t.Fatalf("val: ValNode is nil, want a JSON array node")
+				}
+				if gotVal := renderJSONNodeString(t, *got.ValNode); gotVal != test.wantVal {
+					t.Errorf("val: got %q, want %q", gotVal, test.wantVal)
+				}
+				return
+			}
+			if got.ValNode != nil {
+				t.Fatalf("val: ValNode is set, want nil (scalar path)")
 			}
 			if got.ValTmpl != test.wantVal {
 				t.Errorf("val: got %q, want %q", got.ValTmpl, test.wantVal)
@@ -153,24 +204,28 @@ func TestParseConfig_SetStep_MapValue(t *testing.T) {
 	}
 
 	tests := []struct {
-		name    string
-		key     string
-		wantVal string
+		name       string
+		key        string
+		wantIsNode bool
+		wantVal    string
 	}{
 		{
-			name:    "given YAML mapping value, when parsed, then serialized as JSON object (why: scope is map[string]string; JSON round-trips through pluck/keys/values)",
-			key:     "REGION_MAP",
-			wantVal: `{"eu":"eu-west-1","us":"us-east-1"}`,
+			name:       "given YAML mapping value, when parsed, then deferred as a JSON object node (why: leaves must be evaluated before the object is marshaled, not before — see JSONNode)",
+			key:        "REGION_MAP",
+			wantIsNode: true,
+			wantVal:    `{"eu":"eu-west-1","us":"us-east-1"}`,
 		},
 		{
-			name:    "given nested mapping with typed values, when parsed, then types preserved in the JSON object (why: numbers/bools/nested lists must survive for pluck to return them faithfully)",
-			key:     "NESTED_MAP",
-			wantVal: `{"active":true,"count":3,"tags":["a","b"]}`,
+			name:       "given nested mapping with typed values, when parsed, then types preserved in the JSON object (why: non-string YAML scalars decode to JSONLiteral at parse time and are never routed through template eval, so numbers/bools/nested lists survive for pluck to return them faithfully)",
+			key:        "NESTED_MAP",
+			wantIsNode: true,
+			wantVal:    `{"active":true,"count":3,"tags":["a","b"]}`,
 		},
 		{
-			name:    "given scalar value, when parsed, then stored as-is (why: non-mapping path unchanged)",
-			key:     "SCALAR",
-			wantVal: "just a string",
+			name:       "given scalar value, when parsed, then stored as-is (why: non-mapping path unchanged)",
+			key:        "SCALAR",
+			wantIsNode: false,
+			wantVal:    "just a string",
 		},
 	}
 	for i, test := range tests {
@@ -183,6 +238,18 @@ func TestParseConfig_SetStep_MapValue(t *testing.T) {
 			// Assert
 			if got.Key != test.key {
 				t.Errorf("key[%d]: got %q, want %q", i, got.Key, test.key)
+			}
+			if test.wantIsNode {
+				if got.ValNode == nil {
+					t.Fatalf("val[%d]: ValNode is nil, want a JSON object node", i)
+				}
+				if gotVal := renderJSONNodeString(t, *got.ValNode); gotVal != test.wantVal {
+					t.Errorf("val[%d]: got %q, want %q", i, gotVal, test.wantVal)
+				}
+				return
+			}
+			if got.ValNode != nil {
+				t.Fatalf("val[%d]: ValNode is set, want nil (scalar path)", i)
 			}
 			if got.ValTmpl != test.wantVal {
 				t.Errorf("val[%d]: got %q, want %q", i, got.ValTmpl, test.wantVal)

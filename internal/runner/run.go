@@ -101,8 +101,17 @@ func envWithScopeOverrides(vars map[string]string) []string {
 }
 
 func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string) error {
+	evalLeaf := func(expr string) (string, error) {
+		return eval.EvalRunIntoPipe(expr, stdout, stderr)
+	}
 	for _, intoEntry := range entries {
-		val, err := eval.EvalRunIntoPipe(intoEntry.ValueTmpl, stdout, stderr)
+		var val string
+		var err error
+		if intoEntry.ValNode != nil {
+			val, err = evalJSONNodeToJSON(*intoEntry.ValNode, evalLeaf)
+		} else {
+			val, err = evalLeaf(intoEntry.ValueTmpl)
+		}
 		if err != nil {
 			return fmt.Errorf("run into %q: %w", intoEntry.ParentKey, err)
 		}

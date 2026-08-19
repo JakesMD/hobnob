@@ -32,14 +32,14 @@ hobnob --version                     # print version and exit
 hobnob --upgrade                     # upgrade to the latest release
 ```
 
-- **Default task** — a task named `default` runs on bare `hobnob`. Without
-  one, the interactive selector opens. `--select` forces the selector even
-  when a default exists.
+- **Default task** — a task named `default` runs on bare `hobnob`. Without one,
+  the interactive selector opens. `--select` forces the selector even when a
+  default exists.
 - **Auto-discovery** — no `--file`? Hobnob searches up from cwd for
   `hobnob.yml`/`hobnob.yaml` (`.yml` wins if both exist).
-- **Stopping a run** — CTRL+C sends the running `run:` step a termination
-  signal and waits for it to exit; no further steps start. A 2nd CTRL+C
-  force-kills it immediately.
+- **Stopping a run** — CTRL+C sends the running `run:` step a termination signal
+  and waits for it to exit; no further steps start. A 2nd CTRL+C force-kills it
+  immediately.
 
 ---
 
@@ -79,26 +79,26 @@ modules:
 ```
 
 - **Namespaces** — imported tasks are prefixed with their module key
-  (`call: docker:build`). A `_` prefix makes the module internal — hidden
-  from `--list` and parent files.
+  (`call: docker:build`). A `_` prefix makes the module internal — hidden from
+  `--list` and parent files.
 - **Filters** — `show:` whitelists, `hide:` blacklists.
-- **Flattening** — `flatten: true` also registers tasks under their bare
-  name (`build` as well as `docker:build`). Native tasks win on conflicts.
-- **Scoping** — modules inherit root `vars:` read-only; a module's own
-  `vars:` never leaks to the parent. The same rule applies to a module's own
-  `env:` block — sourced for that module's own subtree only.
+- **Flattening** — `flatten: true` also registers tasks under their bare name
+  (`build` as well as `docker:build`). Native tasks win on conflicts.
+- **Scoping** — modules inherit root `vars:` read-only; a module's own `vars:`
+  never leaks to the parent. The same rule applies to a module's own `env:`
+  block — sourced for that module's own subtree only.
 
 ---
 
 ## Tasks
 
-A task is a named sequence of steps. A `_` prefix (`_compile`) makes it
-internal — hidden from `--list`, only callable via `call`.
+A task is a named sequence of steps. A `_` prefix (`_compile`) makes it internal
+— hidden from `--list`, only callable via `call`.
 
 ### `if:` — conditional execution
 
-Skips the whole task when the shell condition exits non-zero. A skipped
-called task doesn't error — execution just continues in the caller.
+Skips the whole task when the shell condition exits non-zero. A skipped called
+task doesn't error — execution just continues in the caller.
 
 ```yaml
 tasks:
@@ -110,10 +110,9 @@ tasks:
 
 ### `interactive:` — disable prompts
 
-`interactive: false` disables all `get:` prompts for the whole sub-tree:
-prompts with a `default:` use it automatically, required prompts without one
-abort. Once disabled, a called task can't re-enable it. Works on tasks and
-`call` steps:
+`interactive: false` disables all `get:` prompts for the whole sub-tree: prompts
+with a `default:` use it automatically, required prompts without one abort. Once
+disabled, a called task can't re-enable it. Works on tasks and `call` steps:
 
 ```yaml
 tasks:
@@ -133,8 +132,8 @@ tasks:
 
 ### `dir:` — working directory
 
-Paths resolve relative to the hobnob file. No `dir:` set anywhere → steps
-run in the hobnob file's directory.
+Paths resolve relative to the hobnob file. No `dir:` set anywhere → steps run in
+the hobnob file's directory.
 
 - **Task `dir:`** — working dir for all `run` steps, inherited down the call
   chain unless a descendant sets its own.
@@ -155,8 +154,8 @@ tasks:
         dir: ./staging # overrides _verify's own dir:
 ```
 
-`if:` always evaluates in the inherited task `dir:`, even on a step with its
-own `dir:` override.
+`if:` always evaluates in the inherited task `dir:`, even on a step with its own
+`dir:` override.
 
 ---
 
@@ -167,7 +166,7 @@ Evaluated at runtime with Go templates (`{{ .VAR }}`).
 ### Precedence (highest to lowest)
 
 | Priority | Scope     | Description                               |
-| -------- | --------- | ------------------------------------------ |
+| -------- | --------- | ----------------------------------------- |
 | **1**    | Local     | Set via `set`, `get`, or loop iterators.  |
 | **2**    | Passed    | Injected explicitly via `call`'s `with:`. |
 | **3**    | Inherited | Copied from the calling task.             |
@@ -179,12 +178,12 @@ Evaluated at runtime with Go templates (`{{ .VAR }}`).
 <details>
 <summary>Rationale</summary>
 
-Env is lowest so ambient shell state can't silently change task behavior
-across machines. Env files rank above OS env (explicit project config, not
-ambient) but below CLI args (caller's explicit override wins). Global vars
-rank above CLI args because `vars:` is internal wiring that shouldn't be
-silently overridden — callers should use `get:` steps instead, which
-auto-skip once the variable is already in scope.
+Env is lowest so ambient shell state can't silently change task behavior across
+machines. Env files rank above OS env (explicit project config, not ambient) but
+below CLI args (caller's explicit override wins). Global vars rank above CLI
+args because `vars:` is internal wiring that shouldn't be silently overridden —
+callers should use `get:` steps instead, which auto-skip once the variable is
+already in scope.
 
 </details>
 
@@ -207,19 +206,18 @@ env:
   - config.txt
 ```
 
-- **Plain files** (anything not ending in `.sh`) are parsed as `KEY=VALUE`
-  lines — blank lines, `#` comments, and an optional `export ` prefix are
-  supported.
+- **Plain files** (anything not ending in `.sh`) are parsed as `KEY=VALUE` lines
+  — blank lines, `#` comments, and an optional `export` prefix are supported.
 - **`.sh` files** are sourced in a subshell. Only variables the script newly
   sets or changes are pulled into scope — inherited-but-unchanged vars are
   ignored.
-- A referenced file that doesn't exist prints a warning and is skipped,
-  rather than failing the run.
+- A referenced file that doesn't exist prints a warning and is skipped, rather
+  than failing the run.
 - Vars are not masked in output by default, regardless of filename. Add
-  `secret: true` to an entry, using the expanded `path: { secret: true }`
-  form shown above, to mask its vars.
-- Later entries override earlier ones (same ordering rule as `vars:`); if
-  two entries set the same var, masking follows whichever value won.
+  `secret: true` to an entry, using the expanded `path: { secret: true }` form
+  shown above, to mask its vars.
+- Later entries override earlier ones (same ordering rule as `vars:`); if two
+  entries set the same var, masking follows whichever value won.
 
 ### Scope isolation
 
@@ -282,8 +280,8 @@ Splits a string on a separator into a JSON array, dropping empty parts:
 
 #### `lines`
 
-Splits a string on newlines into a JSON array, trimming each line and
-dropping blank ones — handy for turning multi-line `stdout` into a list:
+Splits a string on newlines into a JSON array, trimming each line and dropping
+blank ones — handy for turning multi-line `stdout` into a list:
 
 ```yaml
 - run: ls
@@ -314,35 +312,35 @@ Queries a variable holding JSON — either a map literal (see
     - NAME: '{{ .RESP | pluck "profile.name" }}' # dot/bracket path: a.b[0].c
 ```
 
-Path is [RFC 9535 JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html)
-(via [github.com/theory/jsonpath](https://github.com/theory/jsonpath)), minus
-the leading `$` — implied, since pluck always addresses from the root. Beyond
+Path is [RFC 9535 JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html) (via
+[github.com/theory/jsonpath](https://github.com/theory/jsonpath)), minus the
+leading `$` — implied, since pluck always addresses from the root. Beyond
 `a.b[0].c`, that also covers slices, negative indices, wildcards, and filters:
 
 ```yaml
 - set:
-    - PAIR: '{{ .RESP | pluck "items[1:3]" }}'          # slice -> ["b","c"]
-    - LAST: '{{ .RESP | pluck "items[-1]" }}'            # negative index -> "c"
-    - NAMES: '{{ .RESP | pluck "items[*].name" }}'       # wildcard -> ["a","b","c"]
+    - PAIR: '{{ .RESP | pluck "items[1:3]" }}' # slice -> ["b","c"]
+    - LAST: '{{ .RESP | pluck "items[-1]" }}' # negative index -> "c"
+    - NAMES: '{{ .RESP | pluck "items[*].name" }}' # wildcard -> ["a","b","c"]
     - ACTIVE: '{{ .RESP | pluck "items[?@.active == true]" }}' # filter
 ```
 
 One match returns unwrapped; multiple return a JSON array (chains into other
-filters and `loop:`, same as `keys`/`values`). In filters, `@` is the node
-under test — bare `@.field` only checks existence, so compare explicitly for
-a truthy check: `@.active == true`.
+filters and `loop:`, same as `keys`/`values`). In filters, `@` is the node under
+test — bare `@.field` only checks existence, so compare explicitly for a truthy
+check: `@.active == true`.
 
-Missing key, bad index, or invalid JSON errors by default. Add a fallback to
-opt out per call: `pluck "profile.name" "unknown"` returns `"unknown"`
-instead of failing.
+Missing key, bad index, or invalid JSON errors by default. Add a fallback to opt
+out per call: `pluck "profile.name" "unknown"` returns `"unknown"` instead of
+failing.
 
-Also works on plain lists — `pluck "[2]"` grabs the 3rd item. Prefer `first`
-for the first item.
+Also works on plain lists — `pluck "[2]"` grabs the 3rd item. Prefer `first` for
+the first item.
 
 #### `keys` / `values`
 
-Query a variable holding a JSON object — either a map literal or JSON
-captured from a command, same sources as `pluck`:
+Query a variable holding a JSON object — either a map literal or JSON captured
+from a command, same sources as `pluck`:
 
 ```yaml
 - set:
@@ -351,11 +349,11 @@ captured from a command, same sources as `pluck`:
 ```
 
 Results are JSON-array strings, so they chain into other filters:
-`{{ .RESP | keys | first }}`. Invalid JSON, or a value that isn't a JSON
-object, is an error.
+`{{ .RESP | keys | first }}`. Invalid JSON, or a value that isn't a JSON object,
+is an error.
 
-A field value that's a single variable reference (optionally with a pipe
-chain) can omit `{{ }}`:
+A field value that's a single variable reference (optionally with a pipe chain)
+can omit `{{ }}`:
 
 ```yaml
 - get:
@@ -381,9 +379,8 @@ Every task is a sequence of five step types.
     - REGION_MAP: { us: us-east-1, eu: eu-west-1 } # map literal -> JSON object
 ```
 
-A map literal is stored as a JSON object string (same trick lists use —
-see [Template filters](#template-filters)), queried with `pluck`/`keys`/
-`values` or iterated with `loop:`.
+Any variable can hold nested JSON — write it as a YAML map/list literal, or as a
+JSON string directly.
 
 ### `run` — shell commands
 
@@ -395,13 +392,22 @@ see [Template filters](#template-filters)), queried with `pluck`/`keys`/
     - ERROR_LOG: stderr
 ```
 
-The pipe after `stdout`/`stderr` accepts any [template filter](#template-filters),
-chained the same way as in `{{ }}` templates — `stdout | lines | first`,
-`stdout | pluck "field"`, and so on.
+The pipe after `stdout`/`stderr` accepts any
+[template filter](#template-filters), chained the same way as in `{{ }}`
+templates — `stdout | lines | first`, `stdout | pluck "field"`, and so on.
 
-> Unbuffered Python: scripts buffer stdout when not attached to a terminal,
-> so `run:` output can appear late or all at once. Fix with
-> `PYTHONUNBUFFERED: 1` in `vars:`, or `python -u` per script. See
+```yaml
+- run: curl -s https://api.example.com/user
+  into:
+    - CUSTOM:
+        id: stdout | pluck "id"
+        name: stdout | pluck "profile.name"
+    # -> CUSTOM = {"id":"42","name":"Ada"}
+```
+
+> Unbuffered Python: scripts buffer stdout when not attached to a terminal, so
+> `run:` output can appear late or all at once. Fix with `PYTHONUNBUFFERED: 1`
+> in `vars:`, or `python -u` per script. See
 > [Python `-u` docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u).
 
 ### `get` — interactive prompts
@@ -409,8 +415,8 @@ chained the same way as in `{{ }}` templates — `stdout | lines | first`,
 Prompts for input; skipped if the variable already exists in scope.
 
 > With `--no-input`, a `CI` env var, or non-terminal stdin (AI agents, other
-> non-interactive callers), prompts are skipped. Missing vars with no
-> `default` abort.
+> non-interactive callers), prompts are skipped. Missing vars with no `default`
+> abort.
 
 Bare form:
 
@@ -443,8 +449,8 @@ Object form:
 
 ### `call` — sub-tasks
 
-Runs another task in an isolated scope. Pass vars in with `with:`, pull
-results back with `into:`.
+Runs another task in an isolated scope. Pass vars in with `with:`, pull results
+back with `into:`.
 
 ```yaml
 - call: deploy_pipeline
@@ -457,8 +463,8 @@ results back with `into:`.
     - ARTIFACT_PATH: .LOG_FILE
 ```
 
-A non-zero exit halts the timeline by default. `soft: true` continues past
-a failed call:
+A non-zero exit halts the timeline by default. `soft: true` continues past a
+failed call:
 
 ```yaml
 - call: flaky_cleanup_script
@@ -509,8 +515,8 @@ Any step can be conditionally skipped. Exit `0` proceeds, non-zero skips.
   if: '[ "{{.ENV}}" = "production" ]'
 ```
 
-Runs in the inherited task `dir:`, even on a step with its own `dir:`
-override — see [`dir:`](#dir--working-directory) above.
+Runs in the inherited task `dir:`, even on a step with its own `dir:` override —
+see [`dir:`](#dir--working-directory) above.
 
 ---
 
@@ -518,7 +524,7 @@ override — see [`dir:`](#dir--working-directory) above.
 
 - **Task names** — kebab-case (`deploy-production`, not `deploy_production`).
 - **Variable names** — `ALL_CAPS` with underscores.
-- **Field ordering** — `info:` before `steps:` in tasks; `info:` first in
-  `get:` entries.
-- **Prompt placement** — put `get:` steps early. Prompts buried after slow
-  `run` steps make the user wait before they can answer.
+- **Field ordering** — `info:` before `steps:` in tasks; `info:` first in `get:`
+  entries.
+- **Prompt placement** — put `get:` steps early. Prompts buried after slow `run`
+  steps make the user wait before they can answer.

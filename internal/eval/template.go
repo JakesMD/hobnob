@@ -126,6 +126,23 @@ var templateFuncs = template.FuncMap{
 		}
 		return string(jsonBytes), nil
 	},
+	// jsonEscape escapes a value for embedding inside a hand-written JSON
+	// string literal — for the rare case of a multiline set: scalar holding
+	// literal JSON text (needed to template a JSON key, which map/list
+	// literals can't do). Map/list literals never need this: their leaves
+	// are marshaled after evaluation, so json.Marshal escapes them
+	// automatically.
+	"jsonEscape": func(value string) (string, error) {
+		jsonBytes, err := json.Marshal(value)
+		if err != nil {
+			return "", fmt.Errorf("jsonEscape: %w", err)
+		}
+		// json.Marshal of a string always wraps in exactly one leading and
+		// one trailing '"' — strings.Trim would over-strip when the escaped
+		// content itself ends in \" (e.g. value ending in a quote or
+		// backslash), since Trim removes a whole run of the cutset rune.
+		return string(jsonBytes[1 : len(jsonBytes)-1]), nil
+	},
 }
 
 // templateCache holds parsed templates keyed by source string. EvalTemplate

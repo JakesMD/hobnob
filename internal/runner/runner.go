@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -69,15 +70,35 @@ func displayDirPath(dir, invocationDir string) string {
 	return "./" + rel
 }
 
-// maskSecrets replaces each secret variable's value in text with tui.SecretMask.
+// maskSecrets replaces each secret variable's value in text with
+// tui.SecretMask. It matches both the raw value and its JSON-escaped form
+// (quotes/backslashes/newlines escaped the way json.Marshal would render
+// them) — a secret embedded as a leaf of a set:/into: JSON literal is
+// marshaled, so its escaped form can differ from the raw value and would
+// otherwise slip past a raw-only match.
 func maskSecrets(text string, scope *cli.Scope) string {
 	for name := range scope.Secrets {
 		secretVal := scope.Vars[name]
-		if secretVal != "" {
-			text = strings.ReplaceAll(text, secretVal, tui.SecretMask)
+		if secretVal == "" {
+			continue
 		}
+		if escaped, ok := jsonEscapedForm(secretVal); ok && escaped != secretVal {
+			text = strings.ReplaceAll(text, escaped, tui.SecretMask)
+		}
+		text = strings.ReplaceAll(text, secretVal, tui.SecretMask)
 	}
 	return text
+}
+
+// jsonEscapedForm returns secretVal as it would appear inside a
+// json.Marshal-ed string (unquoted) — the form a secret takes once it's a
+// leaf of a set:/into: JSON literal.
+func jsonEscapedForm(secretVal string) (string, bool) {
+	jsonBytes, err := json.Marshal(secretVal)
+	if err != nil || len(jsonBytes) < 2 {
+		return "", false
+	}
+	return string(jsonBytes[1 : len(jsonBytes)-1]), true
 }
 
 // execCtx bundles the state threaded through every step-execution function.

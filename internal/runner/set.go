@@ -10,7 +10,15 @@ import (
 
 func execSet(step config.Step, scope *cli.Scope) error {
 	for _, setEntry := range step.SetEntries {
-		val, err := eval.EvalTemplate(setEntry.ValTmpl, scope.Vars)
+		var val string
+		var err error
+		if setEntry.ValNode != nil {
+			val, err = evalJSONNodeToJSON(*setEntry.ValNode, func(tmpl string) (string, error) {
+				return eval.EvalTemplate(tmpl, scope.Vars)
+			})
+		} else {
+			val, err = eval.EvalTemplate(setEntry.ValTmpl, scope.Vars)
+		}
 		if err != nil {
 			return fmt.Errorf("set value for %q: %w", setEntry.Key, err)
 		}

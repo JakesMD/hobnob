@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestParseConfig_RunStep(t *testing.T) {
@@ -85,6 +87,87 @@ func TestParseConfig_CallStep(t *testing.T) {
 			t.Errorf("into[%d]: got {%q, %q}, want {%q, %q}",
 				i, got.ParentKey, got.ValueTmpl, wantIntoEntry.ParentKey, wantIntoEntry.ValueTmpl)
 		}
+	}
+}
+
+func TestParseConfig_RunStep_IntoNestedObject(t *testing.T) {
+	// given a run: step's into: entry has a nested mapping value, one field
+	// two levels deep, when parsed, then it's deferred as a JSONNode tree
+	// instead of being read as an empty scalar (why: into:'s leaves keep
+	// their normal stdout|filter grammar, just nested under keys)
+	cfg, err := ParseConfig("testdata/into_nested.yml")
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	task, ok := cfg.Tasks["parent"]
+	if !ok {
+		t.Fatal("task 'parent' not found")
+	}
+	if len(task.Steps) != 1 {
+		t.Fatalf("want 1 step, got %d", len(task.Steps))
+	}
+	into := task.Steps[0].IntoEntries
+	if len(into) != 2 {
+		t.Fatalf("IntoEntries len: got %d, want 2", len(into))
+	}
+
+	custom := into[0]
+	if custom.ParentKey != "CUSTOM" {
+		t.Errorf("into[0].ParentKey: got %q, want CUSTOM", custom.ParentKey)
+	}
+	if custom.ValNode == nil {
+		t.Fatal("into[0].ValNode is nil, want a JSON object node")
+	}
+	if custom.ValNode.Kind != JSONObject {
+		t.Fatalf("into[0].ValNode.Kind: got %v, want JSONObject", custom.ValNode.Kind)
+	}
+	if len(custom.ValNode.Fields) != 2 {
+		t.Fatalf("into[0].ValNode.Fields len: got %d, want 2", len(custom.ValNode.Fields))
+	}
+	idField := custom.ValNode.Fields[0]
+	if idField.Key != "id" || idField.Node.Kind != JSONString || idField.Node.Tmpl != `stdout | pluck "id"` {
+		t.Errorf("into[0].ValNode.Fields[0]: got %+v, want {id {JSONString stdout | pluck \"id\"}}", idField)
+	}
+	profileField := custom.ValNode.Fields[1]
+	if profileField.Key != "profile" || profileField.Node.Kind != JSONObject {
+		t.Fatalf("into[0].ValNode.Fields[1]: got %+v, want nested object under 'profile'", profileField)
+	}
+	nameField := profileField.Node.Fields[0]
+	if nameField.Key != "name" || nameField.Node.Kind != JSONString || nameField.Node.Tmpl != `stdout | pluck "profile.name"` {
+		t.Errorf("into[0].ValNode.Fields[1].Fields[0]: got %+v, want {name {JSONString stdout | pluck \"profile.name\"}}", nameField)
+	}
+
+	plain := into[1]
+	if plain.ParentKey != "PLAIN" || plain.ValNode != nil || plain.ValueTmpl != "stdout" {
+		t.Errorf("into[1]: got %+v, want scalar {PLAIN stdout} with nil ValNode", plain)
+	}
+}
+
+func TestParseSetNode_MapLiteral_NestedKeyErrorIncludesPath(t *testing.T) {
+	// given a map literal with an invalid key two levels deep, when parsed,
+	// then the error names the full dotted path to the bad key, not just the
+	// top-level set entry (why: parseJSONLiteralNode recurses per-field, so
+	// without threading a path through, a deeply nested failure only ever
+	// reported the outermost key — useless for finding it in a large literal)
+	node := &yaml.Node{}
+	src := `
+- set:
+    - OUTER:
+        inner:
+          "{{bad}}": x
+`
+	if err := yaml.Unmarshal([]byte(src), node); err != nil {
+		t.Fatalf("unexpected yaml.Unmarshal error: %v", err)
+	}
+	setNode := node.Content[0].Content[0].Content[1]
+
+	_, err := parseSetNode(setNode)
+
+	if err == nil {
+		t.Fatal("expected an error, got nil")
+	}
+	if !strings.Contains(err.Error(), "OUTER.inner.{{bad}}") {
+		t.Errorf("error %q does not contain expected nested path %q", err.Error(), "OUTER.inner.{{bad}}")
 	}
 }
 

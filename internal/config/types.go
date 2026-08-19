@@ -49,12 +49,49 @@ const (
 type SetEntry struct {
 	Key     string
 	ValTmpl string
+	ValNode *JSONNode // non-nil for a map/list literal; ValTmpl unused when set
 	Secret  bool
 }
 
 type IntoEntry struct {
 	ParentKey string
 	ValueTmpl string
+	ValNode   *JSONNode // non-nil for a nested object/array literal; ValueTmpl unused when set
+}
+
+// JSONNodeKind discriminates the shape of a JSONNode.
+type JSONNodeKind int
+
+const (
+	// JSONString is a deferred leaf: a template (set:/with:) or source
+	// expression (into:) evaluated at runtime, not parse time.
+	JSONString JSONNodeKind = iota
+	// JSONLiteral is a non-string scalar (bool/int/float/null) decoded at
+	// parse time and passed through unevaluated — a {{ }} action can only
+	// occur inside a YAML string scalar, so these are never templates.
+	JSONLiteral
+	JSONObject
+	JSONArray
+)
+
+// JSONNode is a parsed literal JSON shape (a set:/with: map or list literal,
+// or a nested into: object/array) whose string leaves are unevaluated
+// template/source-expr text. Evaluating one means walking the tree,
+// evaluating each JSONString leaf, and json.Marshal-ing the assembled
+// result exactly once — never re-serializing text into an already-built
+// JSON string, which is what let unescaped quotes/backslashes in evaluated
+// leaf values corrupt the surrounding JSON.
+type JSONNode struct {
+	Kind     JSONNodeKind
+	Tmpl     string      // JSONString
+	Literal  any         // JSONLiteral
+	Fields   []JSONField // JSONObject
+	Elements []JSONNode  // JSONArray
+}
+
+type JSONField struct {
+	Key  string
+	Node JSONNode
 }
 
 type GetEntry struct {

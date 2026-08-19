@@ -285,6 +285,104 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 	}
 }
 
+func TestExecCall_Into_NestedObject(t *testing.T) {
+	// given a nested into: object mixing a bare .FIELD leaf and a {{}} template
+	// leaf, when call completes, then both leaf grammars resolve into one
+	// assembled JSON var (why: into:'s nested form reuses its existing dual-mode
+	// leaf grammar — .FIELD childScope lookup or {{}} template — it doesn't
+	// introduce a third one)
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"parent": {Steps: []config.Step{
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{
+					{Key: "PREFIX", ValTmpl: "log"},
+				}},
+				{
+					Kind:       config.KindCall,
+					CallTarget: "child",
+					IntoEntries: []config.IntoEntry{
+						{ParentKey: "CUSTOM", ValNode: &config.JSONNode{
+							Kind: config.JSONObject,
+							Fields: []config.JSONField{
+								{Key: "output", Node: config.JSONNode{Kind: config.JSONString, Tmpl: ".OUTPUT"}},
+								{Key: "label", Node: config.JSONNode{Kind: config.JSONString, Tmpl: "{{.PREFIX}}-entry"}},
+							},
+						}},
+					},
+				},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{
+					{Key: "OUTPUT", ValTmpl: "ok"},
+				}},
+			}},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `{"label":"log-entry","output":"ok"}`
+	if vars["CUSTOM"] != want {
+		t.Errorf("CUSTOM: got %q, want %q", vars["CUSTOM"], want)
+	}
+}
+
+func TestExecCall_With_MapLiteralTemplateLeaf_QuoteEscaped(t *testing.T) {
+	// given a with: map literal whose template leaf evaluates to a value
+	// containing a double quote, when the child reads it back via pluck, then
+	// the quote is escaped by json.Marshal rather than corrupting the JSON
+	// (why: with: shares parseSetNode with set:, so it inherited the same
+	// marshal-before-eval injection bug — this pins the fix on that side too)
+	cfg := &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"parent": {Steps: []config.Step{
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{
+					{Key: "NAME", ValTmpl: `he said "hi"`},
+				}},
+				{
+					Kind:       config.KindCall,
+					CallTarget: "child",
+					CallVars: []config.SetEntry{
+						{Key: "CUSTOM", ValNode: &config.JSONNode{
+							Kind: config.JSONObject,
+							Fields: []config.JSONField{
+								{Key: "name", Node: config.JSONNode{Kind: config.JSONString, Tmpl: "{{.NAME}}"}},
+							},
+						}},
+					},
+					IntoEntries: []config.IntoEntry{
+						{ParentKey: "RESULT", ValueTmpl: ".PLUCKED"},
+					},
+				},
+			}},
+			"child": {Steps: []config.Step{
+				{Kind: config.KindSet, SetEntries: []config.SetEntry{
+					{Key: "PLUCKED", ValTmpl: `{{ .CUSTOM | pluck "name" }}`},
+				}},
+			}},
+		},
+	}
+	vars := map[string]string{}
+
+	// Act
+	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `he said "hi"`
+	if vars["RESULT"] != want {
+		t.Errorf("RESULT: got %q, want %q", vars["RESULT"], want)
+	}
+}
+
 func TestDir_CallStep_DirUsesWithVars(t *testing.T) {
 	// given call step has dir: template referencing a with: variable,
 	// when called, then dir resolves using the with: variable's value
