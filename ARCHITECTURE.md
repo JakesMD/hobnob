@@ -9,6 +9,7 @@ and prompts resolve sequentially as execution reaches each step.
 ```bash
 go build -o hobnob ./cmd/hobnob   # or: hobnob go:build
 go test ./...                     # or: hobnob go:test
+go test ./internal/e2e            # or: hobnob go:test:e2e — end-to-end CLI suite only
 go vet ./...                      # or: hobnob go:vet
 ```
 
@@ -23,22 +24,27 @@ Dependencies: `gopkg.in/yaml.v3` (parsing), `github.com/theory/jsonpath` (the
 ## Package layout
 
 ```
-cmd/hobnob/       entry point, CLI dispatch, self-upgrade
+cmd/hobnob/       thin entry point: signal handling, os.Exit
+internal/app/     CLI body — flag dispatch, App.Run(ctx, args)
 internal/config/  YAML → typed structs (parse time)
 internal/eval/    Go template rendering, shell conditions, typed evaluation
 internal/value/   the typed scope value (string/bool/number/array/object) and its filters
 internal/cli/     scope construction, --list/--help formatting, completions
 internal/runner/  step execution (the interpreter loop)
 internal/tui/     bubbletea prompts, styled terminal output
+internal/e2e/     end-to-end CLI test suite (test-only package, no production code)
 ```
 
-Dependency direction is one-way: `runner` depends on `config`, `eval`, `cli`,
-`tui`; none of those import `runner` back. `value` sits at the bottom with zero
-internal dependencies; `eval` and `config` both import it (and `config` imports
-`eval`, never the reverse) but don't depend on each other otherwise. `tui`
-imports `value` (its prompts return typed results) but not `eval` —
-`PromptText` takes a validator closure instead of evaluating a `check:`
-expression itself, so `tui` never needs to know how one is evaluated.
+Dependency direction is one-way: `app` depends on `runner`, `config`, `cli`,
+`tui`; `runner` depends on `config`, `eval`, `cli`, `tui`; none of those import
+`app` or `runner` back. `value` sits at the bottom with zero internal
+dependencies; `eval` and `config` both import it (and `config` imports `eval`,
+never the reverse) but don't depend on each other otherwise. `tui` imports
+`value` (its prompts return typed results) but not `eval` — `PromptText` takes
+a validator closure instead of evaluating a `check:` expression itself, so
+`tui` never needs to know how one is evaluated. `internal/e2e` imports `app`
+and `runner` (for the prompt-fake seam) but nothing imports it back — it's a
+leaf, `_test.go` files only.
 
 ### `internal/config` — parsing
 
@@ -146,6 +152,21 @@ core (`execCtx`, `ExecuteTask`/`executeSteps`, dir/mask helpers).
 CTRL+C sends a graceful signal to the whole group (catching child processes a
 single-command signal would miss), 2nd force-kills.
 
+### `internal/app` — the CLI body
+
+`App{Version, IsTerminal, SelectTask}` is the whole CLI: `IsTerminal` and
+`SelectTask` (the interactive task picker) are struct fields rather than
+package-level vars specifically so `internal/e2e` can substitute a fake
+terminal/picker per test run without touching global state. `App.Run(ctx,
+args)` does flag parsing, taskfile discovery (`findTaskfile` walks up
+directories), `loadConfig` (parse + `BuildScope` + `LoadModules`), and routes
+to `--list`/`--help`/`execTask`. It never reads `os.Args` or calls `os.Exit`,
+so it's safe to invoke repeatedly from a single test process — that's what
+makes `internal/e2e` an in-process harness rather than a subprocess-spawning
+one. `cmd/hobnob/main.go` is the only caller: it builds a real `*App` via
+`app.New(version)`, adds signal handling, and translates `Run`'s returned
+error into an exit code.
+
 ### `internal/tui`
 
 Split by widget — `linewriter.go` (the `run:` stdout/stderr line-prefixing
@@ -157,6 +178,9 @@ are the two entry points the runner calls.
 ## Data flow, end to end
 
 ```
+os.Args[1:]
+   │  App.Run (app/app.go)
+   ▼
 hobnob.yml
    │  ParseConfig (config.go)          — YAML → ConfigFile, all templates raw
    ▼
@@ -174,10 +198,35 @@ process exit code
 
 ## Testing conventions
 
-Table-driven `t.Run` subtests per package, `promptTextFn`/`promptSelectFn`
-(runner) and `isTerminalFn` (main) swapped for fakes rather than mocking the
-terminal. See [CONTRIBUTING.md](CONTRIBUTING.md) for naming/structure
-conventions (Given/When/Then/Why, Arrange/Act/Assert).
+The suite is end-to-end first: most behavior is proven by writing a
+`hobnob.yml` fixture, running it through `internal/e2e`'s harness
+(`e2e.Yml`/`e2e.Run`, which drives a real `app.New(...).Run(ctx, args)`
+in-process), and asserting on what the user would actually see — printed
+output, exit code, which prompts fired — via `e2e.Result`'s matchers
+(`.OK`/`.Fails`/`.Out`/`.Lines`/`.Masked`/`.Prompted`/...). One file per
+feature (`set_test.go`, `call_test.go`, `loop_test.go`, `modules_test.go`,
+...); see the mutation checklist atop `internal/e2e/harness_test.go` for the
+behaviors that guard specifically. `internal/e2e` tests never run in parallel
+— the harness swaps `os.Stdout`, the process environment, and the cwd, all of
+which are process-global — and every test drives real interactive prompts via
+`runner.SetPrompts`, never `--no-input`-only paths, so the `get:` grammar's
+prompt mechanics stay covered.
+
+Reach for a package-local unit test instead only for what an e2e run can't
+observe: signals and process groups (`cmd/hobnob/main_signal_test.go`,
+`internal/runner`'s `TestKillRunningStep_*`/`TestExecRun_CtxCancelled_*`),
+`--upgrade`'s network/tarball handling (`internal/app/upgrade_test.go`),
+bubbletea model `Update`/`View` behavior (`internal/tui`), and combinatorial
+pure functions like `pluck`'s JSONPath selectors
+(`internal/value/filter_test.go`) or dotenv/shell-sourcing edge cases
+(`internal/eval/shell_test.go`). Those still follow table-driven `t.Run`
+subtests per package; see [CONTRIBUTING.md](CONTRIBUTING.md) for
+naming/structure conventions (Given/When/Then/Why, Arrange/Act/Assert).
+
+`runner.SetPrompts(text, sel) (restore func())` is the one seam production
+code exposes purely for tests — see the `promptTextFn`/`promptSelectFn`
+invariant in [CLAUDE.md](CLAUDE.md). `App.IsTerminal`/`App.SelectTask` are the
+other two (struct fields, not package vars — see `internal/app` above).
 
 ## See also
 

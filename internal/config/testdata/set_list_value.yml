@@ -1,6 +1,0 @@
-tasks:
-  setup:
-    steps:
-      - set:
-          - PACKAGES: [packages/data/platform_client/, packages/data/database_client/, packages/data/auth_client/]
-          - SCALAR: "just a string"

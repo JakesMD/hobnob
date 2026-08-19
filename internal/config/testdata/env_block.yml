@@ -1,8 +1,0 @@
-env:
-  - .env
-  - ./scripts/setup.sh
-
-tasks:
-  check:
-    steps:
-      - run: echo "{{.FOO}}"

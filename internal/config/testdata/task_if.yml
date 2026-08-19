@@ -1,9 +1,0 @@
-tasks:
-  guarded:
-    if: '[ "{{.ENABLED}}" = "true" ]'
-    steps:
-      - run: echo "ran"
-
-  unguarded:
-    steps:
-      - run: echo "always"

@@ -1,6 +1,0 @@
-tasks:
-  comment:
-    steps:
-      - text-input:
-          name: NOTE
-          description: Enter a note.

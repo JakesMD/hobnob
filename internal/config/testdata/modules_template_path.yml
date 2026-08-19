@@ -1,7 +1,0 @@
-modules:
-  - farm: '{{.FARM_FILE | default "modules_farm.yml"}}'
-
-tasks:
-  greet:
-    steps:
-      - run: echo "hello"

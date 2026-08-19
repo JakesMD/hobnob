@@ -1,5 +1,0 @@
-tasks:
-  d_task:
-    info: Task from D
-    steps:
-      - run: echo "d_task"

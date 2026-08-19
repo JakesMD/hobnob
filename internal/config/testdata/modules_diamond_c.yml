@@ -1,8 +1,0 @@
-modules:
-  - d: modules_diamond_d.yml
-
-tasks:
-  c_task:
-    info: Task from C (diamond)
-    steps:
-      - run: echo "c_task"

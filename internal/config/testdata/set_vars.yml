@@ -1,6 +1,0 @@
-tasks:
-  setup:
-    steps:
-      - set-vars:
-          - LIMIT: 1048576
-          - LABEL: '{{ shell "echo hobnob" }}'

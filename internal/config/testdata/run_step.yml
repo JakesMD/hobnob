@@ -1,8 +1,0 @@
-tasks:
-  greet:
-    steps:
-      - run: echo "hello world"
-      - run: echo "port {{.PORT}}"
-        if: '{{.PORT}} == "8080"'
-      - run: .GREETING
-      - run: ./greet.sh

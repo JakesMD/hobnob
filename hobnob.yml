@@ -19,6 +19,16 @@ tasks:
     steps:
       - run: go test ./...
 
+  go:test:unit:
+    info: Runs unit/integration tests only (fast inner loop, skips the e2e suite)
+    steps:
+      - run: go test $(go list ./... | grep -v /internal/e2e)
+
+  go:test:e2e:
+    info: Runs the end-to-end CLI test suite
+    steps:
+      - run: go test ./internal/e2e
+
   go:vet:
     info: Vets Go code
     steps:

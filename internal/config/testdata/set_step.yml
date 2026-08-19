@@ -1,8 +1,0 @@
-tasks:
-  setup:
-    steps:
-      - set:
-          - LIMIT: "1048576"
-          - LABEL: '{{ run "echo hobnob" }}'
-          - DERIVED: "{{.LIMIT}}/bytes"
-          - ALIAS: .LIMIT

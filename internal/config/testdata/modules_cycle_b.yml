@@ -1,8 +1,0 @@
-modules:
-  - a: modules_cycle_a.yml
-
-tasks:
-  b_task:
-    info: Task from cycle B
-    steps:
-      - run: echo "b_task"

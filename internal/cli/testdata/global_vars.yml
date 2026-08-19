@@ -1,8 +1,0 @@
-vars:
-  - TIMEOUT: '{{.TIMEOUT | default "30"}}'
-  - HOST: "localhost"
-
-tasks:
-  check:
-    steps:
-      - run: echo "{{.HOST}}:{{.TIMEOUT}}"

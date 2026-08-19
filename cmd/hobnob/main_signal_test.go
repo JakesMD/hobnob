@@ -7,11 +7,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 )
+
+// reExecSelf builds the subprocess command that re-runs t as the sole test in
+// this binary. Anchored and quoted from t.Name() rather than a hand-typed
+// string literal — a hand-typed "-test.run=TestFoo" silently desyncs from a
+// renamed test: the child then matches zero tests, exits 0, and the parent
+// reports a false pass.
+func reExecSelf(t *testing.T) *exec.Cmd {
+	t.Helper()
+	return exec.Command(os.Args[0], "-test.run=^"+regexp.QuoteMeta(t.Name())+"$")
+}
 
 // waitForFile polls until path exists or t fails the test.
 func waitForFile(t *testing.T, path string) {
@@ -34,6 +45,13 @@ func waitForFile(t *testing.T, path string) {
 // waited for anything — it would look identical to a force-kill.
 const gracefulCleanupScript = `trap 'sleep 0.8; exit 0' TERM; touch %s; sleep 5`
 
+// childStartedSentinel is printed by the subprocess branch right before it
+// calls main(). If the -test.run regex in reExecSelf ever stops matching (a
+// rename, a typo), the child process exits 0 having run zero tests, and every
+// assertion below it would silently pass against empty output. Asserting
+// this sentinel is present turns that failure mode into a loud one.
+const childStartedSentinel = "HOBNOB_E2E_CHILD_STARTED"
+
 func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	// given a run: step that takes time to shut down after receiving SIGTERM,
 	// when SIGINT arrives once, then hobnob prints the shutdown notice and
@@ -41,6 +59,7 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	// immediately (why: documented CTRL+C contract in GUIDE.md — "waits for
 	// it to exit on its own, however long that takes")
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		fmt.Fprintln(os.Stderr, childStartedSentinel)
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "t"}
 		main()
@@ -54,7 +73,7 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte(taskYAML), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestSigint_GracefulShutdown_WaitsForStepToExit")
+	cmd := reExecSelf(t)
 	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
@@ -93,6 +112,9 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	if !strings.Contains(stderr.String(), "shutting down") {
 		t.Errorf("expected stderr to contain shutdown notice, got: %s", stderr.String())
 	}
+	if !strings.Contains(stderr.String(), childStartedSentinel) {
+		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
+	}
 }
 
 func TestSigint_SecondPress_ForceKillsImmediately(t *testing.T) {
@@ -102,6 +124,7 @@ func TestSigint_SecondPress_ForceKillsImmediately(t *testing.T) {
 	// (why: documented "press CTRL+C again to force-kill the running step
 	// immediately" behavior — the 2nd press must cut the graceful wait short)
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		fmt.Fprintln(os.Stderr, childStartedSentinel)
 		dir := os.Getenv("HOBNOB_TEST_DIR")
 		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "t"}
 		main()
@@ -115,8 +138,10 @@ func TestSigint_SecondPress_ForceKillsImmediately(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte(taskYAML), 0644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=TestSigint_SecondPress_ForceKillsImmediately")
+	cmd := reExecSelf(t)
 	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start: %v", err)
 	}
@@ -145,5 +170,8 @@ func TestSigint_SecondPress_ForceKillsImmediately(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		_ = cmd.Process.Signal(syscall.SIGKILL)
 		t.Fatal("hobnob did not exit after a 2nd SIGINT — force-kill path is broken")
+	}
+	if !strings.Contains(stderr.String(), childStartedSentinel) {
+		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
 	}
 }
