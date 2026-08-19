@@ -1,71 +1,65 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	"hobnob/internal/eval"
+)
 
 func CollectGetParams(steps []Step, cfg *ConfigFile) []GetEntry {
 	return collectGetParams(steps, cfg, make(map[string]bool), make(map[string]bool))
 }
 
-// cloneSet returns a shallow copy of src, so a callee can extend its own
-// picture of "already set" vars without mutating the caller's.
-func cloneSet(src map[string]bool) map[string]bool {
-	dst := make(map[string]bool, len(src))
-	for k := range src {
-		dst[k] = true
-	}
-	return dst
-}
-
 func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, preset map[string]bool) []GetEntry {
 	var entries []GetEntry
-	alreadySet := cloneSet(preset)
-	for _, s := range steps {
-		switch s.Kind {
+	alreadySet := eval.CloneMap(preset)
+	for _, step := range steps {
+		switch step.Kind {
 		case KindSet:
-			for _, e := range s.SetEntries {
-				alreadySet[e.Key] = true
+			for _, setEntry := range step.SetEntries {
+				alreadySet[setEntry.Key] = true
 			}
 		case KindGet:
-			for _, e := range s.GetEntries {
-				if !alreadySet[e.VarName] {
-					entries = append(entries, e)
+			for _, getEntry := range step.GetEntries {
+				if !alreadySet[getEntry.VarName] {
+					entries = append(entries, getEntry)
 				}
-				alreadySet[e.VarName] = true
+				alreadySet[getEntry.VarName] = true
 			}
 		case KindRun:
-			for _, e := range s.IntoEntries {
-				alreadySet[e.ParentKey] = true
+			for _, intoEntry := range step.IntoEntries {
+				alreadySet[intoEntry.ParentKey] = true
 			}
 		case KindFor:
-			loopPreset := cloneSet(alreadySet)
-			if len(s.ForMatrix) > 0 {
-				for _, matrixEntry := range s.ForMatrix {
+			loopPreset := eval.CloneMap(alreadySet)
+			if len(step.ForMatrix) > 0 {
+				for _, matrixEntry := range step.ForMatrix {
 					loopPreset[matrixEntry.VarName] = true
 				}
 			} else {
 				loopPreset["ITEM"] = true
 			}
-			entries = append(entries, collectGetParams(s.ForSteps, cfg, visited, loopPreset)...)
+			entries = append(entries, collectGetParams(step.ForSteps, cfg, visited, loopPreset)...)
 		case KindCall:
-			if cfg != nil && !strings.Contains(s.CallTarget, "{{") {
-				if !visited[s.CallTarget] {
-					childPreset := cloneSet(alreadySet)
-					for _, w := range s.CallVars {
-						childPreset[w.Key] = true
+			if cfg != nil && !strings.Contains(step.CallTarget, "{{") {
+				if !visited[step.CallTarget] {
+					childPreset := eval.CloneMap(alreadySet)
+					for _, callVar := range step.CallVars {
+						childPreset[callVar.Key] = true
 					}
-					visited[s.CallTarget] = true
-					if task, ok := cfg.Tasks[s.CallTarget]; ok {
-						for _, e := range collectGetParams(task.Steps, cfg, visited, childPreset) {
-							if !alreadySet[e.VarName] {
-								entries = append(entries, e)
+					visited[step.CallTarget] = true
+					if task, ok := cfg.Tasks[step.CallTarget]; ok {
+						for _, getEntry := range collectGetParams(task.Steps, cfg, visited, childPreset) {
+							if !alreadySet[getEntry.VarName] {
+								entries = append(entries, getEntry)
 							}
-							alreadySet[e.VarName] = true
+							alreadySet[getEntry.VarName] = true
 						}
 					}
-					delete(visited, s.CallTarget)
+					delete(visited, step.CallTarget)
 				}
-				for _, e := range s.IntoEntries {
-					alreadySet[e.ParentKey] = true
+				for _, intoEntry := range step.IntoEntries {
+					alreadySet[intoEntry.ParentKey] = true
 				}
 			}
 		}

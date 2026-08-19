@@ -44,9 +44,12 @@ Every field that can contain a `{{ }}` template is stored as a raw string —
 **nothing is evaluated at parse time**, only at runtime once the scope exists.
 This is the load-bearing invariant of the whole system.
 
-Parsing is split by step kind: `config.go` (root types, `ParseConfig`,
-module/env field parsing), `steps.go` (per-step-kind dispatch, loop parsing),
-`vars.go` (`set:`/`with:`/`vars:` entries, `into:`), `get.go` (`get:` entries).
+Parsing is split by step kind: `config.go` (`ParseConfig`, task/step-sequence
+parsing), `types.go` (the `ConfigFile`/`Task`/`Step`/... structs), `yaml.go`
+(shared `yaml.Node` helpers), `steps.go` (per-step-kind dispatch, loop
+parsing), `vars.go` (`set:`/`with:`/`vars:` entries, `into:`), `get.go`
+(`get:` entries); `modules.go`/`envfiles.go` each also parse their own block
+(`modules:`/`env:`) alongside the loading logic below.
 `modules.go`/`envfiles.go` handle _loading_ rather than parsing — resolving and
 merging imported files, run after `BuildScope` since their paths can be
 templated. `collect.go` statically walks parsed steps to find the `get:` params
@@ -60,8 +63,9 @@ Three primitives everything else is built from:
   plus hobnob's filters (`default`, `trim`, `split`, `pluck`, `keys`, ...). The
   filter `FuncMap` is built once at package init since this runs on nearly every
   step.
-- `EvalCondition(expr, vars, dir)` — renders then runs via `sh -c`, exit code 0
-  = true. Backs `if:`.
+- `EvalCondition(ctx, expr, vars, dir)` — renders then runs via `sh -c` with
+  `exec.CommandContext`, exit code 0 = true. Backs `if:`/`check:`; ctx
+  cancellation (CTRL+C) kills a hung condition outright.
 - `EvalRunIntoPipe(expr, stdout, stderr)` — the `run: ... into:` pipe syntax
   (`stdout | trim`, `stderr | lines`).
 
@@ -76,6 +80,13 @@ environment a task executes in. `BuildScope` layers it in strict precedence
 order (env → system vars → env-file vars → CLI args → global `vars:`) before any
 task runs. `Scope.Copy()` deep-copies both maps, giving every `call:` step an
 isolated sandbox.
+
+Secrecy is a property of where a value came from, not of where it's used:
+`Secrets` rides along on `Copy()`, and `runner.maskSecrets` matches on _value_
+rather than key. A secret therefore stays masked when a `with:` entry passes it
+into a child under a different name, which is why `secret:` on a `with:` entry
+is rejected at parse time (`config.rejectSecretCallVars`) instead of honored —
+it would be redundant at best, and would over-mask a composed value at worst.
 
 Everything else here is output formatting: `--list`/`--help` rendering,
 task-selector data, and the zsh/bash/fish completion scripts (`go:embed`-ed from
@@ -107,16 +118,20 @@ Step kinds, briefly:
   `execForMap`/`execForMatrix`, setting loop vars (`ITEM`, `KEY`/`VALUE`, or
   matrix vars) and restoring prior values on exit.
 
-`runner_unix.go`/`runner_windows.go` handle process-group signaling: 1st CTRL+C
-sends a graceful signal to the whole group (catching child processes a
+Split by step kind — `run.go`, `set.go`, `get.go`, `call.go`, `loop.go` —
+mirroring `internal/config`'s convention; `runner.go` keeps only the shared
+core (`execCtx`, `ExecuteTask`/`executeSteps`, dir/mask helpers).
+`runner_unix.go`/`runner_windows.go` handle process-group signaling: 1st
+CTRL+C sends a graceful signal to the whole group (catching child processes a
 single-command signal would miss), 2nd force-kills.
 
 ### `internal/tui`
 
-Bubbletea/Bubbles-based `PromptText` and `PromptSelect`, plus lipgloss styles
-used for task output (`SLabel`, `SInfo`, `SError`, ...) and line prefixing so
-concurrent-looking output from `run:` steps stays attributable to the task that
-produced it.
+Split by widget — `linewriter.go` (the `run:` stdout/stderr line-prefixing
+writer), `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go` (the three
+Bubbletea models), `styles.go` (shared lipgloss styles like `SLabel`, `SInfo`,
+`SError`, ... plus `TaskPrefix`/`SecretMask`). `PromptText` and `PromptSelect`
+are the two entry points the runner calls.
 
 ## Data flow, end to end
 

@@ -3,7 +3,6 @@ package config
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -14,10 +13,10 @@ import (
 // reserved words "value"/"secret" — a map literal that happens to use one of
 // those words alongside other keys (e.g. { value: x, count: y }) still reads
 // as a map literal.
-func isExpandedSetForm(m *yaml.Node) bool {
+func isExpandedSetForm(mapping *yaml.Node) bool {
 	hasValue := false
-	for i := 0; i+1 < len(m.Content); i += 2 {
-		switch m.Content[i].Value {
+	for _, entry := range mapEntries(mapping.Content) {
+		switch entry.Key {
 		case "value":
 			hasValue = true
 		case "secret":
@@ -29,12 +28,12 @@ func isExpandedSetForm(m *yaml.Node) bool {
 }
 
 // parseSetNode parses the sequence form shared by set:, with:, and vars:.
-func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
-	if n.Kind != yaml.SequenceNode {
+func parseSetNode(node *yaml.Node) ([]SetEntry, error) {
+	if node.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("set must be a sequence of key-value maps")
 	}
 	var entries []SetEntry
-	for _, item := range n.Content {
+	for _, item := range node.Content {
 		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
 			return nil, fmt.Errorf("each set entry must be a single key: value pair")
 		}
@@ -42,16 +41,16 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 		if valNode.Kind == yaml.MappingNode && isExpandedSetForm(valNode) {
 			// expanded form: { value: ..., secret: true }
 			key := item.Content[0].Value
-			if strings.Contains(key, "{{") {
-				return nil, fmt.Errorf("variable name %q must not contain template syntax", key)
+			if err := validateVarName(key); err != nil {
+				return nil, err
 			}
 			entry := SetEntry{Key: key}
-			for j := 0; j+1 < len(valNode.Content); j += 2 {
-				switch valNode.Content[j].Value {
+			for _, modifier := range mapEntries(valNode.Content) {
+				switch modifier.Key {
 				case "value":
-					entry.ValTmpl = normalizeTmpl(valNode.Content[j+1].Value)
+					entry.ValTmpl = normalizeTmpl(modifier.Val.Value)
 				case "secret":
-					entry.Secret = parseBool(valNode.Content[j+1])
+					entry.Secret = parseBool(modifier.Val)
 				}
 			}
 			entries = append(entries, entry)
@@ -60,8 +59,8 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 		if valNode.Kind == yaml.MappingNode {
 			// map literal: { key: value, ... } -> JSON object template string
 			rawKey := item.Content[0].Value
-			if strings.Contains(rawKey, "{{") {
-				return nil, fmt.Errorf("variable name %q must not contain template syntax", rawKey)
+			if err := validateVarName(rawKey); err != nil {
+				return nil, err
 			}
 			var raw interface{}
 			if err := valNode.Decode(&raw); err != nil {
@@ -87,8 +86,8 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 			valTmpl = string(jsonBytes)
 		}
 		rawKey := item.Content[0].Value
-		if strings.Contains(rawKey, "{{") {
-			return nil, fmt.Errorf("variable name %q must not contain template syntax", rawKey)
+		if err := validateVarName(rawKey); err != nil {
+			return nil, err
 		}
 		entries = append(entries, SetEntry{
 			Key:     rawKey,
@@ -98,18 +97,18 @@ func parseSetNode(n *yaml.Node) ([]SetEntry, error) {
 	return entries, nil
 }
 
-func parseIntoNode(n *yaml.Node) ([]IntoEntry, error) {
-	if n.Kind != yaml.SequenceNode {
+func parseIntoNode(node *yaml.Node) ([]IntoEntry, error) {
+	if node.Kind != yaml.SequenceNode {
 		return nil, fmt.Errorf("into must be a sequence of key: value maps")
 	}
 	var entries []IntoEntry
-	for _, item := range n.Content {
+	for _, item := range node.Content {
 		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
 			return nil, fmt.Errorf("each into entry must be a single key: value pair")
 		}
 		parentKey := item.Content[0].Value
-		if strings.Contains(parentKey, "{{") {
-			return nil, fmt.Errorf("variable name %q must not contain template syntax", parentKey)
+		if err := validateVarName(parentKey); err != nil {
+			return nil, err
 		}
 		entries = append(entries, IntoEntry{
 			ParentKey: parentKey,

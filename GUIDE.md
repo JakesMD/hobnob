@@ -395,6 +395,10 @@ see [Template filters](#template-filters)), queried with `pluck`/`keys`/
     - ERROR_LOG: stderr
 ```
 
+The pipe after `stdout`/`stderr` accepts any [template filter](#template-filters),
+chained the same way as in `{{ }}` templates — `stdout | lines | first`,
+`stdout | pluck "field"`, and so on.
+
 > Unbuffered Python: scripts buffer stdout when not attached to a terminal,
 > so `run:` output can appear late or all at once. Fix with
 > `PYTHONUNBUFFERED: 1` in `vars:`, or `python -u` per script. See
@@ -461,6 +465,11 @@ a failed call:
   soft: true
 - call: next_critical_step
 ```
+
+`with:` entries take no `secret:` flag — it's rejected at parse time. Masking
+matches on value, so a secret stays masked once passed down, even under a new
+name; mark it secret where it's defined (`set:`, `get:`, `vars:`, `env:`)
+instead.
 
 ### `loop` — iteration
 

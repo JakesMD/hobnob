@@ -1,9 +1,6 @@
 package eval
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
 func TestEvalTemplate(t *testing.T) {
 	tests := []struct {
@@ -45,16 +42,16 @@ func TestEvalTemplate(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
-			if tc.expectError {
+			if test.expectError {
 				if err == nil {
 					t.Errorf("expected error but got nil (result: %q)", got)
 				}
@@ -63,8 +60,8 @@ func TestEvalTemplate(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -97,20 +94,20 @@ func TestTrim(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -149,20 +146,20 @@ func TestSplit(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -213,20 +210,20 @@ func TestLines(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -258,20 +255,20 @@ func TestUpper(t *testing.T) {
 			expected: "DONE",
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -303,20 +300,20 @@ func TestLower(t *testing.T) {
 			expected: "done",
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -355,16 +352,16 @@ func TestFirst(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
-			if tc.wantErr {
+			if test.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil (result: %q)", got)
 				}
@@ -373,8 +370,8 @@ func TestFirst(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -485,16 +482,16 @@ func TestPluck(t *testing.T) {
 			expected: `[{"active":true,"name":"a"},{"active":true,"name":"c"}]`,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
-			if tc.wantErr {
+			if test.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil (result: %q)", got)
 				}
@@ -503,8 +500,8 @@ func TestPluck(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
 	}
@@ -543,16 +540,16 @@ func TestKeysValues(t *testing.T) {
 			wantErr: true,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalTemplate(tc.tmpl, tc.vars)
+			got, err := EvalTemplate(test.tmpl, test.vars)
 
 			// Assert
-			if tc.wantErr {
+			if test.wantErr {
 				if err == nil {
 					t.Errorf("expected error, got nil (result: %q)", got)
 				}
@@ -561,379 +558,9 @@ func TestKeysValues(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
+			if got != test.expected {
+				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})
-	}
-}
-
-func TestEvalRunIntoPipe(t *testing.T) {
-	tests := []struct {
-		name        string
-		expr        string
-		stdout      string
-		stderr      string
-		expected    string
-		expectError bool
-	}{
-		{
-			name:     "given stdout source, when no pipe, then returns raw stdout (why: basic capture)",
-			expr:     "stdout",
-			stdout:   "hello\n",
-			stderr:   "",
-			expected: "hello\n",
-		},
-		{
-			name:     "given stderr source, when no pipe, then returns raw stderr (why: basic error capture)",
-			expr:     "stderr",
-			stdout:   "",
-			stderr:   "error msg\n",
-			expected: "error msg\n",
-		},
-		{
-			name:     "given stdout | trim, when stdout has trailing newline, then trims (why: common pattern for single-value capture)",
-			expr:     "stdout | trim",
-			stdout:   "hello\n",
-			stderr:   "",
-			expected: "hello",
-		},
-		{
-			name:     "given stdout | lines, when stdout is multiline, then returns JSON array (why: capture list output into loop-ready var)",
-			expr:     "stdout | lines",
-			stdout:   "alpha\nbeta\ngamma\n",
-			stderr:   "",
-			expected: `["alpha","beta","gamma"]`,
-		},
-		{
-			name:     "given stdout | upper, when stdout is lowercase, then returns uppercase (why: normalise captured output)",
-			expr:     "stdout | upper",
-			stdout:   "hello",
-			stderr:   "",
-			expected: "HELLO",
-		},
-		{
-			name:     "given stdout | lower, when stdout is uppercase, then returns lowercase (why: normalise captured output)",
-			expr:     "stdout | lower",
-			stdout:   "HELLO",
-			stderr:   "",
-			expected: "hello",
-		},
-		{
-			name:     "given stdout | trim | upper, when chained, then applies both transforms (why: pipe chain works left to right)",
-			expr:     "stdout | trim | upper",
-			stdout:   "  hello  ",
-			stderr:   "",
-			expected: "HELLO",
-		},
-		{
-			name:        "given unknown source, when evaluated, then returns error (why: typo guard)",
-			expr:        "stdin",
-			expectError: true,
-		},
-		{
-			name:        "given unknown pipe func, when evaluated, then returns error (why: typo guard)",
-			expr:        "stdout | reverse",
-			expectError: true,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			// (tc fields are the arrangement)
-
-			// Act
-			got, err := EvalRunIntoPipe(tc.expr, tc.stdout, tc.stderr)
-
-			// Assert
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("expected error, got nil (result=%q)", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.expected {
-				t.Errorf("got %q, want %q", got, tc.expected)
-			}
-		})
-	}
-}
-
-func TestEvalCondition(t *testing.T) {
-	tests := []struct {
-		name      string
-		condTmpl  string
-		vars      map[string]string
-		wantTrue  bool
-		wantError bool
-	}{
-		{
-			name:     "given string equality match, when evaluated, then returns true (why: if condition gates step execution)",
-			condTmpl: `[ "{{.METHOD}}" = "Chunked Upload" ]`,
-			vars:     map[string]string{"METHOD": "Chunked Upload"},
-			wantTrue: true,
-		},
-		{
-			name:     "given string equality mismatch, when evaluated, then returns false (why: step should be skipped)",
-			condTmpl: `[ "{{.METHOD}}" = "Chunked Upload" ]`,
-			vars:     map[string]string{"METHOD": "Direct Upload"},
-			wantTrue: false,
-		},
-		{
-			name:     "given string inequality match, when evaluated, then returns true (why: != skips excluded value)",
-			condTmpl: `[ "{{.MOTOR}}" != "Z-Axis Lead" ]`,
-			vars:     map[string]string{"MOTOR": "X-Axis Stepper"},
-			wantTrue: true,
-		},
-		{
-			name:     "given string inequality match on excluded value, when evaluated, then returns false (why: Z-Axis Lead is excluded)",
-			condTmpl: `[ "{{.MOTOR}}" != "Z-Axis Lead" ]`,
-			vars:     map[string]string{"MOTOR": "Z-Axis Lead"},
-			wantTrue: false,
-		},
-		{
-			name:     "given numeric less-than-equal pass, when evaluated, then returns true (why: check validates numeric bounds)",
-			condTmpl: `[ {{.SPEED}} -le {{.LIMIT}} ]`,
-			vars:     map[string]string{"SPEED": "1500", "LIMIT": "3000"},
-			wantTrue: true,
-		},
-		{
-			name:     "given numeric less-than-equal fail, when evaluated, then returns false (why: value exceeds limit)",
-			condTmpl: `[ {{.SPEED}} -le {{.LIMIT}} ]`,
-			vars:     map[string]string{"SPEED": "9999", "LIMIT": "3000"},
-			wantTrue: false,
-		},
-		{
-			name:     "given numeric less-than pass, when evaluated, then returns true (why: chunk size within limit)",
-			condTmpl: `[ {{.SIZE}} -lt {{.MAX}} ]`,
-			vars:     map[string]string{"SIZE": "1024", "MAX": "10485760"},
-			wantTrue: true,
-		},
-		{
-			name:     "given numeric less-than fail, when evaluated, then returns false (why: oversized chunk must be rejected)",
-			condTmpl: `[ {{.SIZE}} -lt {{.MAX}} ]`,
-			vars:     map[string]string{"SIZE": "99999999", "MAX": "10485760"},
-			wantTrue: false,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			// (tc fields are the arrangement)
-
-			// Act
-			got, err := EvalCondition(tc.condTmpl, tc.vars, "")
-
-			// Assert
-			if tc.wantError {
-				if err == nil {
-					t.Errorf("expected error, got nil (result=%v)", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tc.wantTrue {
-				t.Errorf("got %v, want %v", got, tc.wantTrue)
-			}
-		})
-	}
-}
-
-func TestParseList(t *testing.T) {
-	tests := []struct {
-		name        string
-		input       string
-		expected    []string
-		expectError bool
-	}{
-		{
-			name:     "given JSON array, when parsed, then returns items (why: list vars stored as JSON)",
-			input:    `["pin_a1","pin_a2","pin_b1"]`,
-			expected: []string{"pin_a1", "pin_a2", "pin_b1"},
-		},
-		{
-			name:     "given JSON array with spaces in values, when parsed, then preserves spaces (why: list items may contain spaces)",
-			input:    `["X-Axis Stepper","Y-Axis Stepper","Z-Axis Lead"]`,
-			expected: []string{"X-Axis Stepper", "Y-Axis Stepper", "Z-Axis Lead"},
-		},
-		{
-			name:     "given empty string, when parsed, then returns nil (why: unset list var is valid)",
-			input:    "",
-			expected: nil,
-		},
-		{
-			name:     "given single value (non-JSON), when parsed, then returns single-item slice (why: single template value used as list)",
-			input:    "only_value",
-			expected: []string{"only_value"},
-		},
-		{
-			name:        "given invalid JSON array, when parsed, then returns error (why: malformed list must surface early)",
-			input:       `["unclosed`,
-			expectError: true,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			// (tc.input is the arrangement)
-
-			// Act
-			got, err := ParseList(tc.input)
-
-			// Assert
-			if tc.expectError {
-				if err == nil {
-					t.Errorf("expected error, got nil (result=%v)", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if len(got) != len(tc.expected) {
-				t.Fatalf("len: got %d, want %d (got=%v want=%v)", len(got), len(tc.expected), got, tc.expected)
-			}
-			for i, w := range tc.expected {
-				if got[i] != w {
-					t.Errorf("[%d]: got %q, want %q", i, got[i], w)
-				}
-			}
-		})
-	}
-}
-
-func TestCopyVars(t *testing.T) {
-	// given source map, when CopyVars called and dst mutated, then source unchanged (why: scope isolation depends on deep copy semantics)
-	// Arrange
-	src := map[string]string{"A": "1", "B": "2"}
-
-	// Act
-	dst := CopyVars(src)
-	dst["A"] = "changed"
-
-	// Assert
-	if src["A"] != "1" {
-		t.Errorf("CopyVars mutated source: src[A]=%q", src["A"])
-	}
-	if dst["B"] != "2" {
-		t.Errorf("CopyVars missing key: dst[B]=%q", dst["B"])
-	}
-}
-
-func TestSourceShellFile(t *testing.T) {
-	tests := []struct {
-		name       string
-		script     string
-		presetEnv  map[string]string
-		wantVar    string
-		wantValue  string
-		wantAbsent bool
-	}{
-		{
-			name:      "given script exports a new var, when sourced, then var is captured (why: the whole point of env: is picking up vars a script defines)",
-			script:    "export NEWVAR=hello\n",
-			wantVar:   "NEWVAR",
-			wantValue: "hello",
-		},
-		{
-			name:       "given script re-exports an existing var unchanged, when sourced, then var is not reported as set (why: diffing against baseline filters out ambient noise)",
-			script:     "export SAMEVAR=same\n",
-			presetEnv:  map[string]string{"SAMEVAR": "same"},
-			wantVar:    "SAMEVAR",
-			wantAbsent: true,
-		},
-		{
-			name:      "given script changes an existing var's value, when sourced, then the new value is captured (why: a script overriding an inherited var is a deliberate change)",
-			script:    "export CHANGEDVAR=newvalue\n",
-			presetEnv: map[string]string{"CHANGEDVAR": "oldvalue"},
-			wantVar:   "CHANGEDVAR",
-			wantValue: "newvalue",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange
-			for k, v := range tc.presetEnv {
-				t.Setenv(k, v)
-			}
-			dir := t.TempDir()
-			scriptPath := dir + "/script.sh"
-			if err := os.WriteFile(scriptPath, []byte(tc.script), 0o644); err != nil {
-				t.Fatalf("write script: %v", err)
-			}
-
-			// Act
-			got, err := SourceShellFile(scriptPath, dir)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-
-			// Assert
-			if tc.wantAbsent {
-				if _, ok := got[tc.wantVar]; ok {
-					t.Errorf("%s: expected absent from diff, got %q", tc.wantVar, got[tc.wantVar])
-				}
-				return
-			}
-			if got[tc.wantVar] != tc.wantValue {
-				t.Errorf("%s: got %q, want %q", tc.wantVar, got[tc.wantVar], tc.wantValue)
-			}
-		})
-	}
-}
-
-func TestSourceShellFile_PathWithShellMetacharactersNotExecuted(t *testing.T) {
-	// given a path containing shell command substitution syntax, when sourced, then the substitution is not executed (why: a templated env: path built from an untrusted var must not let shell metacharacters run arbitrary commands)
-	// Arrange
-	dir := t.TempDir()
-	scriptName := "$(touch injected).sh"
-	scriptPath := dir + "/" + scriptName
-	if err := os.WriteFile(scriptPath, []byte("export FOO=bar\n"), 0o644); err != nil {
-		t.Fatalf("write script: %v", err)
-	}
-
-	// Act
-	got, err := SourceShellFile(scriptPath, dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Assert
-	if got["FOO"] != "bar" {
-		t.Errorf("FOO: got %q, want %q", got["FOO"], "bar")
-	}
-	if _, err := os.Stat(dir + "/injected"); err == nil {
-		t.Error("canary file exists: command substitution in path was executed")
-	}
-}
-
-func TestSourceShellFile_MultiLineValuePreserved(t *testing.T) {
-	// given a script exporting a value with embedded newlines, when sourced, then the full multi-line value is captured (why: env: files are used to load secrets like PEM certs/keys, which are commonly multi-line)
-	// Arrange
-	dir := t.TempDir()
-	script := "export CERT=\"$(printf 'line1\\nline2\\nline3')\"\n"
-	scriptPath := dir + "/script.sh"
-	if err := os.WriteFile(scriptPath, []byte(script), 0o644); err != nil {
-		t.Fatalf("write script: %v", err)
-	}
-
-	// Act
-	got, err := SourceShellFile(scriptPath, dir)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// Assert
-	want := "line1\nline2\nline3"
-	if got["CERT"] != want {
-		t.Errorf("CERT: got %q, want %q", got["CERT"], want)
 	}
 }

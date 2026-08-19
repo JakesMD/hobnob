@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -15,7 +16,7 @@ func TestLoadEnvFiles_DotenvParsing(t *testing.T) {
 	}
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: ".env"}}, dir, map[string]string{})
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: ".env"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -27,9 +28,9 @@ func TestLoadEnvFiles_DotenvParsing(t *testing.T) {
 		"QUOTED": "hello world",
 		"SINGLE": "single quoted",
 	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("%s: got %q, want %q", k, got[k], v)
+	for key, value := range want {
+		if got[key] != value {
+			t.Errorf("%s: got %q, want %q", key, got[key], value)
 		}
 	}
 	if len(got) != len(want) {
@@ -43,7 +44,7 @@ func TestLoadEnvFiles_MissingFile(t *testing.T) {
 	dir := t.TempDir()
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: "does-not-exist.env"}}, dir, map[string]string{})
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: "does-not-exist.env"}}, dir, map[string]string{})
 
 	// Assert
 	if err != nil {
@@ -63,7 +64,7 @@ func TestLoadEnvFiles_MissingFileWarnsButLaterEntriesStillLoad(t *testing.T) {
 	}
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: "does-not-exist.env"}, {PathTmpl: "present.env"}}, dir, map[string]string{})
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: "does-not-exist.env"}, {PathTmpl: "present.env"}}, dir, map[string]string{})
 
 	// Assert
 	if err != nil {
@@ -86,7 +87,7 @@ func TestLoadEnvFiles_RelativePathResolvesAgainstTaskfileDir(t *testing.T) {
 	}
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: "sub/.env"}}, dir, map[string]string{})
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: "sub/.env"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestLoadEnvFiles_LaterEntryWinsOverEarlier(t *testing.T) {
 	}
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: "first.env"}, {PathTmpl: "second.env"}}, dir, map[string]string{})
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: "first.env"}, {PathTmpl: "second.env"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -129,7 +130,7 @@ func TestLoadEnvFiles_NotSecretByDefault(t *testing.T) {
 	}
 
 	// Act
-	got, secrets, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: ".env"}}, dir, map[string]string{})
+	got, secrets, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: ".env"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestLoadEnvFiles_ShFilesNotSecretByDefault(t *testing.T) {
 	}
 
 	// Act
-	got, secrets, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: "setup.sh"}}, dir, map[string]string{})
+	got, secrets, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: "setup.sh"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -179,7 +180,7 @@ func TestLoadEnvFiles_LaterFileSecretOverrideDeterminesStatus(t *testing.T) {
 	isSecret := true
 
 	// Act
-	got, secrets, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: ".env", SecretOverride: &isSecret}, {PathTmpl: "setup.sh"}}, dir, map[string]string{})
+	got, secrets, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: ".env", SecretOverride: &isSecret}, {PathTmpl: "setup.sh"}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -203,7 +204,7 @@ func TestLoadEnvFiles_ExplicitSecretTrueOverridesDefault(t *testing.T) {
 	isSecret := true
 
 	// Act
-	got, secrets, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: ".env", SecretOverride: &isSecret}}, dir, map[string]string{})
+	got, secrets, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: ".env", SecretOverride: &isSecret}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -227,7 +228,7 @@ func TestLoadEnvFiles_ExplicitSecretFalseStaysNotSecret(t *testing.T) {
 	notSecret := false
 
 	// Act
-	got, secrets, err := LoadEnvFiles([]EnvFileEntry{{PathTmpl: ".env", SecretOverride: &notSecret}}, dir, map[string]string{})
+	got, secrets, err := LoadEnvFiles(context.Background(), []EnvFileEntry{{PathTmpl: ".env", SecretOverride: &notSecret}}, dir, map[string]string{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,7 +254,7 @@ func TestLoadEnvFiles_LaterEntryPathReferencesEarlierEntryVar(t *testing.T) {
 	}
 
 	// Act
-	got, _, err := LoadEnvFiles([]EnvFileEntry{
+	got, _, err := LoadEnvFiles(context.Background(), []EnvFileEntry{
 		{PathTmpl: "first.env"},
 		{PathTmpl: "{{.STAGE}}.env"},
 	}, dir, map[string]string{})

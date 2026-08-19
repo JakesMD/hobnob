@@ -2,81 +2,99 @@ package config
 
 import (
 	"fmt"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-func parseStepNode(n *yaml.Node) (Step, error) {
-	if n.Kind != yaml.MappingNode {
+func parseStepNode(node *yaml.Node) (Step, error) {
+	if node.Kind != yaml.MappingNode {
 		return Step{}, fmt.Errorf("step must be a mapping")
 	}
 
-	var s Step
+	var step Step
 
-	for i := 0; i+1 < len(n.Content); i += 2 {
-		fieldKey := n.Content[i].Value
-		fieldVal := n.Content[i+1]
+	for _, entry := range mapEntries(node.Content) {
+		fieldKey, fieldVal := entry.Key, entry.Val
 
 		switch fieldKey {
 		case "run":
-			s.Kind = KindRun
-			s.Command = normalizeTmpl(fieldVal.Value)
+			step.Kind = KindRun
+			step.Command = normalizeTmpl(fieldVal.Value)
 		case "set":
-			s.Kind = KindSet
+			step.Kind = KindSet
 			entries, err := parseSetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("set: %w", err)
 			}
-			s.SetEntries = entries
+			step.SetEntries = entries
 		case "get":
-			s.Kind = KindGet
+			step.Kind = KindGet
 			entries, err := parseGetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("get: %w", err)
 			}
-			s.GetEntries = entries
+			step.GetEntries = entries
 		case "call":
-			s.Kind = KindCall
-			s.CallTarget = fieldVal.Value
+			step.Kind = KindCall
+			step.CallTarget = fieldVal.Value
 		case "loop":
-			s.Kind = KindFor
+			step.Kind = KindFor
 			forTarget, forList, forMatrix, err := parseLoopNode(fieldVal)
 			if err != nil {
-				return s, err
+				return step, err
 			}
-			s.ForTarget, s.ForList, s.ForMatrix = forTarget, forList, forMatrix
+			step.ForTarget, step.ForList, step.ForMatrix = forTarget, forList, forMatrix
 		case "if":
-			s.IfExpr = fieldVal.Value
+			step.IfExpr = fieldVal.Value
 		case "with":
 			entries, err := parseSetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("with: %w", err)
 			}
-			s.CallVars = entries
+			if err := rejectSecretCallVars(entries); err != nil {
+				return Step{}, err
+			}
+			step.CallVars = entries
 		case "into":
 			entries, err := parseIntoNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("into: %w", err)
 			}
-			s.IntoEntries = entries
+			step.IntoEntries = entries
 		case "soft":
-			s.Soft = parseBool(fieldVal)
+			step.Soft = parseBool(fieldVal)
 		case "interactive":
-			v := parseBool(fieldVal)
-			s.Interactive = &v
+			interactive := parseBool(fieldVal)
+			step.Interactive = &interactive
 		case "dir":
-			s.DirTmpl = normalizeTmpl(fieldVal.Value)
+			step.DirTmpl = normalizeTmpl(fieldVal.Value)
 		case "steps":
 			subSteps, err := parseStepSequence(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("steps: %w", err)
 			}
-			s.ForSteps = subSteps
+			step.ForSteps = subSteps
 		}
 	}
 
-	return s, nil
+	return step, nil
+}
+
+// rejectSecretCallVars rejects secret: on a with: entry. with: reuses set:'s
+// grammar, so the field parses, but marking a var secret at the call site is
+// never the right tool: masking matches on value, and Scope.Copy() carries the
+// parent's secrets into the child, so a secret passed down is already masked
+// under its new name. Flagging it here only over-masks — a composed value like
+// "postgres://{{.USER}}:{{.PASS}}@db" would blank out entirely instead of just
+// the password. Declare secrecy where the value originates (set:/get:/vars:/
+// env:) and let it propagate.
+func rejectSecretCallVars(entries []SetEntry) error {
+	for _, entry := range entries {
+		if entry.Secret {
+			return fmt.Errorf("with entry %q: secret: is not supported here; mark the variable secret where it's defined (set:, get:, vars: or env:) — it stays masked when passed through with:", entry.Key)
+		}
+	}
+	return nil
 }
 
 func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, forMatrix []ForMatrixEntry, err error) {
@@ -86,12 +104,12 @@ func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, for
 			forList = append(forList, item.Value)
 		}
 	case yaml.MappingNode:
-		for i := 0; i+1 < len(fieldVal.Content); i += 2 {
-			varName := fieldVal.Content[i].Value
-			if strings.Contains(varName, "{{") {
-				return "", nil, nil, fmt.Errorf("variable name %q must not contain template syntax", varName)
+		for _, mapEntry := range mapEntries(fieldVal.Content) {
+			varName := mapEntry.Key
+			if err := validateVarName(varName); err != nil {
+				return "", nil, nil, err
 			}
-			valNode := fieldVal.Content[i+1]
+			valNode := mapEntry.Val
 			entry := ForMatrixEntry{VarName: varName}
 			if valNode.Kind == yaml.SequenceNode {
 				for _, item := range valNode.Content {

@@ -21,20 +21,20 @@ func selfUpgrade() error {
 		)
 	}
 
-	exe := os.Getenv("HOBNOB_UPGRADE_EXE")
-	if exe == "" {
+	executablePath := os.Getenv("HOBNOB_UPGRADE_EXE")
+	if executablePath == "" {
 		var err error
-		exe, err = os.Executable()
+		executablePath, err = os.Executable()
 		if err != nil {
 			return fmt.Errorf("locate executable: %w", err)
 		}
-		exe, err = filepath.EvalSymlinks(exe)
+		executablePath, err = filepath.EvalSymlinks(executablePath)
 		if err != nil {
 			return fmt.Errorf("resolve executable path: %w", err)
 		}
 	}
 
-	return downloadAndInstall(url, exe, os.Stdout)
+	return downloadAndInstall(url, executablePath, os.Stdout)
 }
 
 func versionFromPath(path string) string {
@@ -47,8 +47,8 @@ func versionFromPath(path string) string {
 	return ""
 }
 
-func downloadAndInstall(url, exe string, w io.Writer) error {
-	fmt.Fprintln(w, "Downloading latest hobnob...")
+func downloadAndInstall(url, executablePath string, out io.Writer) error {
+	fmt.Fprintln(out, "Downloading latest hobnob...")
 
 	// GitHub redirects latest → /releases/download/v1.2.3/... → CDN.
 	// Capture version from the intermediate GitHub-domain redirect.
@@ -72,45 +72,45 @@ func downloadAndInstall(url, exe string, w io.Writer) error {
 		return fmt.Errorf("download failed: HTTP %d (no release for %s/%s?)", resp.StatusCode, runtime.GOOS, runtime.GOARCH)
 	}
 
-	gz, err := gzip.NewReader(resp.Body)
+	gzipReader, err := gzip.NewReader(resp.Body)
 	if err != nil {
 		return fmt.Errorf("decompress failed: %w", err)
 	}
-	defer gz.Close()
+	defer gzipReader.Close()
 
-	tr := tar.NewReader(gz)
+	tarReader := tar.NewReader(gzipReader)
 	for {
-		hdr, err := tr.Next()
+		header, err := tarReader.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
 			return fmt.Errorf("extract failed: %w", err)
 		}
-		if filepath.Base(hdr.Name) != "hobnob" {
+		if filepath.Base(header.Name) != "hobnob" {
 			continue
 		}
 
-		tmp, err := os.CreateTemp(filepath.Dir(exe), "hobnob-upgrade-*")
+		tempFile, err := os.CreateTemp(filepath.Dir(executablePath), "hobnob-upgrade-*")
 		if err != nil {
 			return fmt.Errorf("create temp file: %w", err)
 		}
-		tmpName := tmp.Name()
+		tempFileName := tempFile.Name()
 
-		if _, err := io.Copy(tmp, tr); err != nil {
-			tmp.Close()
-			os.Remove(tmpName)
+		if _, err := io.Copy(tempFile, tarReader); err != nil {
+			tempFile.Close()
+			os.Remove(tempFileName)
 			return fmt.Errorf("write upgrade: %w", err)
 		}
-		tmp.Close()
+		tempFile.Close()
 
-		if err := os.Chmod(tmpName, 0755); err != nil {
-			os.Remove(tmpName)
+		if err := os.Chmod(tempFileName, 0755); err != nil {
+			os.Remove(tempFileName)
 			return fmt.Errorf("chmod: %w", err)
 		}
 
-		if err := os.Rename(tmpName, exe); err != nil {
-			os.Remove(tmpName)
+		if err := os.Rename(tempFileName, executablePath); err != nil {
+			os.Remove(tempFileName)
 			return fmt.Errorf("replace binary: %w", err)
 		}
 
@@ -118,9 +118,9 @@ func downloadAndInstall(url, exe string, w io.Writer) error {
 			newVersion = versionFromPath(resp.Request.URL.Path)
 		}
 		if newVersion != "" {
-			fmt.Fprintf(w, "Upgraded to hobnob %s\n", newVersion)
+			fmt.Fprintf(out, "Upgraded to hobnob %s\n", newVersion)
 		} else {
-			fmt.Fprintln(w, "Upgraded successfully.")
+			fmt.Fprintln(out, "Upgraded successfully.")
 		}
 		return nil
 	}

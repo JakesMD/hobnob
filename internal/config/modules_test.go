@@ -1,6 +1,7 @@
 package config
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -13,7 +14,7 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -34,19 +35,19 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 			wantHidden: true,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange (tc)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange (test)
 
 			// Act
-			task, ok := cfg.Tasks[tc.taskName]
+			task, ok := cfg.Tasks[test.taskName]
 
 			// Assert
 			if !ok {
-				t.Fatalf("task %q not registered", tc.taskName)
+				t.Fatalf("task %q not registered", test.taskName)
 			}
-			if task.Hidden != tc.wantHidden {
-				t.Errorf("Hidden: got %v, want %v", task.Hidden, tc.wantHidden)
+			if task.Hidden != test.wantHidden {
+				t.Errorf("Hidden: got %v, want %v", task.Hidden, test.wantHidden)
 			}
 			if task.Cfg == nil {
 				t.Error("Cfg should not be nil for module task")
@@ -66,7 +67,7 @@ func TestLoadModules_InternalTaskNotRegistered(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -96,7 +97,7 @@ func TestLoadModules_ShowFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -141,7 +142,7 @@ func TestLoadModules_HideFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -166,16 +167,16 @@ func TestLoadModules_HideFilter(t *testing.T) {
 			wantFound: true,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange (tc)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange (test)
 
 			// Act
-			_, ok := cfg.Tasks[tc.taskName]
+			_, ok := cfg.Tasks[test.taskName]
 
 			// Assert
-			if ok != tc.wantFound {
-				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			if ok != test.wantFound {
+				t.Errorf("task %q found=%v, want %v", test.taskName, ok, test.wantFound)
 			}
 		})
 	}
@@ -189,7 +190,7 @@ func TestLoadModules_Flatten(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -215,26 +216,26 @@ func TestLoadModules_Flatten(t *testing.T) {
 			wantPrefixHide: true,
 		},
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			// Arrange (tc)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange (test)
 
 			// Act
-			flatTask, flatOk := cfg.Tasks[tc.flatName]
-			prefixTask, prefixOk := cfg.Tasks[tc.prefixedName]
+			flatTask, flatOk := cfg.Tasks[test.flatName]
+			prefixTask, prefixOk := cfg.Tasks[test.prefixedName]
 
 			// Assert
-			if flatOk != tc.wantFlatFound {
-				t.Errorf("flat task %q found=%v, want %v", tc.flatName, flatOk, tc.wantFlatFound)
+			if flatOk != test.wantFlatFound {
+				t.Errorf("flat task %q found=%v, want %v", test.flatName, flatOk, test.wantFlatFound)
 			}
 			if !prefixOk {
-				t.Fatalf("prefixed task %q not found", tc.prefixedName)
+				t.Fatalf("prefixed task %q not found", test.prefixedName)
 			}
-			if prefixTask.Hidden != tc.wantPrefixHide {
-				t.Errorf("prefixed task Hidden=%v, want %v", prefixTask.Hidden, tc.wantPrefixHide)
+			if prefixTask.Hidden != test.wantPrefixHide {
+				t.Errorf("prefixed task Hidden=%v, want %v", prefixTask.Hidden, test.wantPrefixHide)
 			}
 			if flatOk && flatTask.Hidden {
-				t.Errorf("flat task %q should not be hidden", tc.flatName)
+				t.Errorf("flat task %q should not be hidden", test.flatName)
 			}
 		})
 	}
@@ -248,7 +249,7 @@ func TestLoadModules_ModuleCfgIsolation(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -285,7 +286,7 @@ func TestLoadModules_TemplatePath(t *testing.T) {
 	}
 
 	// Act — default kicks in since FARM_FILE is not set
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -321,7 +322,7 @@ func TestLoadModules_FlattenCollision(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -359,7 +360,7 @@ func TestLoadModules_SubdirRelativePath(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -380,20 +381,20 @@ func TestLoadModules_SubdirRelativePath(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			// (tc fields are the arrangement)
+			// (test fields are the arrangement)
 
 			// Act
-			task, ok := cfg.Tasks[tc.taskName]
+			task, ok := cfg.Tasks[test.taskName]
 
 			// Assert
 			if !ok {
-				t.Fatalf("task %q not found", tc.taskName)
+				t.Fatalf("task %q not found", test.taskName)
 			}
-			if task.Info != tc.wantInfo {
-				t.Errorf("got info %q, want %q", task.Info, tc.wantInfo)
+			if task.Info != test.wantInfo {
+				t.Errorf("got info %q, want %q", task.Info, test.wantInfo)
 			}
 		})
 	}
@@ -406,16 +407,16 @@ func TestLoadModules_NestedFormat(t *testing.T) {
 		t.Fatalf("parse error: %v", err)
 	}
 
-	err = LoadModules(cfg, map[string]string{}, map[string]bool{})
+	err = LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{})
 	if err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
 	tests := []struct {
-		name         string
-		taskName     string
-		wantFound    bool
-		wantFlat     bool
+		name      string
+		taskName  string
+		wantFound bool
+		wantFlat  bool
 	}{
 		{
 			name:      "given nested format with show:[clean,fix], when loaded, then yard:clean registered (why: nested path: key must be parsed)",
@@ -430,16 +431,16 @@ func TestLoadModules_NestedFormat(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
 			// Act
-			_, ok := cfg.Tasks[tc.taskName]
+			_, ok := cfg.Tasks[test.taskName]
 
 			// Assert
-			if ok != tc.wantFound {
-				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+			if ok != test.wantFound {
+				t.Errorf("task %q found=%v, want %v", test.taskName, ok, test.wantFound)
 			}
-			if tc.wantFlat {
+			if test.wantFlat {
 				_, flatOk := cfg.Tasks["clean"]
 				if !flatOk {
 					t.Errorf("flat task %q not found (why: flatten:true should register it)", "clean")
@@ -460,7 +461,7 @@ func TestLoadModules_NestedImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -486,11 +487,11 @@ func TestLoadModules_NestedImport(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, ok := cfg.Tasks[tc.taskName]
-			if ok != tc.wantFound {
-				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[test.taskName]
+			if ok != test.wantFound {
+				t.Errorf("task %q found=%v, want %v", test.taskName, ok, test.wantFound)
 			}
 		})
 	}
@@ -508,7 +509,7 @@ func TestLoadModules_DiamondImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -539,11 +540,11 @@ func TestLoadModules_DiamondImport(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, ok := cfg.Tasks[tc.taskName]
-			if ok != tc.wantFound {
-				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[test.taskName]
+			if ok != test.wantFound {
+				t.Errorf("task %q found=%v, want %v", test.taskName, ok, test.wantFound)
 			}
 		})
 	}
@@ -562,7 +563,7 @@ func TestLoadModules_SharedDirectImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -588,11 +589,11 @@ func TestLoadModules_SharedDirectImport(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			_, ok := cfg.Tasks[tc.taskName]
-			if ok != tc.wantFound {
-				t.Errorf("task %q found=%v, want %v", tc.taskName, ok, tc.wantFound)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, ok := cfg.Tasks[test.taskName]
+			if ok != test.wantFound {
+				t.Errorf("task %q found=%v, want %v", test.taskName, ok, test.wantFound)
 			}
 		})
 	}
@@ -606,7 +607,7 @@ func TestLoadModules_CycleDetection(t *testing.T) {
 	}
 
 	// Act
-	err = LoadModules(cfg, map[string]string{}, map[string]bool{})
+	err = LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{})
 
 	// Assert
 	if err == nil {
@@ -636,7 +637,7 @@ func TestLoadModules_ModuleEnvFileStaysPrivateToModule(t *testing.T) {
 	secrets := map[string]bool{}
 
 	// Act
-	if err := LoadModules(cfg, vars, secrets); err != nil {
+	if err := LoadModules(context.Background(), cfg, vars, secrets); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
