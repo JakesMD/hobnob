@@ -13,6 +13,7 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/tui"
+	"hobnob/internal/value"
 )
 
 // ErrInterrupted is returned (wrapped) when a run: step's command is cut short
@@ -76,16 +77,27 @@ func displayDirPath(dir, invocationDir string) string {
 // them) — a secret embedded as a leaf of a set:/into: JSON literal is
 // marshaled, so its escaped form can differ from the raw value and would
 // otherwise slip past a raw-only match.
+//
+// A Bool or short Number secret is skipped: masking "true" or "1" as a
+// substring would blank out unrelated text (every "true" in the command),
+// not just the secret.
 func maskSecrets(text string, scope *cli.Scope) string {
 	for name := range scope.Secrets {
 		secretVal := scope.Vars[name]
-		if secretVal == "" {
+		if secretVal.Kind() == value.KindBool {
 			continue
 		}
-		if escaped, ok := jsonEscapedForm(secretVal); ok && escaped != secretVal {
+		if secretVal.Kind() == value.KindNumber && len(secretVal.String()) < 4 {
+			continue
+		}
+		raw := secretVal.String()
+		if raw == "" {
+			continue
+		}
+		if escaped, ok := jsonEscapedForm(raw); ok && escaped != raw {
 			text = strings.ReplaceAll(text, escaped, tui.SecretMask)
 		}
-		text = strings.ReplaceAll(text, secretVal, tui.SecretMask)
+		text = strings.ReplaceAll(text, raw, tui.SecretMask)
 	}
 	return text
 }

@@ -234,6 +234,38 @@ A `set` block resolves top-to-bottom — reference a key defined just above:
     - AUTH_URL: "{{.BASE_URL}}/v1/auth"
 ```
 
+### Typed values
+
+A variable holds what its data actually is — text, a number, `true`/`false`,
+a list, or an object — not JSON squeezed into a string. Structure only ever
+enters scope from three places:
+
+- a `set:`/`with:`/`vars:` map or list literal
+- capturing `run:` output via `into:`, when the output decodes cleanly as a
+  JSON array/object (plain text, or text that merely starts with `{` or `[`
+  without being valid JSON, stays text)
+- the explicit `json` filter
+
+Environment variables, CLI `KEY=VALUE` args, and `env:` file values are
+always text, however JSON-shaped they look — nothing is guessed. Pipe a
+value through `| json` to parse it explicitly:
+
+```yaml
+- loop: .TAGS | json # TAGS='["a","b"]' on the command line
+```
+
+A field that's exactly one variable reference — a bare `.VAR`, or a single
+`{{ .VAR }}` action, optionally through a filter chain — keeps that
+variable's type. Any surrounding text renders it to a plain string, same as
+always:
+
+```yaml
+- set:
+    - A: .USERS # keeps USERS' type (an Array stays an Array)
+    - B: "{{ .USERS }}" # renders to text — JSON text, if USERS is structured
+    - C: "count: {{ .USERS | len }}" # text either way — surrounding text forces it
+```
+
 ### Built-in variables
 
 - `HOBNOB_FILE_DIR` — directory containing the hobnob file.
@@ -271,7 +303,7 @@ Changes case:
 
 #### `split`
 
-Splits a string on a separator into a JSON array, dropping empty parts:
+Splits a string on a separator into a list, dropping empty parts:
 
 ```yaml
 - set:
@@ -280,7 +312,7 @@ Splits a string on a separator into a JSON array, dropping empty parts:
 
 #### `lines`
 
-Splits a string on newlines into a JSON array, trimming each line and dropping
+Splits a string on newlines into a list, trimming each line and dropping
 blank ones — handy for turning multi-line `stdout` into a list:
 
 ```yaml
@@ -291,18 +323,39 @@ blank ones — handy for turning multi-line `stdout` into a list:
 
 #### `first`
 
-Returns the first element of a JSON array:
+Returns the first element of an array, typed:
 
 ```yaml
 - set:
     - LATEST: "{{ .VERSIONS | first }}"
 ```
 
+Requires an actual array — a string, even one holding JSON array text, errors
+naming `| json` rather than being auto-parsed. See [Typed
+values](#typed-values).
+
+#### `json`
+
+Parses a string as JSON, producing a real array or object. The one place
+you'll reach for it explicitly is a var that was never captured through
+`into:` — a `set:` scalar, a CLI arg, an env var:
+
+```yaml
+- set:
+    - TAGS_TEXT: '["a","b"]' # a plain string — its text merely looks like JSON
+- loop: .TAGS_TEXT | json # parse it, then iterate the array
+```
+
+It's identity on a value that's already structured, so `| json` is always
+safe to add defensively before `pluck`/`keys`/`values` without checking the
+source first. An optional fallback swallows a parse failure instead of
+erroring: `.TEXT | json "fallback"`.
+
 #### `pluck`
 
-Queries a variable holding JSON — either a map literal (see
-[`set`](#set--assign-variables)) or JSON captured from a command, e.g.
-`run: curl ... into: RESP: stdout`:
+Queries a variable holding a real array or object — a map/list literal (see
+[`set`](#set--assign-variables)), JSON captured via `into:`, or anything
+already run through `| json`:
 
 ```yaml
 - run: curl -s https://api.example.com/user
@@ -325,13 +378,15 @@ leading `$` — implied, since pluck always addresses from the root. Beyond
     - ACTIVE: '{{ .RESP | pluck "items[?@.active == true]" }}' # filter
 ```
 
-One match returns unwrapped; multiple return a JSON array (chains into other
+One match returns unwrapped, typed; multiple return a list (chains into other
 filters and `loop:`, same as `keys`/`values`). In filters, `@` is the node under
 test — bare `@.field` only checks existence, so compare explicitly for a truthy
 check: `@.active == true`.
 
-Missing key, bad index, or invalid JSON errors by default. Add a fallback to opt
-out per call: `pluck "profile.name" "unknown"` returns `"unknown"` instead of
+A missing key, a bad index, or a value that isn't an array/object (a plain
+string, even one holding valid-looking JSON text — see [Typed
+values](#typed-values)) errors by default. Add a fallback to opt out per
+call: `pluck "profile.name" "unknown"` returns `"unknown"` instead of
 failing.
 
 Also works on plain lists — `pluck "[2]"` grabs the 3rd item. Prefer `first` for
@@ -339,18 +394,37 @@ the first item.
 
 #### `keys` / `values`
 
-Query a variable holding a JSON object — either a map literal or JSON captured
-from a command, same sources as `pluck`:
+Query a variable holding a real object — a map literal or JSON captured via
+`into:`, same sources as `pluck`:
 
 ```yaml
 - set:
-    - FIELDS: "{{ .RESP | keys }}" # sorted JSON array of top-level keys
-    - VALUES: "{{ .RESP | values }}" # values in that same sorted-key order
+    - FIELDS: "{{ .RESP | keys }}" # sorted list of top-level keys
+    - VALUES: "{{ .RESP | values }}" # values in that same sorted-key order, still typed
 ```
 
-Results are JSON-array strings, so they chain into other filters:
-`{{ .RESP | keys | first }}`. Invalid JSON, or a value that isn't a JSON object,
-is an error.
+Results are lists, so they chain into other filters: `{{ .RESP | keys | first
+}}`. A value that isn't a real object — including a string, even one holding
+object-shaped text — is an error naming `| json`.
+
+#### `string`
+
+The reverse of `json` — forces a value back to text, compact JSON for a list
+or object:
+
+```yaml
+- run: echo '{{ .RESP | string }}' # always text, regardless of RESP's type
+```
+
+#### `len`
+
+Length of a string (in runes), array, or object (its key count):
+
+```yaml
+- get:
+    - CONFIRM:
+        check: "[ {{ .TAGS | len }} -gt 0 ]" # at least one tag selected
+```
 
 A field value that's a single variable reference (optionally with a pipe chain)
 can omit `{{ }}`:
@@ -379,8 +453,10 @@ Every task is a sequence of five step types.
     - REGION_MAP: { us: us-east-1, eu: eu-west-1 } # map literal -> JSON object
 ```
 
-Any variable can hold nested JSON — write it as a YAML map/list literal, or as a
-JSON string directly.
+Any variable can hold nested structure — write it as a YAML map/list literal
+(`REGION_MAP` above). A plain string that merely looks like JSON stays a
+string — see [Typed values](#typed-values) — pipe it through `| json` to
+parse it.
 
 ### `run` — shell commands
 
@@ -402,7 +478,7 @@ templates — `stdout | lines | first`, `stdout | pluck "field"`, and so on.
     - CUSTOM:
         id: stdout | pluck "id"
         name: stdout | pluck "profile.name"
-    # -> CUSTOM = {"id":"42","name":"Ada"}
+    # -> CUSTOM = {"id":42,"name":"Ada"} — id stays a real number
 ```
 
 > Unbuffered Python: scripts buffer stdout when not attached to a terminal, so
@@ -479,7 +555,10 @@ instead.
 
 ### `loop` — iteration
 
-List form — iterates a sequence, current element as `{{.ITEM}}`:
+List form — iterates an Array, current element (typed) as `{{.ITEM}}`. A
+plain string source — one never captured or built as structure, see [Typed
+values](#typed-values) — runs the body once with `ITEM` set to the whole
+string, rather than being split or parsed:
 
 ```yaml
 - loop: .GO_FILES
@@ -497,8 +576,8 @@ Matrix form — runs every combination of the given arrays:
     - run: echo "Compiling for {{.OS}} on {{.ARCH}}"
 ```
 
-Map form — when the variable resolves to a JSON object instead of an array,
-iterates its entries in sorted-key order as `{{.KEY}}` / `{{.VALUE}}`:
+Map form — when the variable is an Object rather than an Array, iterates its
+entries in sorted-key order as `{{.KEY}}` / `{{.VALUE}}`, both typed:
 
 ```yaml
 - loop: .REGION_MAP

@@ -6,19 +6,14 @@ import (
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/value"
 )
 
 func execSet(step config.Step, scope *cli.Scope) error {
 	for _, setEntry := range step.SetEntries {
-		var val string
-		var err error
-		if setEntry.ValNode != nil {
-			val, err = evalJSONNodeToJSON(*setEntry.ValNode, func(tmpl string) (string, error) {
-				return eval.EvalTemplate(tmpl, scope.Vars)
-			})
-		} else {
-			val, err = eval.EvalTemplate(setEntry.ValTmpl, scope.Vars)
-		}
+		val, err := config.EvalSetEntry(setEntry, func(tmpl string) (value.Value, error) {
+			return eval.EvalValue(tmpl, scope.Vars)
+		})
 		if err != nil {
 			return fmt.Errorf("set value for %q: %w", setEntry.Key, err)
 		}

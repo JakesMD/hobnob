@@ -24,11 +24,11 @@ func TestBuildScope_GlobalVars(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["HOST"] != "localhost" {
-		t.Errorf("HOST: got %q, want %q", scope.Vars["HOST"], "localhost")
+	if scope.Vars["HOST"].String() != "localhost" {
+		t.Errorf("HOST: got %q, want %q", scope.Vars["HOST"].String(), "localhost")
 	}
-	if !strings.Contains(scope.Vars["TIMEOUT"], "30") && scope.Vars["TIMEOUT"] == "" {
-		t.Errorf("TIMEOUT: got %q, want default 30", scope.Vars["TIMEOUT"])
+	if !strings.Contains(scope.Vars["TIMEOUT"].String(), "30") && scope.Vars["TIMEOUT"].IsEmpty() {
+		t.Errorf("TIMEOUT: got %q, want default 30", scope.Vars["TIMEOUT"].String())
 	}
 }
 
@@ -47,11 +47,11 @@ func TestBuildScope_SystemVars(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["HOBNOB_FILE_DIR"] != "/path/to/tasks" {
-		t.Errorf("HOBNOB_FILE_DIR: got %q, want %q", scope.Vars["HOBNOB_FILE_DIR"], "/path/to/tasks")
+	if scope.Vars["HOBNOB_FILE_DIR"].String() != "/path/to/tasks" {
+		t.Errorf("HOBNOB_FILE_DIR: got %q, want %q", scope.Vars["HOBNOB_FILE_DIR"].String(), "/path/to/tasks")
 	}
-	if scope.Vars["HOBNOB_INVOCATION_DIR"] != "/path/to/invocation" {
-		t.Errorf("HOBNOB_INVOCATION_DIR: got %q, want %q", scope.Vars["HOBNOB_INVOCATION_DIR"], "/path/to/invocation")
+	if scope.Vars["HOBNOB_INVOCATION_DIR"].String() != "/path/to/invocation" {
+		t.Errorf("HOBNOB_INVOCATION_DIR: got %q, want %q", scope.Vars["HOBNOB_INVOCATION_DIR"].String(), "/path/to/invocation")
 	}
 }
 
@@ -70,8 +70,8 @@ func TestBuildScope_GlobalsWinOverCLIArgs(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["HOST"] != "localhost" {
-		t.Errorf("HOST: got %q, want %q (global vars: block should override CLI arg)", scope.Vars["HOST"], "localhost")
+	if scope.Vars["HOST"].String() != "localhost" {
+		t.Errorf("HOST: got %q, want %q (global vars: block should override CLI arg)", scope.Vars["HOST"].String(), "localhost")
 	}
 }
 
@@ -90,8 +90,8 @@ func TestBuildScope_CLIArgsWinOverEnvFile(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["FOO"] != "fromcli" {
-		t.Errorf("FOO: got %q, want %q (CLI arg should override env: file)", scope.Vars["FOO"], "fromcli")
+	if scope.Vars["FOO"].String() != "fromcli" {
+		t.Errorf("FOO: got %q, want %q (CLI arg should override env: file)", scope.Vars["FOO"].String(), "fromcli")
 	}
 }
 
@@ -114,8 +114,8 @@ func TestBuildScope_GlobalWinsOverEnvFile(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["HOST"] != "localhost" {
-		t.Errorf("HOST: got %q, want %q (global vars: block should override env: file)", scope.Vars["HOST"], "localhost")
+	if scope.Vars["HOST"].String() != "localhost" {
+		t.Errorf("HOST: got %q, want %q (global vars: block should override env: file)", scope.Vars["HOST"].String(), "localhost")
 	}
 }
 
@@ -135,8 +135,8 @@ func TestBuildScope_EnvFileWinsOverOSEnv(t *testing.T) {
 	}
 
 	// Assert
-	if scope.Vars["FOO"] != "fromfile" {
-		t.Errorf("FOO: got %q, want %q (env: file should override OS env)", scope.Vars["FOO"], "fromfile")
+	if scope.Vars["FOO"].String() != "fromfile" {
+		t.Errorf("FOO: got %q, want %q (env: file should override OS env)", scope.Vars["FOO"].String(), "fromfile")
 	}
 }
 

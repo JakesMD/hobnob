@@ -7,6 +7,7 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
 func makeGetCfg(entries []config.GetEntry) *config.ConfigFile {
@@ -21,7 +22,7 @@ func TestNoInput_GetStep(t *testing.T) {
 	tests := []struct {
 		name     string
 		entries  []config.GetEntry
-		vars     map[string]string
+		vars     map[string]value.Value
 		wantErr  string
 		wantVars map[string]string
 	}{
@@ -30,7 +31,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Enter foo"},
 			},
-			vars:    map[string]string{},
+			vars:    sv(map[string]string{}),
 			wantErr: "--no-input: FOO requires input",
 		},
 		{
@@ -38,7 +39,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Enter foo", DefaultTmpl: "bar"},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"FOO": "bar"},
 		},
 		{
@@ -46,7 +47,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Enter foo"},
 			},
-			vars:     map[string]string{"FOO": "preset"},
+			vars:     sv(map[string]string{"FOO": "preset"}),
 			wantVars: map[string]string{"FOO": "preset"},
 		},
 		{
@@ -54,7 +55,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Pick", FromList: []string{"a", "b", "c"}},
 			},
-			vars:     map[string]string{"FOO": "b"},
+			vars:     sv(map[string]string{"FOO": "b"}),
 			wantVars: map[string]string{"FOO": "b"},
 		},
 		{
@@ -62,7 +63,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Pick", FromList: []string{"a", "b", "c"}},
 			},
-			vars:    map[string]string{"FOO": "x"},
+			vars:    sv(map[string]string{"FOO": "x"}),
 			wantErr: "--no-input: FOO value \"x\" not in options",
 		},
 		{
@@ -70,7 +71,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Pick", DefaultTmpl: "a", FromList: []string{"a", "b"}},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"FOO": "a"},
 		},
 		{
@@ -78,7 +79,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "FOO", Info: "Pick", DefaultTmpl: "z", FromList: []string{"a", "b"}},
 			},
-			vars:    map[string]string{},
+			vars:    sv(map[string]string{}),
 			wantErr: "--no-input: FOO value \"z\" not in options",
 		},
 		{
@@ -86,7 +87,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]"},
 			},
-			vars:     map[string]string{"SIZE": "50"},
+			vars:     sv(map[string]string{"SIZE": "50"}),
 			wantVars: map[string]string{"SIZE": "50"},
 		},
 		{
@@ -94,7 +95,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]"},
 			},
-			vars:    map[string]string{"SIZE": "200"},
+			vars:    sv(map[string]string{"SIZE": "200"}),
 			wantErr: "validation failed",
 		},
 		{
@@ -102,7 +103,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", DefaultTmpl: "999", Check: "[ {{.SIZE}} -le 100 ]"},
 			},
-			vars:    map[string]string{},
+			vars:    sv(map[string]string{}),
 			wantErr: "validation failed",
 		},
 		{
@@ -110,7 +111,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{ .Unclosed "},
 			},
-			vars:    map[string]string{"SIZE": "50"},
+			vars:    sv(map[string]string{"SIZE": "50"}),
 			wantErr: "get SIZE check:",
 		},
 		{
@@ -118,7 +119,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "TAGS", Info: "Pick", Multi: true, FromList: []string{"a", "b", "c"}},
 			},
-			vars:     map[string]string{"TAGS": `["a","c"]`},
+			vars:     sv(map[string]string{"TAGS": `["a","c"]`}),
 			wantVars: map[string]string{"TAGS": `["a","c"]`},
 		},
 		{
@@ -126,7 +127,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "TAGS", Info: "Pick", Multi: true, FromList: []string{"a", "b"}},
 			},
-			vars:    map[string]string{"TAGS": `["x"]`},
+			vars:    sv(map[string]string{"TAGS": `["x"]`}),
 			wantErr: `--no-input: TAGS value "x" not in options`,
 		},
 		{
@@ -134,7 +135,7 @@ func TestNoInput_GetStep(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "TAGS", Info: "Pick", Multi: true, FromList: []string{"a", "b"}},
 			},
-			vars:    map[string]string{"TAGS": `not-json`},
+			vars:    sv(map[string]string{"TAGS": `not-json`}),
 			wantErr: "--no-input: TAGS value is not a valid JSON array",
 		},
 		{
@@ -143,7 +144,7 @@ func TestNoInput_GetStep(t *testing.T) {
 				{VarName: "A", Info: "A"},
 				{VarName: "B", Info: "B", DefaultTmpl: "bval"},
 			},
-			vars:     map[string]string{"A": "aval"},
+			vars:     sv(map[string]string{"A": "aval"}),
 			wantVars: map[string]string{"A": "aval", "B": "bval"},
 		},
 	}
@@ -171,7 +172,7 @@ func TestNoInput_GetStep(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			for k, want := range test.wantVars {
-				if got := vars[k]; got != want {
+				if got := vars[k].String(); got != want {
 					t.Errorf("vars[%s]: got %q, want %q", k, got, want)
 				}
 			}
@@ -183,7 +184,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 	tests := []struct {
 		name     string
 		entries  []config.GetEntry
-		vars     map[string]string
+		vars     map[string]value.Value
 		wantErr  string
 		wantVars map[string]string
 	}{
@@ -192,7 +193,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "NOTE", Info: "Enter note", Optional: true},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"NOTE": ""},
 		},
 		{
@@ -200,7 +201,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]", Optional: true},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"SIZE": ""},
 		},
 		{
@@ -208,7 +209,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]", Optional: true},
 			},
-			vars:     map[string]string{"SIZE": ""},
+			vars:     sv(map[string]string{"SIZE": ""}),
 			wantVars: map[string]string{"SIZE": ""},
 		},
 		{
@@ -216,7 +217,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]", Optional: true},
 			},
-			vars:     map[string]string{"SIZE": "50"},
+			vars:     sv(map[string]string{"SIZE": "50"}),
 			wantVars: map[string]string{"SIZE": "50"},
 		},
 		{
@@ -224,7 +225,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "SIZE", Info: "Enter size", Check: "[ {{.SIZE}} -le 100 ]", Optional: true},
 			},
-			vars:    map[string]string{"SIZE": "999"},
+			vars:    sv(map[string]string{"SIZE": "999"}),
 			wantErr: "validation failed",
 		},
 		{
@@ -232,7 +233,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "NOTE", Info: "Enter note", Optional: false},
 			},
-			vars:    map[string]string{},
+			vars:    sv(map[string]string{}),
 			wantErr: "--no-input: NOTE requires input",
 		},
 		{
@@ -240,7 +241,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "NOTE", Info: "Enter note", DefaultTmpl: "fallback", Optional: true},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"NOTE": ""},
 		},
 		{
@@ -248,7 +249,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 			entries: []config.GetEntry{
 				{VarName: "TAGS", Info: "Pick tags", Multi: true, Optional: true, FromList: []string{"a", "b"}},
 			},
-			vars:     map[string]string{},
+			vars:     sv(map[string]string{}),
 			wantVars: map[string]string{"TAGS": "[]"},
 		},
 	}
@@ -276,7 +277,7 @@ func TestNoInput_GetStep_Optional(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			for k, want := range test.wantVars {
-				if got := vars[k]; got != want {
+				if got := vars[k].String(); got != want {
 					t.Errorf("vars[%s]: got %q, want %q", k, got, want)
 				}
 			}
@@ -288,25 +289,25 @@ func TestExecGet_SecretFlag_NoInput(t *testing.T) {
 	tests := []struct {
 		name       string
 		entry      config.GetEntry
-		preset     map[string]string
+		preset     map[string]value.Value
 		wantSecret bool
 	}{
 		{
 			name:       "given secret get and default used, when no-input executed, then var marked in secrets (why: masking required even when default fills the value)",
 			entry:      config.GetEntry{VarName: "PASS", DefaultTmpl: "fallback", Secret: true},
-			preset:     map[string]string{},
+			preset:     sv(map[string]string{}),
 			wantSecret: true,
 		},
 		{
 			name:       "given secret get and var preset, when no-input executed, then var still marked in secrets (why: skip-if-set must not bypass masking)",
 			entry:      config.GetEntry{VarName: "PASS", Secret: true},
-			preset:     map[string]string{"PASS": "preset"},
+			preset:     sv(map[string]string{"PASS": "preset"}),
 			wantSecret: true,
 		},
 		{
 			name:       "given non-secret get and var preset, when no-input executed, then var not in secrets (why: non-secret vars must not be masked)",
 			entry:      config.GetEntry{VarName: "ENV", DefaultTmpl: "prod"},
-			preset:     map[string]string{},
+			preset:     sv(map[string]string{}),
 			wantSecret: false,
 		},
 	}
@@ -341,7 +342,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	// Arrange
 	orig := promptTextFn
 	defer func() { promptTextFn = orig }()
-	promptTextFn = func(ctx context.Context, info, check, varName string, vars map[string]string, defaultVal, task string, secret, optional bool) (string, error) {
+	promptTextFn = func(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
 		return "typed-value", nil
 	}
 	cfg := &config.ConfigFile{
@@ -353,7 +354,7 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
@@ -362,8 +363,8 @@ func TestExecGet_TextPrompt_SetsVar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["NAME"] != "typed-value" {
-		t.Errorf("NAME: got %q, want typed-value", vars["NAME"])
+	if vars["NAME"].String() != "typed-value" {
+		t.Errorf("NAME: got %q, want typed-value", vars["NAME"].String())
 	}
 }
 
@@ -372,8 +373,8 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	// Arrange
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
-	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
-		return "beta", nil
+	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (value.Value, error) {
+		return value.Str("beta"), nil
 	}
 	cfg := &config.ConfigFile{
 		Tasks: map[string]config.Task{
@@ -384,7 +385,7 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
@@ -393,8 +394,8 @@ func TestExecGet_SelectPrompt_SetsVar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["ENV"] != "beta" {
-		t.Errorf("ENV: got %q, want beta", vars["ENV"])
+	if vars["ENV"].String() != "beta" {
+		t.Errorf("ENV: got %q, want beta", vars["ENV"].String())
 	}
 }
 
@@ -404,12 +405,12 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
 	calls := 0
-	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
+	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (value.Value, error) {
 		calls++
 		if calls == 1 {
-			return "bad", nil
+			return value.Str("bad"), nil
 		}
-		return "good", nil
+		return value.Str("good"), nil
 	}
 
 	cfg := &config.ConfigFile{
@@ -425,7 +426,7 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, t.TempDir())
@@ -434,8 +435,8 @@ func TestExecGet_SelectWithCheck_RepromptsUntilValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["CHOICE"] != "good" {
-		t.Errorf("CHOICE: got %q, want good", vars["CHOICE"])
+	if vars["CHOICE"].String() != "good" {
+		t.Errorf("CHOICE: got %q, want good", vars["CHOICE"].String())
 	}
 	if calls != 2 {
 		t.Errorf("promptSelectFn called %d times, want 2", calls)
@@ -449,8 +450,8 @@ func TestExecGet_SelectCheckErrors_NotDoublePrefixed(t *testing.T) {
 	// produced "get X: get X check: ...")
 	orig := promptSelectFn
 	defer func() { promptSelectFn = orig }()
-	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (string, error) {
-		return "a", nil
+	promptSelectFn = func(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (value.Value, error) {
+		return value.Str("a"), nil
 	}
 
 	cfg := &config.ConfigFile{
@@ -469,7 +470,7 @@ func TestExecGet_SelectCheckErrors_NotDoublePrefixed(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, false, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, false, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -496,7 +497,7 @@ func TestExecGet_SkipIfSet_StillRunsCheck(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"PORT": "80"}
+	vars := sv(map[string]string{"PORT": "80"})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())

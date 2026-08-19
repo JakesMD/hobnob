@@ -40,7 +40,7 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 }
 
 func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
-	// given multi-select model with no items toggled, when enter pressed, then result is empty string (why: empty selection must produce empty var not an error)
+	// given multi-select model with no items toggled, when enter pressed, then result is an empty (non-nil) slice (why: empty selection must produce an empty array var, not an error and not nil)
 	// Arrange
 	model := selectModel{
 		varName:  "TAGS",
@@ -53,8 +53,8 @@ func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	got := updated.(selectModel).value
-	if got != "[]" {
-		t.Errorf("value: got %q, want %q (why: empty multi-select must marshal to an empty JSON array, not null)", got, "[]")
+	got := updated.(selectModel).values
+	if got == nil || len(got) != 0 {
+		t.Errorf("values: got %v, want a non-nil empty slice", got)
 	}
 }

@@ -25,15 +25,20 @@ Dependencies: `gopkg.in/yaml.v3` (parsing), `github.com/theory/jsonpath` (the
 ```
 cmd/hobnob/       entry point, CLI dispatch, self-upgrade
 internal/config/  YAML → typed structs (parse time)
-internal/eval/    Go template rendering, shell conditions, JSON filters
+internal/eval/    Go template rendering, shell conditions, typed evaluation
+internal/value/   the typed scope value (string/bool/number/array/object) and its filters
 internal/cli/     scope construction, --list/--help formatting, completions
 internal/runner/  step execution (the interpreter loop)
 internal/tui/     bubbletea prompts, styled terminal output
 ```
 
 Dependency direction is one-way: `runner` depends on `config`, `eval`, `cli`,
-`tui`; none of those import `runner` back. `config` and `eval` don't depend on
-each other or on anything above them.
+`tui`; none of those import `runner` back. `value` sits at the bottom with zero
+internal dependencies; `eval` and `config` both import it (and `config` imports
+`eval`, never the reverse) but don't depend on each other otherwise. `tui`
+imports `value` (its prompts return typed results) but not `eval` —
+`PromptText` takes a validator closure instead of evaluating a `check:`
+expression itself, so `tui` never needs to know how one is evaluated.
 
 ### `internal/config` — parsing
 
@@ -57,29 +62,43 @@ a task would prompt for, without running it (powers `--list`'s param hints).
 
 ### `internal/eval` — template and shell evaluation
 
-Three primitives everything else is built from:
+Four primitives everything else is built from:
 
-- `EvalTemplate(tmpl, vars)` — renders `{{ .VAR }}` via Go's `text/template`
-  plus hobnob's filters (`default`, `trim`, `split`, `pluck`, `keys`, ...). The
-  filter `FuncMap` is built once at package init since this runs on nearly every
-  step.
+- `EvalTemplate(tmpl, vars)` — renders `{{ .VAR }}` to a **string** via Go's
+  `text/template` plus hobnob's filters (`default`, `trim`, `split`, `pluck`,
+  `keys`, ...), adapted from the single registry in `internal/value` at
+  package init since this runs on nearly every step.
+- `EvalValue(expr, vars)` — the type-preserving counterpart: when `expr` is
+  exactly one template action (a bare `.VAR`, optionally through a filter
+  chain), it walks the parsed template's tree and evaluates it directly
+  against `value.Filters` instead of executing it, so the result keeps its
+  `value.Value` kind (Array, Object, ...) rather than flattening to text.
+  Anything else falls back to `EvalTemplate` and comes back wrapped in a
+  String. Backs `set:`/`with:`/`vars:` scalar leaves and `loop:`'s target.
 - `EvalCondition(ctx, expr, vars, dir)` — renders then runs via `sh -c` with
   `exec.CommandContext`, exit code 0 = true. Backs `if:`/`check:`; ctx
   cancellation (CTRL+C) kills a hung condition outright.
 - `EvalRunIntoPipe(expr, stdout, stderr)` — the `run: ... into:` pipe syntax
-  (`stdout | trim`, `stderr | lines`).
+  (`stdout | trim`, `stderr | lines`). Captures stdout/stderr into a
+  `value.Value` via `value.Capture` (structure only if it decodes cleanly as a
+  JSON array/object), then runs any filter chain typed from there.
 
-JSON is hobnob's native data shape: lists and map literals in YAML are stored as
-JSON-string scope values, and `pluck`/`keys`/`values`/`loop:` all operate on
-that encoding. `pluck` uses RFC 9535 JSONPath.
+A scope variable is a typed `value.Value` — string, bool, number, array, or
+object — never JSON-as-text. Structure enters from exactly three places:
+`set:`/`with:`/`vars:` map/list literals, `run: into:` capture, and the
+explicit `json` filter; env vars, CLI args, and env-file values are always
+strings, never sniffed. `pluck`/`keys`/`values`/`first` require an
+Array/Object and error (naming `| json`) rather than silently re-parsing a
+string — see `internal/value/filter.go`. `pluck` uses RFC 9535 JSONPath.
 
 ### `internal/cli` — scope and presentation
 
-`Scope` is `{Vars map[string]string, Secrets map[string]bool}` — the variable
-environment a task executes in. `BuildScope` layers it in strict precedence
-order (env → system vars → env-file vars → CLI args → global `vars:`) before any
-task runs. `Scope.Copy()` deep-copies both maps, giving every `call:` step an
-isolated sandbox.
+`Scope` is `{Vars map[string]value.Value, Secrets map[string]bool}` — the
+variable environment a task executes in. `BuildScope` layers it in strict
+precedence order (env → system vars → env-file vars → CLI args → global
+`vars:`) before any task runs; every source but `vars:` is wrapped in
+`value.Str`, never sniffed for JSON shape. `Scope.Copy()` deep-copies both
+maps, giving every `call:` step an isolated sandbox.
 
 Secrecy is a property of where a value came from, not of where it's used:
 `Secrets` rides along on `Copy()`, and `runner.maskSecrets` matches on _value_
@@ -114,9 +133,11 @@ Step kinds, briefly:
   `tui.PromptText`/`PromptSelect`.
 - **`call:`** — deep-copies scope, applies `with:`, runs the target task, pulls
   results back via `into:`.
-- **`loop:`** — list/map/matrix forms dispatch to `execForList`/
-  `execForMap`/`execForMatrix`, setting loop vars (`ITEM`, `KEY`/`VALUE`, or
-  matrix vars) and restoring prior values on exit.
+- **`loop:`** — dispatches on the target's `value.Kind()` (Object → map form,
+  else list form) rather than sniffing text, then runs
+  `execForList`/`execForMap`/`execForMatrix`, setting loop vars (`ITEM`,
+  `KEY`/`VALUE`, or matrix vars, each still typed) and restoring prior values
+  on exit.
 
 Split by step kind — `run.go`, `set.go`, `get.go`, `call.go`, `loop.go` —
 mirroring `internal/config`'s convention; `runner.go` keeps only the shared

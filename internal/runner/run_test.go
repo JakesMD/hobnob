@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
 func makeRunCfg(command string, into []config.IntoEntry) *config.ConfigFile {
@@ -43,7 +44,7 @@ func captureRunDir(t *testing.T, step config.Step, taskfileDir, parentDir string
 		},
 		TaskfileDir: taskfileDir,
 	}
-	if err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
+	if err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, true, parentDir); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 	data, err := os.ReadFile(outFile)
@@ -162,7 +163,7 @@ func TestRunInto(t *testing.T) {
 			wantErr: "run into",
 		},
 		{
-			name:    "given a nested object into entry with pluck leaves, when command outputs JSON, then assembles one JSON var from several plucked fields (why: into: leaves keep their normal stdout|filter grammar, just nested under keys instead of flattened to separate vars)",
+			name:    "given a nested object into entry with pluck leaves, when command outputs JSON, then assembles one JSON var from several plucked fields, numbers staying real numbers (why: into: leaves keep their normal stdout|filter grammar, just nested under keys instead of flattened to separate vars — and a plucked number is assembled as a number, not stringified, since the tree is built typed and marshaled once)",
 			command: `printf '{"id":42,"profile":{"name":"Ada"}}'`,
 			into: []config.IntoEntry{
 				{ParentKey: "CUSTOM", ValNode: &config.JSONNode{
@@ -173,7 +174,7 @@ func TestRunInto(t *testing.T) {
 					},
 				}},
 			},
-			wantVars: map[string]string{"CUSTOM": `{"id":"42","name":"Ada"}`},
+			wantVars: map[string]string{"CUSTOM": `{"id":42,"name":"Ada"}`},
 		},
 		{
 			name:    "given a two-level-deep nested into entry, when command outputs JSON, then arbitrary nesting is preserved (why: json is json — the same object/array recursion applies at any depth)",
@@ -212,7 +213,7 @@ func TestRunInto(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			// Arrange
 			cfg := makeRunCfg(test.command, test.into)
-			vars := map[string]string{}
+			vars := map[string]value.Value{}
 
 			// Act
 			err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
@@ -231,7 +232,7 @@ func TestRunInto(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 			for k, want := range test.wantVars {
-				if got := vars[k]; got != want {
+				if got := vars[k].String(); got != want {
 					t.Errorf("vars[%s]: got %q, want %q", k, got, want)
 				}
 			}
@@ -255,7 +256,7 @@ func TestRunStep_ScopeVarOverridesInheritedEnv(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"FOO": "from-scope"}
+	vars := sv(map[string]string{"FOO": "from-scope"})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -264,7 +265,7 @@ func TestRunStep_ScopeVarOverridesInheritedEnv(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := vars["RESULT"]; got != "from-scope" {
+	if got := vars["RESULT"].String(); got != "from-scope" {
 		t.Errorf("RESULT: got %q, want %q (why: scope var must override inherited env)", got, "from-scope")
 	}
 }
@@ -283,7 +284,7 @@ func TestRunStep_EnvVarNotInScope_StillVisible(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -292,7 +293,7 @@ func TestRunStep_EnvVarNotInScope_StillVisible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got := vars["RESULT"]; got != "from-env" {
+	if got := vars["RESULT"].String(); got != "from-env" {
 		t.Errorf("RESULT: got %q, want %q (why: env vars not in scope must still reach the subprocess)", got, "from-env")
 	}
 }
@@ -316,7 +317,7 @@ func TestStepIf_RunConditionFalse_PrintsSkipLine(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{"ENABLED": "false"}
+	vars := sv(map[string]string{"ENABLED": "false"})
 
 	// Act
 	var err error
@@ -367,7 +368,7 @@ func TestStepIf_EvaluatedInInheritedDir_NotStepDir(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	var err error
@@ -402,7 +403,7 @@ func TestStepIf_NonRunConditionFalse_PrintsNothing(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{"ENABLED": "false"}
+	vars := sv(map[string]string{"ENABLED": "false"})
 
 	// Act
 	var err error
@@ -417,7 +418,7 @@ func TestStepIf_NonRunConditionFalse_PrintsNothing(t *testing.T) {
 	if out != "" {
 		t.Errorf("expected no output for skipped non-run step, got: %q", out)
 	}
-	if vars["MARKER"] == "ran" {
+	if vars["MARKER"].String() == "ran" {
 		t.Error("set step should have been skipped")
 	}
 }
@@ -433,7 +434,7 @@ func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -452,7 +453,7 @@ func TestExecRun_OrdinaryFailure_NotWrappedAsInterrupted(t *testing.T) {
 	cfg := makeRunCfg("exit 3", nil)
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -478,7 +479,7 @@ func TestExecRun_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, dir)
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -507,7 +508,7 @@ func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, dir)
+		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 

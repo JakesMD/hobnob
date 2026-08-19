@@ -10,6 +10,7 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/tui"
+	"hobnob/internal/value"
 
 	"github.com/charmbracelet/lipgloss"
 	cterm "github.com/charmbracelet/x/term"
@@ -134,7 +135,7 @@ func printListRow(out io.Writer, bullet string, bulletWidth int, label string, l
 	}
 }
 
-func listRenderInfo(tmpl string, scope map[string]string) string {
+func listRenderInfo(tmpl string, scope map[string]value.Value) string {
 	if tmpl == "" {
 		return ""
 	}

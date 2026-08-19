@@ -7,6 +7,7 @@ import (
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/value"
 )
 
 func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
@@ -40,15 +41,9 @@ func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, error) {
 	childScope := scope.Copy()
 	for _, callVar := range callVars {
-		var val string
-		var err error
-		if callVar.ValNode != nil {
-			val, err = evalJSONNodeToJSON(*callVar.ValNode, func(tmpl string) (string, error) {
-				return eval.EvalTemplate(tmpl, childScope.Vars)
-			})
-		} else {
-			val, err = eval.EvalTemplate(callVar.ValTmpl, childScope.Vars)
-		}
+		val, err := config.EvalSetEntry(callVar, func(tmpl string) (value.Value, error) {
+			return eval.EvalValue(tmpl, childScope.Vars)
+		})
 		if err != nil {
 			return nil, fmt.Errorf("call var %q: %w", callVar.Key, err)
 		}
@@ -78,21 +73,26 @@ func runCallSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, c
 }
 
 // captureCallInto pulls into: results back from childScope into the caller's
-// scope, either by re-evaluating a template against the caller's own vars or
-// by reading a bare .KEY reference straight out of childScope.
+// scope. Each leaf is one of:
+//   - an explicit {{ }} template, evaluated against the CALLER's own
+//     (evolving) scope — so later into: entries in the same block can
+//     reference earlier ones, e.g. ARCHIVE_PATH: "{{.LOG_PATH}}/archive"
+//     where LOG_PATH was itself just set by a prior entry in this call.
+//   - a bare key (with or without a leading "."), optionally followed by
+//     " | filter | filter" — read straight out of childScope, typed, then
+//     run through the filter chain if there is one.
 func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) error {
-	evalLeaf := func(valueTmpl string) (string, error) {
+	evalLeaf := func(valueTmpl string) (value.Value, error) {
 		if strings.Contains(valueTmpl, "{{") {
-			return eval.EvalTemplate(valueTmpl, scope.Vars)
+			return eval.EvalValue(valueTmpl, scope.Vars)
 		}
-		key := strings.TrimPrefix(valueTmpl, ".")
-		return childScope.Vars[key], nil
+		return resolveChildRef(valueTmpl, childScope.Vars)
 	}
 	for _, intoEntry := range entries {
 		parentKey := intoEntry.ParentKey
 
 		if intoEntry.ValNode != nil {
-			val, err := evalJSONNodeToJSON(*intoEntry.ValNode, evalLeaf)
+			val, err := config.EvalJSONNode(*intoEntry.ValNode, evalLeaf)
 			if err != nil {
 				return fmt.Errorf("into value %q: %w", parentKey, err)
 			}
@@ -101,15 +101,37 @@ func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) e
 		}
 
 		if strings.Contains(intoEntry.ValueTmpl, "{{") {
-			val, err := eval.EvalTemplate(intoEntry.ValueTmpl, scope.Vars)
+			val, err := evalLeaf(intoEntry.ValueTmpl)
 			if err != nil {
 				return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
 			}
 			scope.Vars[parentKey] = val
 			continue
 		}
-		key := strings.TrimPrefix(intoEntry.ValueTmpl, ".")
-		scope.Set(parentKey, childScope.Vars[key], childScope.Secrets[key])
+
+		key, chain, hasChain := strings.Cut(intoEntry.ValueTmpl, " | ")
+		key = strings.TrimPrefix(strings.TrimSpace(key), ".")
+		if !hasChain {
+			scope.Set(parentKey, childScope.Vars[key], childScope.Secrets[key])
+			continue
+		}
+		val, err := eval.EvalValue("."+key+" | "+chain, childScope.Vars)
+		if err != nil {
+			return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
+		}
+		scope.Vars[parentKey] = val
 	}
 	return nil
+}
+
+// resolveChildRef evaluates a bare into: leaf (no {{ }}) against childVars: a
+// plain key ("KEY" or ".KEY") is a direct typed lookup, a key followed by
+// " | filter | ..." runs that chain typed via EvalValue.
+func resolveChildRef(valueTmpl string, childVars map[string]value.Value) (value.Value, error) {
+	key, chain, hasChain := strings.Cut(valueTmpl, " | ")
+	key = strings.TrimPrefix(strings.TrimSpace(key), ".")
+	if !hasChain {
+		return childVars[key], nil
+	}
+	return eval.EvalValue("."+key+" | "+chain, childVars)
 }

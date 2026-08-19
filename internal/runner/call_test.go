@@ -12,6 +12,7 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
 func TestExecCall_SecretPassedThroughWith_StaysMaskedUnderNewName(t *testing.T) {
@@ -34,7 +35,7 @@ func TestExecCall_SecretPassedThroughWith_StaysMaskedUnderNewName(t *testing.T) 
 		},
 	}
 	scope := &cli.Scope{
-		Vars:    map[string]string{"VAULT_TOKEN": "s3cr3t-value"},
+		Vars:    sv(map[string]string{"VAULT_TOKEN": "s3cr3t-value"}),
 		Secrets: map[string]bool{"VAULT_TOKEN": true},
 	}
 
@@ -77,7 +78,7 @@ func TestExecCall_ComposedSecretThroughWith_MasksOnlySecretComponent(t *testing.
 		},
 	}
 	scope := &cli.Scope{
-		Vars:    map[string]string{"USER": "admin", "PASS": "hunter2"},
+		Vars:    sv(map[string]string{"USER": "admin", "PASS": "hunter2"}),
 		Secrets: map[string]bool{"PASS": true},
 	}
 
@@ -146,7 +147,7 @@ func TestDir_CallStep_Priorities(t *testing.T) {
 			}
 
 			// Act
-			if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, true, parentDir); err != nil {
+			if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]value.Value{}), cfg, true, parentDir); err != nil {
 				t.Fatalf("ExecuteTask: %v", err)
 			}
 			data, err := os.ReadFile(outFile)
@@ -186,7 +187,7 @@ func TestExecCall_IntoTemplatePath(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
@@ -195,11 +196,11 @@ func TestExecCall_IntoTemplatePath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["LOG_PATH"] != "/var/log/app.log" {
-		t.Errorf("LOG_PATH: got %q, want /var/log/app.log", vars["LOG_PATH"])
+	if vars["LOG_PATH"].String() != "/var/log/app.log" {
+		t.Errorf("LOG_PATH: got %q, want /var/log/app.log", vars["LOG_PATH"].String())
 	}
-	if vars["ARCHIVE_PATH"] != "/var/log/app.log/archive" {
-		t.Errorf("ARCHIVE_PATH: got %q, want /var/log/app.log/archive", vars["ARCHIVE_PATH"])
+	if vars["ARCHIVE_PATH"].String() != "/var/log/app.log/archive" {
+		t.Errorf("ARCHIVE_PATH: got %q, want /var/log/app.log/archive", vars["ARCHIVE_PATH"].String())
 	}
 }
 
@@ -230,7 +231,7 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
@@ -239,14 +240,14 @@ func TestExecCall_Integration_ParentChildInto(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["RESULT"] != "hello_processed" {
-		t.Errorf("RESULT: got %q, want hello_processed", vars["RESULT"])
+	if vars["RESULT"].String() != "hello_processed" {
+		t.Errorf("RESULT: got %q, want hello_processed", vars["RESULT"].String())
 	}
 	if _, exists := vars["CHILD_ONLY"]; exists {
-		t.Errorf("CHILD_ONLY leaked into parent scope: %q", vars["CHILD_ONLY"])
+		t.Errorf("CHILD_ONLY leaked into parent scope: %q", vars["CHILD_ONLY"].String())
 	}
-	if vars["OUTPUT"] != "" {
-		t.Errorf("OUTPUT leaked into parent scope: %q", vars["OUTPUT"])
+	if !vars["OUTPUT"].IsEmpty() {
+		t.Errorf("OUTPUT leaked into parent scope: %q", vars["OUTPUT"].String())
 	}
 }
 
@@ -271,7 +272,7 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
@@ -280,8 +281,8 @@ func TestExecCall_Into_DotPrefixStripped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["RESULT"] != "ok" {
-		t.Errorf("RESULT: got %q, want ok", vars["RESULT"])
+	if vars["RESULT"].String() != "ok" {
+		t.Errorf("RESULT: got %q, want ok", vars["RESULT"].String())
 	}
 }
 
@@ -318,7 +319,7 @@ func TestExecCall_Into_NestedObject(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
@@ -328,8 +329,8 @@ func TestExecCall_Into_NestedObject(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := `{"label":"log-entry","output":"ok"}`
-	if vars["CUSTOM"] != want {
-		t.Errorf("CUSTOM: got %q, want %q", vars["CUSTOM"], want)
+	if vars["CUSTOM"].String() != want {
+		t.Errorf("CUSTOM: got %q, want %q", vars["CUSTOM"].String(), want)
 	}
 }
 
@@ -363,12 +364,12 @@ func TestExecCall_With_MapLiteralTemplateLeaf_QuoteEscaped(t *testing.T) {
 			}},
 			"child": {Steps: []config.Step{
 				{Kind: config.KindSet, SetEntries: []config.SetEntry{
-					{Key: "PLUCKED", ValTmpl: `{{ .CUSTOM | pluck "name" }}`},
+					{Key: "PLUCKED", ValTmpl: `{{ .CUSTOM | json | pluck "name" }}`},
 				}},
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, t.TempDir())
@@ -378,8 +379,8 @@ func TestExecCall_With_MapLiteralTemplateLeaf_QuoteEscaped(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	want := `he said "hi"`
-	if vars["RESULT"] != want {
-		t.Errorf("RESULT: got %q, want %q", vars["RESULT"], want)
+	if vars["RESULT"].String() != want {
+		t.Errorf("RESULT: got %q, want %q", vars["RESULT"].String(), want)
 	}
 }
 
@@ -408,7 +409,7 @@ func TestDir_CallStep_DirUsesWithVars(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]value.Value{}), cfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -459,7 +460,7 @@ func TestDir_CallStep_RelativeToCallerDir(t *testing.T) {
 	}
 
 	// Act
-	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), callerCfg, true, t.TempDir()); err != nil {
+	if err := ExecuteTask(context.Background(), "parent", makeScope(map[string]value.Value{}), callerCfg, true, t.TempDir()); err != nil {
 		t.Fatalf("ExecuteTask: %v", err)
 	}
 
@@ -501,7 +502,7 @@ func TestCallStep_Interactive_False_DisablesPrompts(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "parent", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "parent", makeScope(map[string]value.Value{}), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -540,7 +541,7 @@ func TestCallStep_Interactive_False_PropagatesDown(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "root", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "root", makeScope(map[string]value.Value{}), cfg, false, dir)
 
 	// Assert
 	if err != nil {
@@ -569,7 +570,7 @@ func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -595,7 +596,7 @@ func TestExecCall_Soft_SwallowsOrdinaryError(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -604,7 +605,7 @@ func TestExecCall_Soft_SwallowsOrdinaryError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["AFTER"] != "reached" {
-		t.Errorf("expected execution to continue past soft-failed call, AFTER = %q", vars["AFTER"])
+	if vars["AFTER"].String() != "reached" {
+		t.Errorf("expected execution to continue past soft-failed call, AFTER = %q", vars["AFTER"].String())
 	}
 }

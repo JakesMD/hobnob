@@ -11,18 +11,29 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
-func copyVars(src map[string]string) map[string]string {
-	out := make(map[string]string, len(src))
-	for key, value := range src {
-		out[key] = value
+func copyVars(src map[string]value.Value) map[string]value.Value {
+	out := make(map[string]value.Value, len(src))
+	for key, val := range src {
+		out[key] = val
 	}
 	return out
 }
 
-func makeScope(vars map[string]string) *cli.Scope {
+func makeScope(vars map[string]value.Value) *cli.Scope {
 	return &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}
+}
+
+// sv wraps a plain string map as typed scope vars — most fixtures in this
+// package only care about plain strings; the type distinction is incidental.
+func sv(m map[string]string) map[string]value.Value {
+	out := make(map[string]value.Value, len(m))
+	for k, v := range m {
+		out[k] = value.Str(v)
+	}
+	return out
 }
 
 func captureStdout(t *testing.T, f func()) string {
@@ -49,49 +60,49 @@ func TestMaskSecrets(t *testing.T) {
 	tests := []struct {
 		name    string
 		input   string
-		vars    map[string]string
+		vars    map[string]value.Value
 		secrets map[string]bool
 		want    string
 	}{
 		{
 			name:    "given no secrets, when masking, then string unchanged (why: nothing to mask)",
 			input:   "deploy --user=alice --pass=hunter2",
-			vars:    map[string]string{"PASS": "hunter2"},
+			vars:    sv(map[string]string{"PASS": "hunter2"}),
 			secrets: map[string]bool{},
 			want:    "deploy --user=alice --pass=hunter2",
 		},
 		{
 			name:    "given secret var in command, when masking, then value replaced with **** (why: secret must not appear in logs)",
 			input:   "deploy --user=alice --pass=hunter2",
-			vars:    map[string]string{"PASS": "hunter2"},
+			vars:    sv(map[string]string{"PASS": "hunter2"}),
 			secrets: map[string]bool{"PASS": true},
 			want:    "deploy --user=alice --pass=****",
 		},
 		{
 			name:    "given secret value appears multiple times, when masking, then all replaced (why: full redaction required)",
 			input:   "echo hunter2 && login --pass=hunter2",
-			vars:    map[string]string{"PASS": "hunter2"},
+			vars:    sv(map[string]string{"PASS": "hunter2"}),
 			secrets: map[string]bool{"PASS": true},
 			want:    "echo **** && login --pass=****",
 		},
 		{
 			name:    "given secret var with empty value, when masking, then string unchanged (why: empty string replacement would corrupt output)",
 			input:   "deploy --pass=",
-			vars:    map[string]string{"PASS": ""},
+			vars:    sv(map[string]string{"PASS": ""}),
 			secrets: map[string]bool{"PASS": true},
 			want:    "deploy --pass=",
 		},
 		{
 			name:    "given multiple secret vars, when masking, then all replaced (why: each secret must be redacted)",
 			input:   "connect --user=root --pass=s3cr3t --token=abc123",
-			vars:    map[string]string{"PASS": "s3cr3t", "TOKEN": "abc123"},
+			vars:    sv(map[string]string{"PASS": "s3cr3t", "TOKEN": "abc123"}),
 			secrets: map[string]bool{"PASS": true, "TOKEN": true},
 			want:    "connect --user=root --pass=**** --token=****",
 		},
 		{
 			name:    `given secret containing a quote embedded in a JSON literal (json.Marshal-escaped), when masking, then the escaped form is also replaced (why: a set:/into: JSON literal leaf marshals its value, so the escaped form can differ from the raw secret and must be matched too)`,
 			input:   `echo 'literal={"token":"ab\"cd"} raw=ab"cd'`,
-			vars:    map[string]string{"TOK": `ab"cd`},
+			vars:    sv(map[string]string{"TOK": `ab"cd`}),
 			secrets: map[string]bool{"TOK": true},
 			want:    `echo 'literal={"token":"****"} raw=****'`,
 		},
@@ -188,7 +199,7 @@ func TestTaskInput_False_SkipsPrompts(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, false, dir)
@@ -197,8 +208,8 @@ func TestTaskInput_False_SkipsPrompts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["FOO"] != "bar" {
-		t.Errorf("FOO: want %q, got %q", "bar", vars["FOO"])
+	if vars["FOO"].String() != "bar" {
+		t.Errorf("FOO: want %q, got %q", "bar", vars["FOO"].String())
 	}
 }
 
@@ -227,7 +238,7 @@ func TestTaskInput_False_PropagesToSubTasks(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, false, dir)
@@ -263,7 +274,7 @@ func TestTaskInput_False_OnChildOnly(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "parent", makeScope(vars), cfg, true, dir)
@@ -295,7 +306,7 @@ func TestTaskInput_False_NoDefault_ReturnsError(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, false, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, false, dir)
 
 	// Assert
 	if err == nil {
@@ -320,7 +331,7 @@ func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{"ENABLED": "false"}
+	vars := sv(map[string]string{"ENABLED": "false"})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -329,7 +340,7 @@ func TestTaskIf_ConditionFalse_SkipsTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["MARKER"] == "ran" {
+	if vars["MARKER"].String() == "ran" {
 		t.Error("task should have been skipped but steps executed")
 	}
 }
@@ -351,7 +362,7 @@ func TestTaskIf_ConditionTrue_RunsTask(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{"ENABLED": "true"}
+	vars := sv(map[string]string{"ENABLED": "true"})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, dir)
@@ -380,7 +391,7 @@ func TestTaskIf_NoCondition_RunsTask(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, dir)
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, true, dir)
 
 	// Assert
 	if err != nil {
@@ -405,7 +416,7 @@ func TestTaskIf_TemplateVarsResolved(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{"ENV": "production"}
+	vars := sv(map[string]string{"ENV": "production"})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, dir)
@@ -433,7 +444,7 @@ func TestTaskIf_BadCondition_ReturnsError(t *testing.T) {
 	}
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -472,7 +483,7 @@ func TestTaskIf_EvaluatedInTaskDir(t *testing.T) {
 			},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, root)
@@ -481,7 +492,7 @@ func TestTaskIf_EvaluatedInTaskDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["MARKER"] != "ran" {
+	if vars["MARKER"].String() != "ran" {
 		t.Error("task should have run because marker exists in task dir, but was skipped")
 	}
 }
@@ -498,7 +509,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

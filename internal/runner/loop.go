@@ -2,13 +2,15 @@ package runner
 
 import (
 	"fmt"
+	"sort"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/value"
 )
 
-func scopeSaveRestore(vars map[string]string, name string) func() {
+func scopeSaveRestore(vars map[string]value.Value, name string) func() {
 	prev, had := vars[name]
 	return func() {
 		if had {
@@ -24,24 +26,20 @@ func execFor(execState execCtx, step config.Step, scope *cli.Scope) error {
 		return execForMatrix(execState, step.ForMatrix, step.ForSteps, scope)
 	}
 
-	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to a JSON
-	// object — a literal YAML sequence in loop: can never be a map.
+	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to an
+	// Object — a literal YAML sequence in loop: can never be a map.
 	if len(step.ForList) == 0 && step.ForTarget != "" {
-		rendered, err := eval.EvalTemplate(step.ForTarget, scope.Vars)
+		rendered, err := eval.EvalValue(step.ForTarget, scope.Vars)
 		if err != nil {
 			return fmt.Errorf("loop from template: %w", err)
 		}
-		if eval.IsJSONObject(rendered) {
+		if rendered.Kind() == value.KindObject {
 			return execForMap(execState, rendered, step.ForSteps, scope)
 		}
-		items, err := eval.ParseList(rendered)
-		if err != nil {
-			return fmt.Errorf("loop from list: %w", err)
-		}
-		return execForList(execState, items, step.ForSteps, scope)
+		return execForList(execState, eval.ItemsFromValue(rendered), step.ForSteps, scope)
 	}
 
-	items, err := eval.ResolveFromItems(step.ForList, step.ForTarget, scope.Vars, "loop")
+	items, err := eval.ResolveItems(step.ForList, step.ForTarget, scope.Vars, "loop")
 	if err != nil {
 		return err
 	}
@@ -50,7 +48,7 @@ func execFor(execState execCtx, step config.Step, scope *cli.Scope) error {
 	return execForList(execState, items, step.ForSteps, scope)
 }
 
-func execForList(execState execCtx, items []string, steps []config.Step, scope *cli.Scope) error {
+func execForList(execState execCtx, items []value.Value, steps []config.Step, scope *cli.Scope) error {
 	defer scopeSaveRestore(scope.Vars, "ITEM")()
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
@@ -61,17 +59,19 @@ func execForList(execState execCtx, items []string, steps []config.Step, scope *
 	return nil
 }
 
-func execForMap(execState execCtx, rendered string, steps []config.Step, scope *cli.Scope) error {
-	keys, values, err := eval.ParseMapEntries(rendered)
-	if err != nil {
-		return fmt.Errorf("loop: %w", err)
+func execForMap(execState execCtx, obj value.Value, steps []config.Step, scope *cli.Scope) error {
+	object := obj.Any().(map[string]any)
+	keys := make([]string, 0, len(object))
+	for key := range object {
+		keys = append(keys, key)
 	}
+	sort.Strings(keys)
 
 	defer scopeSaveRestore(scope.Vars, "KEY")()
 	defer scopeSaveRestore(scope.Vars, "VALUE")()
-	for i, key := range keys {
-		scope.Vars["KEY"] = key
-		scope.Vars["VALUE"] = values[i]
+	for _, key := range keys {
+		scope.Vars["KEY"] = value.Str(key)
+		scope.Vars["VALUE"] = value.Of(object[key])
 		if err := executeSteps(execState, steps, scope); err != nil {
 			return err
 		}
@@ -81,9 +81,9 @@ func execForMap(execState execCtx, rendered string, steps []config.Step, scope *
 
 func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope) error {
 	varNames := make([]string, len(matrix))
-	itemLists := make([][]string, len(matrix))
+	itemLists := make([][]value.Value, len(matrix))
 	for i, entry := range matrix {
-		items, err := eval.ResolveFromItems(entry.List, entry.ListTmpl, scope.Vars, "loop")
+		items, err := eval.ResolveItems(entry.List, entry.ListTmpl, scope.Vars, "loop")
 		if err != nil {
 			return err
 		}
@@ -93,7 +93,7 @@ func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []co
 	return execCartesian(execState, varNames, itemLists, 0, steps, scope)
 }
 
-func execCartesian(execState execCtx, varNames []string, itemLists [][]string, idx int, steps []config.Step, scope *cli.Scope) error {
+func execCartesian(execState execCtx, varNames []string, itemLists [][]value.Value, idx int, steps []config.Step, scope *cli.Scope) error {
 	if idx == len(varNames) {
 		return executeSteps(execState, steps, scope)
 	}

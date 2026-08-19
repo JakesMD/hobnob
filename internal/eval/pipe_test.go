@@ -91,19 +91,19 @@ func TestEvalRunIntoPipe(t *testing.T) {
 			// (test fields are the arrangement)
 
 			// Act
-			got, err := EvalRunIntoPipe(test.expr, test.stdout, test.stderr)
+			result, err := EvalRunIntoPipe(test.expr, test.stdout, test.stderr)
 
 			// Assert
 			if test.expectError {
 				if err == nil {
-					t.Errorf("expected error, got nil (result=%q)", got)
+					t.Errorf("expected error, got nil (result=%q)", result.String())
 				}
 				return
 			}
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got != test.expected {
+			if got := result.String(); got != test.expected {
 				t.Errorf("got %q, want %q", got, test.expected)
 			}
 		})

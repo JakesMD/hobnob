@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"hobnob/internal/value"
 )
 
 // EvalCondition renders condTmpl then passes the result directly to sh -c.
@@ -14,7 +16,7 @@ import (
 // exits 0. ctx cancellation kills the shell process outright (no graceful
 // SIGTERM/process-group handling here, unlike run: steps — see runner.execRun)
 // so an if:/check: expression can't hang past a CTRL+C.
-func EvalCondition(ctx context.Context, condTmpl string, vars map[string]string, dir string) (bool, error) {
+func EvalCondition(ctx context.Context, condTmpl string, vars map[string]value.Value, dir string) (bool, error) {
 	rendered, err := EvalTemplate(condTmpl, vars)
 	if err != nil {
 		return false, err
@@ -33,10 +35,10 @@ func EvalCondition(ctx context.Context, condTmpl string, vars map[string]string,
 
 // EvalCheckWithOverride evaluates check against vars with key temporarily set
 // to val, without mutating vars — the shared "does this candidate value pass
-// check:" pattern used by both interactive re-prompt loops (runner.getInteractive,
-// tui.textModel) ahead of committing the value to scope.
-func EvalCheckWithOverride(ctx context.Context, check string, vars map[string]string, key, val string) (bool, error) {
-	merged := CopyVars(vars)
+// check:" pattern used by interactive re-prompt loops (runner.getInteractive)
+// ahead of committing the value to scope.
+func EvalCheckWithOverride(ctx context.Context, check string, vars map[string]value.Value, key string, val value.Value) (bool, error) {
+	merged := CloneMap(vars)
 	merged[key] = val
 	return EvalCondition(ctx, check, merged, "")
 }

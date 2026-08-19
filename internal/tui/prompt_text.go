@@ -5,13 +5,15 @@ import (
 	"fmt"
 	"strings"
 
-	"hobnob/internal/eval"
-
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func PromptText(ctx context.Context, info, check, varName string, vars map[string]string, defaultVal string, task string, secret bool, optional bool) (string, error) {
+// PromptText prompts for free text. validate, when non-nil, is called with
+// the candidate value on Enter — errMsg uses checkDesc (the check:
+// expression's own text) purely for display, so tui never needs to know how
+// a check is evaluated or what a var's type is.
+func PromptText(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
 	textInput := textinput.New()
 	textInput.Prompt = SArrow.Render("› ")
 	if secret {
@@ -22,11 +24,10 @@ func PromptText(ctx context.Context, info, check, varName string, vars map[strin
 	}
 	textInput.Focus()
 	model := textModel{
-		ctx:        ctx,
 		info:       info,
-		check:      check,
+		validate:   validate,
+		checkDesc:  checkDesc,
 		varName:    varName,
-		vars:       vars,
 		defaultVal: defaultVal,
 		textInput:  textInput,
 		secret:     secret,
@@ -52,11 +53,10 @@ func PromptText(ctx context.Context, info, check, varName string, vars map[strin
 // ── text input model ─────────────────────────────────────────────────────────
 
 type textModel struct {
-	ctx        context.Context
 	info       string
-	check      string
+	validate   func(string) (bool, error)
+	checkDesc  string
 	varName    string
-	vars       map[string]string
 	defaultVal string
 	textInput  textinput.Model
 	errMsg     string
@@ -89,10 +89,10 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if val == "" && model.defaultVal != "" {
 			val = model.defaultVal
 		}
-		if model.check != "" {
-			ok, err := eval.EvalCheckWithOverride(model.ctx, model.check, model.vars, model.varName, val)
+		if model.validate != nil {
+			ok, err := model.validate(val)
 			if err != nil || !ok {
-				model.errMsg = fmt.Sprintf("validation failed: %s", model.check)
+				model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 				return model, nil
 			}
 		}

@@ -1,11 +1,12 @@
 package eval
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"text/template"
+
+	"hobnob/internal/value"
 )
 
 // templateFuncs is computed once and reused across EvalTemplate calls —
@@ -14,135 +15,49 @@ import (
 // under loop-heavy tasks. EvalRunIntoPipe (pipe.go) reuses this same map via
 // EvalTemplate rather than maintaining a second filter switch, so every
 // filter here works in both {{ }} templates and run: into: pipes.
-var templateFuncs = template.FuncMap{
-	"default": func(def string, given ...interface{}) string {
-		if len(given) == 0 || given[0] == nil {
-			return def
+//
+// Every filter is defined once, in value.Filters — this adapts each into
+// text/template's FuncMap so ordinary {{ }} execution and EvalValue's
+// type-preserving evaluator (chainvalue.go) share one implementation.
+var templateFuncs = buildTemplateFuncs()
+
+func buildTemplateFuncs() template.FuncMap {
+	funcs := make(template.FuncMap, len(value.Filters))
+	for name, filter := range value.Filters {
+		funcs[name] = adaptFilter(filter)
+	}
+	return funcs
+}
+
+// adaptFilter wraps a value.Filter for text/template. The piped parameter
+// must be declared `any`, not value.Value: a missing var reaches here as an
+// invalid reflect.Value, and template's validateType only lets that through
+// for a nil-able parameter type — a struct type (value.Value) fails with
+// "invalid value; expected value.Value", which would break {{ .MISSING |
+// default "x" }}. coerce normalizes whatever text/template hands us — a raw
+// string literal, that missing-var nil, or a prior filter's Value result —
+// before the filter itself runs.
+func adaptFilter(filter value.Filter) func(...any) (value.Value, error) {
+	return func(args ...any) (value.Value, error) {
+		coerced := make([]value.Value, len(args))
+		for i, arg := range args {
+			coerced[i] = coerce(arg)
 		}
-		if s, ok := given[0].(string); ok && s != "" {
-			return s
-		}
-		return def
-	},
-	"trim": func(value string) string {
-		return strings.TrimSpace(value)
-	},
-	"upper": func(value string) string {
-		return strings.ToUpper(value)
-	},
-	"lower": func(value string) string {
-		return strings.ToLower(value)
-	},
-	"split": func(separator, value string) (string, error) {
-		var parts []string
-		for _, part := range strings.Split(value, separator) {
-			if part != "" {
-				parts = append(parts, part)
-			}
-		}
-		jsonBytes, err := json.Marshal(parts)
-		if err != nil {
-			return "", err
-		}
-		return string(jsonBytes), nil
-	},
-	"lines": func(value string) (string, error) {
-		return splitLinesJSON(value)
-	},
-	"first": func(value string) (string, error) {
-		var items []string
-		if err := json.Unmarshal([]byte(value), &items); err != nil {
-			return "", fmt.Errorf("first: %w", err)
-		}
-		if len(items) == 0 {
-			return "", nil
-		}
-		return items[0], nil
-	},
-	// pluck takes the piped JSON value as its last arg (Go template
-	// pipeline convention). An optional default before it — pluck "path"
-	// "fallback" — swallows a missing key/index or invalid JSON and
-	// returns the fallback instead of erroring; omit it to fail fast.
-	"pluck": func(path string, rest ...string) (string, error) {
-		var value string
-		var fallback *string
-		switch len(rest) {
-		case 1:
-			value = rest[0]
-		case 2:
-			fallbackValue := rest[0]
-			fallback = &fallbackValue
-			value = rest[1]
-		default:
-			return "", fmt.Errorf("pluck: expected a value and an optional default, got %d extra args", len(rest))
-		}
-		decoded, err := decodeJSON(value)
-		if err != nil {
-			if fallback != nil {
-				return *fallback, nil
-			}
-			return "", fmt.Errorf("pluck: %w", err)
-		}
-		parsedPath, err := jsonPathParser.Parse(normalizeJSONPath(path))
-		if err != nil {
-			return "", fmt.Errorf("pluck %q: %w", path, err)
-		}
-		nodes := parsedPath.Select(decoded)
-		switch len(nodes) {
-		case 0:
-			if fallback != nil {
-				return *fallback, nil
-			}
-			return "", fmt.Errorf("pluck %q: no match", path)
-		case 1:
-			return stringifyJSONValue(nodes[0])
-		default:
-			jsonBytes, err := json.Marshal(nodes)
-			if err != nil {
-				return "", err
-			}
-			return string(jsonBytes), nil
-		}
-	},
-	"keys": func(value string) (string, error) {
-		keys, _, err := sortedMapEntries(value)
-		if err != nil {
-			return "", fmt.Errorf("keys: %w", err)
-		}
-		jsonBytes, err := json.Marshal(keys)
-		if err != nil {
-			return "", err
-		}
-		return string(jsonBytes), nil
-	},
-	"values": func(value string) (string, error) {
-		_, values, err := sortedMapEntries(value)
-		if err != nil {
-			return "", fmt.Errorf("values: %w", err)
-		}
-		jsonBytes, err := json.Marshal(values)
-		if err != nil {
-			return "", err
-		}
-		return string(jsonBytes), nil
-	},
-	// jsonEscape escapes a value for embedding inside a hand-written JSON
-	// string literal — for the rare case of a multiline set: scalar holding
-	// literal JSON text (needed to template a JSON key, which map/list
-	// literals can't do). Map/list literals never need this: their leaves
-	// are marshaled after evaluation, so json.Marshal escapes them
-	// automatically.
-	"jsonEscape": func(value string) (string, error) {
-		jsonBytes, err := json.Marshal(value)
-		if err != nil {
-			return "", fmt.Errorf("jsonEscape: %w", err)
-		}
-		// json.Marshal of a string always wraps in exactly one leading and
-		// one trailing '"' — strings.Trim would over-strip when the escaped
-		// content itself ends in \" (e.g. value ending in a quote or
-		// backslash), since Trim removes a whole run of the cutset rune.
-		return string(jsonBytes[1 : len(jsonBytes)-1]), nil
-	},
+		return filter(coerced)
+	}
+}
+
+func coerce(arg any) value.Value {
+	switch typed := arg.(type) {
+	case nil:
+		return value.Nil()
+	case value.Value:
+		return typed
+	case string:
+		return value.Str(typed)
+	default:
+		return value.Str(fmt.Sprint(typed))
+	}
 }
 
 // templateCache holds parsed templates keyed by source string. EvalTemplate
@@ -165,7 +80,11 @@ func parseTemplateCached(tmpl string) (*template.Template, error) {
 	return actual.(*template.Template), nil
 }
 
-func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
+// EvalTemplate renders tmpl to text. vars is passed as the template's dot —
+// value.Value implements fmt.Stringer, so {{ .VAR }} prints exactly what
+// Value.String() returns with no conversion needed. Use EvalValue instead
+// when the result should keep its type rather than flatten to text.
+func EvalTemplate(tmpl string, vars map[string]value.Value) (string, error) {
 	parsed, err := parseTemplateCached(tmpl)
 	if err != nil {
 		return "", err
@@ -177,13 +96,15 @@ func EvalTemplate(tmpl string, vars map[string]string) (string, error) {
 	return buf.String(), nil
 }
 
-// ResolveFromItems renders a literal list or a template that resolves to a JSON
-// array into a []string. Used by execGet and execFor.
-func ResolveFromItems(fromList []string, fromTmpl string, vars map[string]string, ctxName string) ([]string, error) {
+// ResolveItems renders a literal list or a template that resolves to an
+// array into a []value.Value, each item still typed — a fromTmpl bare ref
+// resolving to a real Array keeps its typed elements instead of stringifying
+// them first. Used by execFor (loop: ITEM) and execFor's matrix form.
+func ResolveItems(fromList []string, fromTmpl string, vars map[string]value.Value, ctxName string) ([]value.Value, error) {
 	if len(fromList) > 0 {
-		items := make([]string, 0, len(fromList))
+		items := make([]value.Value, 0, len(fromList))
 		for _, item := range fromList {
-			rendered, err := EvalTemplate(item, vars)
+			rendered, err := EvalValue(item, vars)
 			if err != nil {
 				return nil, fmt.Errorf("%s from item: %w", ctxName, err)
 			}
@@ -192,15 +113,46 @@ func ResolveFromItems(fromList []string, fromTmpl string, vars map[string]string
 		return items, nil
 	}
 	if fromTmpl != "" {
-		rendered, err := EvalTemplate(fromTmpl, vars)
+		rendered, err := EvalValue(fromTmpl, vars)
 		if err != nil {
 			return nil, fmt.Errorf("%s from template: %w", ctxName, err)
 		}
-		items, err := ParseList(rendered)
-		if err != nil {
-			return nil, fmt.Errorf("%s from list: %w", ctxName, err)
-		}
-		return items, nil
+		return ItemsFromValue(rendered), nil
 	}
 	return nil, nil
+}
+
+// ItemsFromValue turns a resolved Value into an item list for loop:/options:
+// iteration: an Array's elements, typed; a Nil or empty String, zero items
+// (nothing to iterate); anything else (including a plain String — even one
+// that looks like JSON text but was never captured as such) is a single
+// item, matching Capture's sniff-once discipline instead of re-parsing it.
+func ItemsFromValue(v value.Value) []value.Value {
+	if v.Kind() == value.KindArray {
+		arr := v.Any().([]any)
+		items := make([]value.Value, len(arr))
+		for i, elem := range arr {
+			items[i] = value.Of(elem)
+		}
+		return items
+	}
+	if v.IsEmpty() {
+		return nil
+	}
+	return []value.Value{v}
+}
+
+// ResolveItemStrings is ResolveItems for callers that need plain text — get:
+// options: displays and compares choices as strings, so typed elements are
+// stringified after resolution rather than never being resolved typed.
+func ResolveItemStrings(fromList []string, fromTmpl string, vars map[string]value.Value, ctxName string) ([]string, error) {
+	items, err := ResolveItems(fromList, fromTmpl, vars, ctxName)
+	if err != nil {
+		return nil, err
+	}
+	strs := make([]string, len(items))
+	for i, item := range items {
+		strs[i] = item.String()
+	}
+	return strs, nil
 }

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
 func makeForMatrixCfg(matrix []config.ForMatrixEntry, innerTmpl string) *config.ConfigFile {
@@ -29,7 +30,7 @@ func TestExecFor_Matrix(t *testing.T) {
 		name       string
 		matrix     []config.ForMatrixEntry
 		innerTmpl  string
-		initVars   map[string]string
+		initVars   map[string]value.Value
 		wantResult string
 	}{
 		{
@@ -38,7 +39,7 @@ func TestExecFor_Matrix(t *testing.T) {
 				{VarName: "PLATFORM", List: []string{"ubuntu", "macos", "windows"}},
 			},
 			innerTmpl:  "{{.RESULT}} {{.PLATFORM}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: " ubuntu macos windows",
 		},
 		{
@@ -48,7 +49,7 @@ func TestExecFor_Matrix(t *testing.T) {
 				{VarName: "DB", List: []string{"postgres", "sqlite"}},
 			},
 			innerTmpl:  "{{.RESULT}} {{.PLATFORM}}/{{.DB}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: " ubuntu/postgres ubuntu/sqlite macos/postgres macos/sqlite",
 		},
 		{
@@ -58,7 +59,7 @@ func TestExecFor_Matrix(t *testing.T) {
 				{VarName: "PLATFORM", List: []string{"ubuntu", "macos"}},
 			},
 			innerTmpl:  "{{.RESULT}} {{.DB}}/{{.PLATFORM}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: " postgres/ubuntu postgres/macos sqlite/ubuntu sqlite/macos",
 		},
 		{
@@ -69,7 +70,7 @@ func TestExecFor_Matrix(t *testing.T) {
 				{VarName: "DB", List: []string{"pg"}},
 			},
 			innerTmpl:  "{{.RESULT}} {{.OS}}/{{.ARCH}}/{{.DB}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: " linux/amd64/pg linux/arm64/pg macos/amd64/pg macos/arm64/pg",
 		},
 		{
@@ -78,16 +79,19 @@ func TestExecFor_Matrix(t *testing.T) {
 				{VarName: "ENV", List: []string{"prod"}},
 			},
 			innerTmpl:  "{{.RESULT}}{{.ENV}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: "prod",
 		},
 		{
-			name: "given matrix with dynamic list template, when executed, then resolves list from vars",
+			name: "given matrix with dynamic list template resolving to a real Array, when executed, then resolves list from vars (why: a captured/set: array stays typed all the way into the matrix loop — no re-parsing from text)",
 			matrix: []config.ForMatrixEntry{
 				{VarName: "NODE", ListTmpl: `{{.SERVERS}}`},
 			},
-			innerTmpl:  "{{.RESULT}} {{.NODE}}",
-			initVars:   map[string]string{"RESULT": "", "SERVERS": `["web1","web2"]`},
+			innerTmpl: "{{.RESULT}} {{.NODE}}",
+			initVars: map[string]value.Value{
+				"RESULT":  value.Str(""),
+				"SERVERS": value.Of([]any{"web1", "web2"}),
+			},
 			wantResult: " web1 web2",
 		},
 	}
@@ -105,8 +109,8 @@ func TestExecFor_Matrix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if vars["RESULT"] != test.wantResult {
-				t.Errorf("RESULT: got %q, want %q", vars["RESULT"], test.wantResult)
+			if got := vars["RESULT"].String(); got != test.wantResult {
+				t.Errorf("RESULT: got %q, want %q", got, test.wantResult)
 			}
 		})
 	}
@@ -134,28 +138,31 @@ func TestExecFor_String(t *testing.T) {
 		forList    []string
 		forTarget  string
 		innerTmpl  string
-		initVars   map[string]string
+		initVars   map[string]value.Value
 		wantResult string
 	}{
 		{
 			name:       "given literal list, when executed, then iterates binding each item to ITEM (why: string form uses ITEM as default iterator)",
 			forList:    []string{"alpha", "beta", "gamma"},
 			innerTmpl:  "{{.RESULT}} {{.ITEM}}",
-			initVars:   map[string]string{"RESULT": ""},
+			initVars:   sv(map[string]string{"RESULT": ""}),
 			wantResult: " alpha beta gamma",
 		},
 		{
-			name:       "given template target resolving to JSON array, when executed, then iterates resolved items (why: dynamic lists evaluated at runtime)",
-			forTarget:  "{{.FILES}}",
-			innerTmpl:  "{{.RESULT}} {{.ITEM}}",
-			initVars:   map[string]string{"RESULT": "", "FILES": `["x","y","z"]`},
+			name:      "given template target resolving to a real Array, when executed, then iterates its typed elements (why: a captured/set: array stays typed all the way into the loop — no re-parsing from text)",
+			forTarget: "{{.FILES}}",
+			innerTmpl: "{{.RESULT}} {{.ITEM}}",
+			initVars: map[string]value.Value{
+				"RESULT": value.Str(""),
+				"FILES":  value.Of([]any{"x", "y", "z"}),
+			},
 			wantResult: " x y z",
 		},
 		{
 			name:       "given empty list, when executed, then runs zero iterations (why: empty source must not error)",
 			forList:    []string{},
 			innerTmpl:  "{{.RESULT}} {{.ITEM}}",
-			initVars:   map[string]string{"RESULT": "initial"},
+			initVars:   sv(map[string]string{"RESULT": "initial"}),
 			wantResult: "initial",
 		},
 	}
@@ -173,18 +180,25 @@ func TestExecFor_String(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if vars["RESULT"] != test.wantResult {
-				t.Errorf("RESULT: got %q, want %q", vars["RESULT"], test.wantResult)
+			if got := vars["RESULT"].String(); got != test.wantResult {
+				t.Errorf("RESULT: got %q, want %q", got, test.wantResult)
 			}
 		})
 	}
 }
 
 func TestExecFor_Map(t *testing.T) {
-	// given loop: target resolves to a JSON object, when executed, then iterates sorted keys binding KEY/VALUE (why: map iteration is the object counterpart to list iteration's ITEM)
+	// given loop: target resolves to a real Object, when executed, then
+	// iterates sorted keys binding KEY/VALUE (why: map iteration is the
+	// object counterpart to list iteration's ITEM — the object must already
+	// be typed, e.g. from a set: map literal or a run: into: capture, never
+	// sniffed from a plain string)
 	// Arrange
 	cfg := makeForStringCfg(nil, "{{.REGIONS}}", "{{.RESULT}} {{.KEY}}={{.VALUE}}")
-	vars := copyVars(map[string]string{"RESULT": "", "REGIONS": `{"us":"us-east-1","eu":"eu-west-1"}`})
+	vars := copyVars(map[string]value.Value{
+		"RESULT":  value.Str(""),
+		"REGIONS": value.Of(map[string]any{"us": "us-east-1", "eu": "eu-west-1"}),
+	})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
@@ -193,23 +207,33 @@ func TestExecFor_Map(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["RESULT"] != " eu=eu-west-1 us=us-east-1" {
-		t.Errorf("RESULT: got %q, want %q", vars["RESULT"], " eu=eu-west-1 us=us-east-1")
+	want := " eu=eu-west-1 us=us-east-1"
+	if got := vars["RESULT"].String(); got != want {
+		t.Errorf("RESULT: got %q, want %q", got, want)
 	}
 }
 
-func TestExecFor_Map_MalformedJSON(t *testing.T) {
-	// given loop: target resolves to a string starting with { that isn't valid JSON, when executed, then returns error (why: fail fast rather than silently skipping the loop)
+func TestExecFor_String_AlmostJSONObjectStaysString(t *testing.T) {
+	// given loop: target is a plain string starting with { that isn't valid
+	// JSON, when executed, then it's treated as a single string item — not
+	// sniffed as a map and not an error (why: structure is only ever sniffed
+	// once, at capture; loop: must not re-sniff a var that merely looks
+	// JSON-shaped, which is what used to make this case error instead of
+	// iterating once)
 	// Arrange
-	cfg := makeForStringCfg(nil, "{{.BAD}}", "{{.RESULT}}{{.KEY}}")
-	vars := copyVars(map[string]string{"RESULT": "", "BAD": `{not valid json`})
+	cfg := makeForStringCfg(nil, "{{.BAD}}", "{{.RESULT}}{{.ITEM}}")
+	vars := copyVars(sv(map[string]string{"RESULT": "", "BAD": `{not valid json`}))
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, "")
 
 	// Assert
-	if err == nil {
-		t.Fatal("expected error, got nil")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := "{not valid json"
+	if got := vars["RESULT"].String(); got != want {
+		t.Errorf("RESULT: got %q, want %q", got, want)
 	}
 }
 
@@ -231,7 +255,10 @@ func TestExecFor_Map_IteratorVarsRemovedAfterLoop(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"RESULT": "", "MAP": `{"a":"1"}`}
+	vars := map[string]value.Value{
+		"RESULT": value.Str(""),
+		"MAP":    value.Of(map[string]any{"a": "1"}),
+	}
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -241,10 +268,10 @@ func TestExecFor_Map_IteratorVarsRemovedAfterLoop(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, exists := vars["KEY"]; exists {
-		t.Errorf("KEY should not exist after loop, got %q", vars["KEY"])
+		t.Errorf("KEY should not exist after loop, got %q", vars["KEY"].String())
 	}
 	if _, exists := vars["VALUE"]; exists {
-		t.Errorf("VALUE should not exist after loop, got %q", vars["VALUE"])
+		t.Errorf("VALUE should not exist after loop, got %q", vars["VALUE"].String())
 	}
 }
 
@@ -266,7 +293,7 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"RESULT": ""}
+	vars := sv(map[string]string{"RESULT": ""})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -275,11 +302,11 @@ func TestExecFor_IteratorVarRemovedAfterLoop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["RESULT"] != "abc" {
-		t.Errorf("RESULT: got %q, want abc", vars["RESULT"])
+	if got := vars["RESULT"].String(); got != "abc" {
+		t.Errorf("RESULT: got %q, want abc", got)
 	}
 	if _, exists := vars["ITEM"]; exists {
-		t.Errorf("ITEM should not exist after loop, got %q", vars["ITEM"])
+		t.Errorf("ITEM should not exist after loop, got %q", vars["ITEM"].String())
 	}
 }
 
@@ -301,7 +328,7 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"ITEM": "original", "RESULT": ""}
+	vars := sv(map[string]string{"ITEM": "original", "RESULT": ""})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -310,8 +337,8 @@ func TestExecFor_IteratorVarRestoredIfPreexisting(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if vars["ITEM"] != "original" {
-		t.Errorf("ITEM: got %q, want original (should be restored)", vars["ITEM"])
+	if got := vars["ITEM"].String(); got != "original" {
+		t.Errorf("ITEM: got %q, want original (should be restored)", got)
 	}
 }
 
@@ -336,7 +363,7 @@ func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
 			}},
 		},
 	}
-	vars := map[string]string{"RESULT": ""}
+	vars := sv(map[string]string{"RESULT": ""})
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", makeScope(vars), cfg, true, t.TempDir())
@@ -346,10 +373,10 @@ func TestExecForMatrix_IteratorVarsRemovedAfterLoop(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if _, exists := vars["OS"]; exists {
-		t.Errorf("OS should not exist after matrix loop, got %q", vars["OS"])
+		t.Errorf("OS should not exist after matrix loop, got %q", vars["OS"].String())
 	}
 	if _, exists := vars["ARCH"]; exists {
-		t.Errorf("ARCH should not exist after matrix loop, got %q", vars["ARCH"])
+		t.Errorf("ARCH should not exist after matrix loop, got %q", vars["ARCH"].String())
 	}
 }
 
@@ -378,7 +405,7 @@ func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]string{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

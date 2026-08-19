@@ -12,6 +12,7 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/tui"
+	"hobnob/internal/value"
 )
 
 func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
@@ -27,7 +28,7 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 			return fmt.Errorf("run dir template: %w", err)
 		}
 		runDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
-		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"])
+		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"].String())
 	}
 
 	displayCmd := maskSecrets(cmd, scope)
@@ -80,8 +81,9 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 
 // envWithScopeOverrides strips any os.Environ() var also present in scope
 // before appending scope's vars — os/exec uses first-occurrence-wins for Env,
-// and scope vars must win over inherited env.
-func envWithScopeOverrides(vars map[string]string) []string {
+// and scope vars must win over inherited env. A structured var is exported
+// as its compact JSON text (Value.String()), same as it renders in {{ }}.
+func envWithScopeOverrides(vars map[string]value.Value) []string {
 	scopeKeys := make(map[string]bool, len(vars))
 	for varName := range vars {
 		scopeKeys[varName] = true
@@ -95,20 +97,24 @@ func envWithScopeOverrides(vars map[string]string) []string {
 		}
 	}
 	for varName, varValue := range vars {
-		filtered = append(filtered, varName+"="+varValue)
+		filtered = append(filtered, varName+"="+varValue.String())
 	}
 	return filtered
 }
 
+// captureRunInto stores each into: result as a typed Value straight into
+// scope — a captured JSON array/object (see value.Capture, called inside
+// EvalRunIntoPipe) lands as a real Array/Object, not text, which is what
+// lets loop: iterate it without re-parsing.
 func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string) error {
-	evalLeaf := func(expr string) (string, error) {
+	evalLeaf := func(expr string) (value.Value, error) {
 		return eval.EvalRunIntoPipe(expr, stdout, stderr)
 	}
 	for _, intoEntry := range entries {
-		var val string
+		var val value.Value
 		var err error
 		if intoEntry.ValNode != nil {
-			val, err = evalJSONNodeToJSON(*intoEntry.ValNode, evalLeaf)
+			val, err = config.EvalJSONNode(*intoEntry.ValNode, evalLeaf)
 		} else {
 			val, err = evalLeaf(intoEntry.ValueTmpl)
 		}

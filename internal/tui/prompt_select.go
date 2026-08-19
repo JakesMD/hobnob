@@ -2,9 +2,10 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
+
+	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -33,31 +34,35 @@ func newSelectModel(varName, info string, items []string, multi bool, defaultVal
 	}
 }
 
-func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (string, error) {
+func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (value.Value, error) {
 	model := newSelectModel(varName, info, items, multi, defaultVal)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
-		return "", err
+		return value.Value{}, err
 	}
 	final := result.(selectModel)
 	if final.quit {
-		return "", fmt.Errorf("aborted")
+		return value.Value{}, fmt.Errorf("aborted")
 	}
+
+	var chosen value.Value
 	display := final.value
 	if final.multi {
-		var vals []string
-		// final.value is JSON produced by the TUI model, not user input — unmarshal
-		// can only fail if there's an upstream code bug. Display is best-effort; the
-		// actual return value (final.value) is correct regardless.
-		_ = json.Unmarshal([]byte(final.value), &vals)
-		display = strings.Join(vals, ", ")
+		arr := make([]any, len(final.values))
+		for i, val := range final.values {
+			arr[i] = val
+		}
+		chosen = value.Of(arr)
+		display = strings.Join(final.values, ", ")
+	} else {
+		chosen = value.Str(final.value)
 	}
 	if secret {
 		display = SecretMask
 	}
 	printGetLine(task, final.varName, display)
-	return final.value, nil
+	return chosen, nil
 }
 
 // ── select model ─────────────────────────────────────────────────────────────
@@ -69,7 +74,9 @@ type selectModel struct {
 	multi    bool
 	cursor   int
 	selected map[int]bool
-	value    string
+	value    string   // single-select result
+	values   []string // multi-select result
+	done     bool
 	quit     bool
 }
 
@@ -105,18 +112,18 @@ func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					vals = append(vals, item)
 				}
 			}
-			jsonBytes, _ := json.Marshal(vals)
-			model.value = string(jsonBytes)
+			model.values = vals
 		} else {
 			model.value = model.items[model.cursor]
 		}
+		model.done = true
 		return model, tea.Quit
 	}
 	return model, nil
 }
 
 func (model selectModel) View() string {
-	if model.value != "" {
+	if model.done {
 		return ""
 	}
 	verb := "Select a value"

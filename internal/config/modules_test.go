@@ -4,6 +4,8 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"hobnob/internal/value"
 )
 
 func TestLoadModules_InternalPrefix(t *testing.T) {
@@ -14,7 +16,7 @@ func TestLoadModules_InternalPrefix(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -67,7 +69,7 @@ func TestLoadModules_InternalTaskNotRegistered(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -97,7 +99,7 @@ func TestLoadModules_ShowFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -142,7 +144,7 @@ func TestLoadModules_HideFilter(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -190,7 +192,7 @@ func TestLoadModules_Flatten(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -249,7 +251,7 @@ func TestLoadModules_ModuleCfgIsolation(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -286,7 +288,7 @@ func TestLoadModules_TemplatePath(t *testing.T) {
 	}
 
 	// Act — default kicks in since FARM_FILE is not set
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -322,7 +324,7 @@ func TestLoadModules_FlattenCollision(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -360,7 +362,7 @@ func TestLoadModules_SubdirRelativePath(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -407,7 +409,7 @@ func TestLoadModules_NestedFormat(t *testing.T) {
 		t.Fatalf("parse error: %v", err)
 	}
 
-	err = LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{})
+	err = LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{})
 	if err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
@@ -461,7 +463,7 @@ func TestLoadModules_NestedImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -509,7 +511,7 @@ func TestLoadModules_DiamondImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -563,7 +565,7 @@ func TestLoadModules_SharedDirectImport(t *testing.T) {
 	}
 
 	// Act
-	if err := LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{}); err != nil {
+	if err := LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{}); err != nil {
 		t.Fatalf("LoadModules error: %v", err)
 	}
 
@@ -607,7 +609,7 @@ func TestLoadModules_CycleDetection(t *testing.T) {
 	}
 
 	// Act
-	err = LoadModules(context.Background(), cfg, map[string]string{}, map[string]bool{})
+	err = LoadModules(context.Background(), cfg, map[string]value.Value{}, map[string]bool{})
 
 	// Assert
 	if err == nil {
@@ -633,7 +635,7 @@ func TestLoadModules_ModuleEnvFileStaysPrivateToModule(t *testing.T) {
 			{Prefix: "mod", FileTmpl: "module.yml"},
 		},
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 	secrets := map[string]bool{}
 
 	// Act

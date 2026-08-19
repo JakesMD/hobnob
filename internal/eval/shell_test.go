@@ -4,62 +4,64 @@ import (
 	"context"
 	"os"
 	"testing"
+
+	"hobnob/internal/value"
 )
 
 func TestEvalCondition(t *testing.T) {
 	tests := []struct {
 		name      string
 		condTmpl  string
-		vars      map[string]string
+		vars      map[string]value.Value
 		wantTrue  bool
 		wantError bool
 	}{
 		{
 			name:     "given string equality match, when evaluated, then returns true (why: if condition gates step execution)",
 			condTmpl: `[ "{{.METHOD}}" = "Chunked Upload" ]`,
-			vars:     map[string]string{"METHOD": "Chunked Upload"},
+			vars:     map[string]value.Value{"METHOD": value.Str("Chunked Upload")},
 			wantTrue: true,
 		},
 		{
 			name:     "given string equality mismatch, when evaluated, then returns false (why: step should be skipped)",
 			condTmpl: `[ "{{.METHOD}}" = "Chunked Upload" ]`,
-			vars:     map[string]string{"METHOD": "Direct Upload"},
+			vars:     map[string]value.Value{"METHOD": value.Str("Direct Upload")},
 			wantTrue: false,
 		},
 		{
 			name:     "given string inequality match, when evaluated, then returns true (why: != skips excluded value)",
 			condTmpl: `[ "{{.MOTOR}}" != "Z-Axis Lead" ]`,
-			vars:     map[string]string{"MOTOR": "X-Axis Stepper"},
+			vars:     map[string]value.Value{"MOTOR": value.Str("X-Axis Stepper")},
 			wantTrue: true,
 		},
 		{
 			name:     "given string inequality match on excluded value, when evaluated, then returns false (why: Z-Axis Lead is excluded)",
 			condTmpl: `[ "{{.MOTOR}}" != "Z-Axis Lead" ]`,
-			vars:     map[string]string{"MOTOR": "Z-Axis Lead"},
+			vars:     map[string]value.Value{"MOTOR": value.Str("Z-Axis Lead")},
 			wantTrue: false,
 		},
 		{
 			name:     "given numeric less-than-equal pass, when evaluated, then returns true (why: check validates numeric bounds)",
 			condTmpl: `[ {{.SPEED}} -le {{.LIMIT}} ]`,
-			vars:     map[string]string{"SPEED": "1500", "LIMIT": "3000"},
+			vars:     map[string]value.Value{"SPEED": value.Str("1500"), "LIMIT": value.Str("3000")},
 			wantTrue: true,
 		},
 		{
 			name:     "given numeric less-than-equal fail, when evaluated, then returns false (why: value exceeds limit)",
 			condTmpl: `[ {{.SPEED}} -le {{.LIMIT}} ]`,
-			vars:     map[string]string{"SPEED": "9999", "LIMIT": "3000"},
+			vars:     map[string]value.Value{"SPEED": value.Str("9999"), "LIMIT": value.Str("3000")},
 			wantTrue: false,
 		},
 		{
 			name:     "given numeric less-than pass, when evaluated, then returns true (why: chunk size within limit)",
 			condTmpl: `[ {{.SIZE}} -lt {{.MAX}} ]`,
-			vars:     map[string]string{"SIZE": "1024", "MAX": "10485760"},
+			vars:     map[string]value.Value{"SIZE": value.Str("1024"), "MAX": value.Str("10485760")},
 			wantTrue: true,
 		},
 		{
 			name:     "given numeric less-than fail, when evaluated, then returns false (why: oversized chunk must be rejected)",
 			condTmpl: `[ {{.SIZE}} -lt {{.MAX}} ]`,
-			vars:     map[string]string{"SIZE": "99999999", "MAX": "10485760"},
+			vars:     map[string]value.Value{"SIZE": value.Str("99999999"), "MAX": value.Str("10485760")},
 			wantTrue: false,
 		},
 	}
@@ -92,10 +94,10 @@ func TestEvalCondition(t *testing.T) {
 func TestEvalCheckWithOverride(t *testing.T) {
 	t.Run("given a candidate value passing the check, when evaluated, then returns true (why: re-prompt loops commit a value only once its check passes)", func(t *testing.T) {
 		// Arrange
-		vars := map[string]string{"PORT": "80"}
+		vars := map[string]value.Value{"PORT": value.Str("80")}
 
 		// Act
-		ok, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", "8080")
+		ok, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", value.Str("8080"))
 
 		// Assert
 		if err != nil {
@@ -108,10 +110,10 @@ func TestEvalCheckWithOverride(t *testing.T) {
 
 	t.Run("given a candidate value failing the check, when evaluated, then returns false (why: a bad selection must re-prompt rather than commit)", func(t *testing.T) {
 		// Arrange
-		vars := map[string]string{"PORT": "8080"}
+		vars := map[string]value.Value{"PORT": value.Str("8080")}
 
 		// Act
-		ok, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", "80")
+		ok, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", value.Str("80"))
 
 		// Assert
 		if err != nil {
@@ -124,16 +126,16 @@ func TestEvalCheckWithOverride(t *testing.T) {
 
 	t.Run("given a check evaluated against a candidate, when it returns, then the caller's vars are unchanged (why: prompts probe candidate values before committing — a mutated scope would leak a rejected value)", func(t *testing.T) {
 		// Arrange
-		vars := map[string]string{"PORT": "80", "HOST": "localhost"}
+		vars := map[string]value.Value{"PORT": value.Str("80"), "HOST": value.Str("localhost")}
 
 		// Act
-		if _, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", "8080"); err != nil {
+		if _, err := EvalCheckWithOverride(context.Background(), `[ {{.PORT}} -gt 1024 ]`, vars, "PORT", value.Str("8080")); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 
 		// Assert
-		if vars["PORT"] != "80" {
-			t.Errorf("PORT mutated: got %q, want 80", vars["PORT"])
+		if vars["PORT"].String() != "80" {
+			t.Errorf("PORT mutated: got %q, want 80", vars["PORT"].String())
 		}
 		if len(vars) != 2 {
 			t.Errorf("vars gained or lost keys: %v", vars)
@@ -142,10 +144,10 @@ func TestEvalCheckWithOverride(t *testing.T) {
 
 	t.Run("given a key absent from vars, when evaluated, then the override supplies it without adding it to the caller's map (why: an optional prompt's var may not exist in scope yet)", func(t *testing.T) {
 		// Arrange
-		vars := map[string]string{}
+		vars := map[string]value.Value{}
 
 		// Act
-		ok, err := EvalCheckWithOverride(context.Background(), `[ "{{.CHOICE}}" = "good" ]`, vars, "CHOICE", "good")
+		ok, err := EvalCheckWithOverride(context.Background(), `[ "{{.CHOICE}}" = "good" ]`, vars, "CHOICE", value.Str("good"))
 
 		// Assert
 		if err != nil {

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"hobnob/internal/eval"
+	"hobnob/internal/value"
 
 	"gopkg.in/yaml.v3"
 )
@@ -85,7 +86,7 @@ func parseModulesNode(node *yaml.Node) ([]ModuleEntry, error) {
 // A module's own env: block is sourced for that module's own subtree only —
 // same rule as vars: (see GUIDE.md Modules > Scoping), so it never leaks into
 // the parent's vars/secrets.
-func LoadModules(ctx context.Context, cfg *ConfigFile, vars map[string]string, secrets map[string]bool) error {
+func LoadModules(ctx context.Context, cfg *ConfigFile, vars map[string]value.Value, secrets map[string]bool) error {
 	ancestors := map[string]bool{}
 	if cfg.FilePath != "" {
 		ancestors[cfg.FilePath] = true
@@ -93,7 +94,7 @@ func LoadModules(ctx context.Context, cfg *ConfigFile, vars map[string]string, s
 	return loadModules(ctx, cfg, vars, secrets, ancestors)
 }
 
-func loadModules(ctx context.Context, cfg *ConfigFile, vars map[string]string, secrets map[string]bool, ancestors map[string]bool) error {
+func loadModules(ctx context.Context, cfg *ConfigFile, vars map[string]value.Value, secrets map[string]bool, ancestors map[string]bool) error {
 	for _, module := range cfg.Modules {
 		moduleCfg, moduleVars, moduleSecrets, absPath, err := resolveModuleFile(ctx, cfg, module, vars, secrets, ancestors)
 		if err != nil {
@@ -118,7 +119,7 @@ func loadModules(ctx context.Context, cfg *ConfigFile, vars map[string]string, s
 // module-local scope (vars/secrets copied from the parent, plus anything the
 // module's own env: block sources) — everything loadModules needs before it
 // can recurse into the module's own sub-modules.
-func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry, vars map[string]string, secrets map[string]bool, ancestors map[string]bool) (moduleCfg *ConfigFile, moduleVars map[string]string, moduleSecrets map[string]bool, absPath string, err error) {
+func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry, vars map[string]value.Value, secrets map[string]bool, ancestors map[string]bool) (moduleCfg *ConfigFile, moduleVars map[string]value.Value, moduleSecrets map[string]bool, absPath string, err error) {
 	filePath, err := eval.EvalTemplate(module.FileTmpl, vars)
 	if err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q file path: %w", module.Prefix, err)
@@ -139,15 +140,15 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 
 	// moduleVars/moduleSecrets stay local to this module's own subtree — a
 	// module's env: file is private the same way its vars: block is.
-	moduleVars = eval.CopyVars(vars)
+	moduleVars = eval.CloneMap(vars)
 	moduleSecrets = eval.CloneMap(secrets)
 
 	envVars, envSecrets, err := LoadEnvFiles(ctx, moduleCfg.EnvFileTmpls, moduleCfg.TaskfileDir, moduleVars)
 	if err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
-	for key, value := range envVars {
-		moduleVars[key] = value
+	for key, envVal := range envVars {
+		moduleVars[key] = value.Str(envVal)
 		if envSecrets[key] {
 			moduleSecrets[key] = true
 		}
@@ -159,7 +160,7 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 // registerModuleTasks applies module's show/hide/flatten filters to moduleCfg's
 // tasks and registers the survivors into cfg under their prefixed (and,
 // if flattened, bare) names.
-func registerModuleTasks(cfg *ConfigFile, module ModuleEntry, moduleCfg *ConfigFile, vars map[string]string) error {
+func registerModuleTasks(cfg *ConfigFile, module ModuleEntry, moduleCfg *ConfigFile, vars map[string]value.Value) error {
 	showSet, err := evalStringSet(module.ShowTmpls, vars)
 	if err != nil {
 		return fmt.Errorf("module %q show: %w", module.Prefix, err)
@@ -226,7 +227,7 @@ func registerModuleTasks(cfg *ConfigFile, module ModuleEntry, moduleCfg *ConfigF
 	return nil
 }
 
-func evalStringSet(tmpls []string, scope map[string]string) (map[string]struct{}, error) {
+func evalStringSet(tmpls []string, scope map[string]value.Value) (map[string]struct{}, error) {
 	if len(tmpls) == 0 {
 		return nil, nil
 	}

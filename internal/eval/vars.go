@@ -12,10 +12,6 @@ func CloneMap[K comparable, V any](src map[K]V) map[K]V {
 	return dst
 }
 
-func CopyVars(src map[string]string) map[string]string {
-	return CloneMap(src)
-}
-
 // SplitKV splits raw on its first "=" into a key/value pair. ok is false when
 // raw has no "=" or an empty key (idx<=0) — the shared parsing rule for
 // KEY=VALUE lines across CLI args, os.Environ(), env files, and env dumps.

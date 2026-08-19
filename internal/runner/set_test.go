@@ -6,6 +6,7 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/value"
 )
 
 func TestExecSet_JSONNode(t *testing.T) {
@@ -73,10 +74,7 @@ func TestExecSet_JSONNode(t *testing.T) {
 					"t": {Steps: []config.Step{{Kind: config.KindSet, SetEntries: []config.SetEntry{test.entry}}}},
 				},
 			}
-			vars := map[string]string{}
-			for k, v := range test.initVars {
-				vars[k] = v
-			}
+			vars := sv(test.initVars)
 
 			// Act
 			err := ExecuteTask(context.Background(), "t", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, "")
@@ -85,7 +83,7 @@ func TestExecSet_JSONNode(t *testing.T) {
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if got := vars[test.entry.Key]; got != test.wantValue {
+			if got := vars[test.entry.Key].String(); got != test.wantValue {
 				t.Errorf("%s: got %q, want %q", test.entry.Key, got, test.wantValue)
 			}
 		})
@@ -105,7 +103,7 @@ func TestExecSet_JSONNode_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected parse error: %v", err)
 	}
-	vars := map[string]string{}
+	vars := map[string]value.Value{}
 
 	// Act
 	err = ExecuteTask(context.Background(), "literal-eval", &cli.Scope{Vars: vars, Secrets: map[string]bool{}}, cfg, true, "")
@@ -114,13 +112,13 @@ func TestExecSet_JSONNode_EndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if got, want := vars["PORTS"], `[8080,9090]`; got != want {
+	if got, want := vars["PORTS"].String(), `[8080,9090]`; got != want {
 		t.Errorf("PORTS: got %q, want %q (typed list literal must keep native JSON types)", got, want)
 	}
-	if got, want := vars["CONFIG"], `{"enabled":true,"endpoint":"prod.example.com/v1","host":"prod.example.com","replicas":3}`; got != want {
+	if got, want := vars["CONFIG"].String(), `{"enabled":true,"endpoint":"prod.example.com/v1","host":"prod.example.com","replicas":3}`; got != want {
 		t.Errorf("CONFIG: got %q, want %q (map literal leaves must be templated)", got, want)
 	}
-	if got, want := vars["ALIASED"], `{"a":"hello","b":"hello"}`; got != want {
+	if got, want := vars["ALIASED"].String(), `{"a":"hello","b":"hello"}`; got != want {
 		t.Errorf("ALIASED: got %q, want %q (YAML alias inside a literal must resolve)", got, want)
 	}
 }
@@ -168,7 +166,7 @@ func TestExecSet_SecretFlag(t *testing.T) {
 			secrets := make(map[string]bool)
 
 			// Act
-			err := ExecuteTask(context.Background(), "t", &cli.Scope{Vars: map[string]string{}, Secrets: secrets}, cfg, true, "")
+			err := ExecuteTask(context.Background(), "t", &cli.Scope{Vars: map[string]value.Value{}, Secrets: secrets}, cfg, true, "")
 
 			// Assert
 			if err != nil {

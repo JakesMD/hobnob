@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"hobnob/internal/eval"
+	"hobnob/internal/value"
 
 	"gopkg.in/yaml.v3"
 )
@@ -53,10 +54,10 @@ func parseEnvNode(node *yaml.Node) ([]EnvFileEntry, error) {
 // A referenced file that doesn't exist prints a warning to stderr and is
 // skipped, rather than failing the whole run — a typo'd optional env file
 // shouldn't block every task.
-func LoadEnvFiles(ctx context.Context, entries []EnvFileEntry, taskfileDir string, scope map[string]string) (values map[string]string, secrets map[string]bool, err error) {
+func LoadEnvFiles(ctx context.Context, entries []EnvFileEntry, taskfileDir string, scope map[string]value.Value) (values map[string]string, secrets map[string]bool, err error) {
 	values = make(map[string]string)
 	secrets = make(map[string]bool)
-	scopeSoFar := eval.CopyVars(scope)
+	scopeSoFar := eval.CloneMap(scope)
 	for _, entry := range entries {
 		path, err := eval.EvalTemplate(entry.PathTmpl, scopeSoFar)
 		if err != nil {
@@ -87,7 +88,7 @@ func LoadEnvFiles(ctx context.Context, entries []EnvFileEntry, taskfileDir strin
 		for varName, varValue := range vars {
 			values[varName] = varValue
 			secrets[varName] = isSecret
-			scopeSoFar[varName] = varValue
+			scopeSoFar[varName] = value.Str(varValue)
 		}
 	}
 	return values, secrets, nil
