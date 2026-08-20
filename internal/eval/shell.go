@@ -52,7 +52,7 @@ func SourceShellFile(ctx context.Context, path, dir string) (map[string]string, 
 	if err != nil {
 		return nil, fmt.Errorf("capture baseline env: %w", err)
 	}
-	sourced, err := captureEnv(ctx, dir, fmt.Sprintf("set -a; . %s; env -0", shellQuote(path)))
+	sourced, err := captureEnv(ctx, dir, fmt.Sprintf("set -a; . %s; env -0", value.ShellQuote(path)))
 	if err != nil {
 		return nil, fmt.Errorf("source: %w", err)
 	}
@@ -63,12 +63,6 @@ func SourceShellFile(ctx context.Context, path, dir string) (map[string]string, 
 		}
 	}
 	return diff, nil
-}
-
-// shellQuote wraps value in single quotes for safe interpolation into a POSIX
-// `sh -c` script, escaping any embedded single quotes.
-func shellQuote(value string) string {
-	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
 }
 
 func captureEnv(ctx context.Context, dir, script string) (map[string]string, error) {

@@ -121,7 +121,8 @@ type Step struct {
 
 	// KindRun
 	Command string
-	DirTmpl string // working directory template (run:, call:, and use: steps)
+	Argv    []string // run: list form; element templates, mutually exclusive with Command
+	DirTmpl string   // working directory template (run:, call:, and use: steps)
 
 	// KindCall, KindUse
 	CallTarget  string // call: target; also use:'s target

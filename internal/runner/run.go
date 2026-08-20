@@ -16,10 +16,24 @@ import (
 )
 
 func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
-	cmd, err := eval.EvalTemplate(step.Command, scope.Vars)
-	if err != nil {
-		return fmt.Errorf("run template: %w", err)
+	var shellCmd *osExec.Cmd
+	var displayCmd string
+	if len(step.Argv) > 0 {
+		argv, err := eval.ResolveArgv(step.Argv, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("run argv: %w", err)
+		}
+		shellCmd = osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
+		displayCmd = displayArgv(argv)
+	} else {
+		cmd, err := eval.EvalTemplate(step.Command, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("run template: %w", err)
+		}
+		shellCmd = osExec.CommandContext(execState.ctx, "sh", "-c", cmd)
+		displayCmd = cmd
 	}
+
 	runDir := execState.dir
 	displayDir := ""
 	if step.DirTmpl != "" {
@@ -31,19 +45,18 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"].String())
 	}
 
-	displayCmd := maskSecrets(cmd, scope)
+	displayCmd = maskSecrets(displayCmd, scope)
 	for _, displayLine := range tui.RunDisplayLines(displayCmd, execState.task, displayDir) {
 		fmt.Println(displayLine)
 	}
 	prefix := tui.TaskPrefix(execState.task)
 	stdoutLineWriter := tui.NewLineWriter(os.Stdout, prefix)
 	stderrLineWriter := tui.NewLineWriter(os.Stderr, prefix)
-	shellCmd := osExec.CommandContext(execState.ctx, "sh", "-c", cmd)
-	// setProcAttr (unix) puts sh in its own process group so cancelFunc can
-	// signal the whole group — otherwise SIGTERM only reaches sh itself,
-	// leaving any children it forked (multi-command scripts, pipelines,
-	// background jobs) running. No-op on windows, which has no process
-	// groups in this sense.
+	// setProcAttr (unix) puts the child in its own process group so
+	// cancelFunc can signal the whole group — otherwise SIGTERM only reaches
+	// the direct child, leaving any children it forked (multi-command
+	// scripts, pipelines, background jobs) running. No-op on windows, which
+	// has no process groups in this sense.
 	setProcAttr(shellCmd)
 	shellCmd.Cancel = cancelFunc(shellCmd)
 	// No WaitDelay: graceful shutdown waits for the step to exit on its own
@@ -61,7 +74,7 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 	}
 	shellCmd.Env = envWithScopeOverrides(scope.Vars)
 
-	err = shellCmd.Start()
+	err := shellCmd.Start()
 	if err == nil {
 		setRunningPID(shellCmd.Process.Pid)
 		err = shellCmd.Wait()

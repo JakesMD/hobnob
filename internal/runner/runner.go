@@ -102,6 +102,28 @@ func maskSecrets(text string, scope *cli.Scope) string {
 	return text
 }
 
+// shellMetachars is the set of characters that would need shell quoting if
+// argv were ever pasted back into a shell — displayArgv quotes an element
+// only when it contains one of these (or is empty/whitespace), so the common
+// case reads as a plain command line.
+const shellMetachars = " \t\n\"'$`\\|&;<>()*?[]{}!#~"
+
+// displayArgv renders argv as a shell-quoted string for the run: log line —
+// display only, argv itself never touches a shell. An element is wrapped in
+// value.ShellQuote only when it's empty or holds a character that would
+// otherwise be ambiguous, keeping the common line copy-pasteable.
+func displayArgv(argv []string) string {
+	parts := make([]string, len(argv))
+	for i, arg := range argv {
+		if arg == "" || strings.ContainsAny(arg, shellMetachars) {
+			parts[i] = value.ShellQuote(arg)
+		} else {
+			parts[i] = arg
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // jsonEscapedForm returns secretVal as it would appear inside a
 // json.Marshal-ed string (unquoted) — the form a secret takes once it's a
 // leaf of a set:/into: JSON literal.

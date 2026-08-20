@@ -43,7 +43,12 @@ tasks:
           - JOKE: .RESP
 
       # JSON handling: pluck fields out of the blob, no jq
-      - run: 'echo "{{ .JOKE | pluck "[0].setup" }} ... {{ .JOKE | pluck "[0].punchline" }}"'
+      - set:
+          - SETUP: '{{ .JOKE | pluck "[0].setup" }}'
+          - PUNCHLINE: '{{ .JOKE | pluck "[0].punchline" }}'
+
+      # Typed argv: no shell, so no quoting to get wrong
+      - run: [echo, .SETUP, "...", .PUNCHLINE]
 
   _fetch-joke:
     steps:
@@ -70,6 +75,9 @@ Select a value for CATEGORY.
 
 ## ✨ Other features
 
+- **Typed argv** — `run:` also accepts a YAML list, executed directly with no
+  shell: no quoting layer, and an Array-typed element splices into multiple
+  arguments (`FLAGS: ["-ldflags", "-s -w"]` arrives as one argument, not two).
 - **Modules** — import tasks from other files, namespaced by prefix.
 - **Shared prologues** — `use:` a task's steps directly into the caller's
   scope, memoized so a shared setup runs once per invocation no matter how

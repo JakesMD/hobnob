@@ -30,6 +30,10 @@
 // 17. key the use: memo on task name instead of Steps identity       -> use_test.go (module identity)
 // 18. skip writing the use: delta snapshot after a successful run    -> use_test.go (rerun/loop, sandbox replay)
 // 19. drop the with:/into: parse-time rejection on use: steps        -> use_test.go (rejected at parse time)
+//
+// 20. make run:'s Array-splice loop stringify the whole Array        -> run_test.go (ArrayElementSplices)
+// 21. drop the empty-argument-preserved rule in eval.ResolveArgv     -> run_test.go (EmptyElementPreserved)
+// 22. allow run: [] to parse instead of erroring                     -> run_test.go (EmptyListIsParseError)
 package e2e
 
 import (

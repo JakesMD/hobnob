@@ -412,6 +412,20 @@ or object:
 - run: echo '{{ .RESP | string }}' # always text, regardless of RESP's type
 ```
 
+#### `quote`
+
+Wraps a value in POSIX single quotes for safe interpolation into a `run:`
+string command, escaping any embedded single quote:
+
+```yaml
+- run: echo {{ .NAME | quote }}
+```
+
+The escape hatch for the string form — see [Argv list
+form](#argv-list-form), which removes the need for it in the common case by
+avoiding the shell entirely. Arrays and objects are rendered as compact JSON
+first, matching `string`, then quoted.
+
 #### `len`
 
 Length of a string (in runes), array, or object (its key count):
@@ -511,6 +525,65 @@ templates — `stdout | lines | first`, `stdout | pluck "field"`, and so on.
 > `run:` output can appear late or all at once. Fix with `- set: [{PYTHONUNBUFFERED: 1}]`,
 > or `python -u` per script. See
 > [Python `-u` docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u).
+
+#### Argv list form
+
+A YAML sequence executes directly, one element per argument — no `sh -c`, so
+no shell parses the rendered command:
+
+```yaml
+- run: [docker, push, "{{ .IMAGE }}"]
+```
+
+`IMAGE` can hold spaces, quotes, `$`, or a semicolon and still arrives as
+exactly one argument — the string form can't make that guarantee, since a
+rendered value is spliced into a command *string* that the shell then parses.
+Use the list form whenever a command's arguments include a variable, unless
+you specifically need the shell features below.
+
+Each element is a whole field value, so it can be a bare `.VAR` (or a filter
+chain) without `{{ }}`, same as `loop:`/`options:`/`into:`. An element that
+resolves to an Array splices into multiple arguments — one real payoff of
+typed values a plain task runner can't offer:
+
+```yaml
+- set:
+    - FLAGS: ["-ldflags", "-s -w"]
+- run: [go, build, .FLAGS, ./cmd/hobnob]
+# argv: go build -ldflags "-s -w" ./cmd/hobnob — "-s -w" arrives as one argument
+```
+
+An empty array splices to nothing; an element resolving to `""` is preserved
+as an empty argument (dropping it would shift every later positional
+argument). An Object element is an error — pluck the field you mean to pass
+instead of letting it stringify by accident.
+
+What it gives up: no pipes, redirects, globs, `&&`, or shell builtins. `cd` in
+particular is unavailable — that's what [`dir:`](#dir--working-directory) is
+for. The string form stays for all of it; neither form is deprecated.
+
+#### The `quote` filter, and block scalars
+
+The string form still needs a shell, so use the [`quote` filter](#quote) to
+escape a value going into it.
+
+Separately, a block scalar (`|`) removes YAML's own quoting layer — inside it,
+quotes are literal, so nested `"` no longer need escaping:
+
+```yaml
+- run: |
+    echo "{{ .JOKE | pluck "[0].setup" }} ... {{ .JOKE | pluck "[0].punchline" }}"
+```
+
+For any command using more than one filter, name the intermediate value
+instead of stacking pipes inline — one layer per line, and the value has a
+name when it needs debugging:
+
+```yaml
+- set:
+    - SETUP: '{{ .JOKE | pluck "[0].setup" }}'
+- run: [echo, .SETUP]
+```
 
 ### `get` — interactive prompts
 

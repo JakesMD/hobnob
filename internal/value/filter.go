@@ -34,6 +34,7 @@ var Filters = map[string]Filter{
 	"json":       filterJSON,
 	"string":     filterString,
 	"len":        filterLen,
+	"quote":      filterQuote,
 }
 
 func piped(args []Value) Value {
@@ -262,6 +263,16 @@ func filterJSON(args []Value) (Value, error) {
 
 func filterString(args []Value) (Value, error) {
 	return Str(piped(args).String()), nil
+}
+
+// ShellQuote wraps s in POSIX single quotes for safe interpolation into a
+// `sh -c` script, escaping any embedded single quote.
+func ShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+func filterQuote(args []Value) (Value, error) {
+	return Str(ShellQuote(piped(args).String())), nil
 }
 
 func filterLen(args []Value) (Value, error) {

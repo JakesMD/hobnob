@@ -133,9 +133,11 @@ fresh child scope while everything else in `execCtx` carries forward.
 
 Step kinds, briefly:
 
-- **`run:`** — execs `sh -c` in the step's resolved `dir:`, streams
-  stdout/stderr live, optionally captures both via `into:`. Scope vars override
-  same-named vars in the inherited environment.
+- **`run:`** — a scalar execs `sh -c`; a YAML list (`Step.Argv`) resolves each
+  element (typed, an Array element splicing into multiple arguments) and execs
+  argv directly, no shell involved. Either way, runs in the step's resolved
+  `dir:`, streams stdout/stderr live, optionally captures both via `into:`.
+  Scope vars override same-named vars in the inherited environment.
 - **`set:`** — evaluates each template top-to-bottom into scope.
 - **`get:`** — no-ops if the var is already in scope (how CLI `KEY=VALUE` args
   satisfy prompts). Otherwise uses `default:`, fails, or prompts via

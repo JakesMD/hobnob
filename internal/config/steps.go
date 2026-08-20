@@ -19,7 +19,19 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		switch fieldKey {
 		case "run":
 			step.Kind = KindRun
-			step.Command = normalizeTmpl(fieldVal.Value)
+			switch fieldVal.Kind {
+			case yaml.SequenceNode:
+				if len(fieldVal.Content) == 0 {
+					return Step{}, fmt.Errorf("run: list form needs at least one element")
+				}
+				for _, item := range fieldVal.Content {
+					step.Argv = append(step.Argv, normalizeTmpl(item.Value))
+				}
+			case yaml.MappingNode:
+				return Step{}, fmt.Errorf("run: expected a command string or a list of arguments, got a mapping")
+			default:
+				step.Command = normalizeTmpl(fieldVal.Value)
+			}
 		case "set":
 			step.Kind = KindSet
 			entries, err := parseSetNode(fieldVal)

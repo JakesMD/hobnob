@@ -358,6 +358,33 @@ func TestFilterString(t *testing.T) {
 	}
 }
 
+func TestFilterQuote(t *testing.T) {
+	tests := []struct {
+		name  string
+		input Value
+		want  string
+	}{
+		{"given plain string, when quote called, then wrapped in single quotes", Str("hello"), "'hello'"},
+		{"given string with embedded single quote, when quote called, then quote escaped", Str("it's"), `'it'\''s'`},
+		{"given empty string, when quote called, then empty quoted pair", Str(""), "''"},
+		{"given array, when quote called, then compact JSON quoted (why: matches | string's stringify-first behaviour)", Of([]any{"a", "b"}), `'["a","b"]'`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := call(t, "quote", test.input)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.Kind() != KindString {
+				t.Errorf("kind: got %v, want String", got.Kind())
+			}
+			if got.String() != test.want {
+				t.Errorf("got %q, want %q", got.String(), test.want)
+			}
+		})
+	}
+}
+
 func TestFilterLen(t *testing.T) {
 	tests := []struct {
 		name  string

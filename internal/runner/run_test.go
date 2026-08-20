@@ -21,6 +21,14 @@ func makeRunCfg(command string, into []config.IntoEntry) *config.ConfigFile {
 	}
 }
 
+func makeArgvRunCfg(argv []string) *config.ConfigFile {
+	return &config.ConfigFile{
+		Tasks: map[string]config.Task{
+			"t": {Steps: []config.Step{{Kind: config.KindRun, Argv: argv}}},
+		},
+	}
+}
+
 func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	// given a run: step whose command is still executing, when ctx is
 	// cancelled, then the returned error wraps ErrInterrupted (why: callers
@@ -101,6 +109,66 @@ func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "child-finished")
 	cfg := makeRunCfg(fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker), nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
+	}()
+	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
+
+	// Act
+	KillRunningStep()
+
+	// Assert
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrInterrupted) {
+			t.Fatalf("expected ErrInterrupted, got: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("ExecuteTask did not return after KillRunningStep")
+	}
+	time.Sleep(200 * time.Millisecond) // give a leaked child a chance to finish
+	if _, statErr := os.Stat(marker); statErr == nil {
+		t.Fatal("background child kept running after KillRunningStep — force-kill did not reach the step's process group")
+	}
+}
+
+func TestExecRun_Argv_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
+	// given a list-form run: step (no shell involved — CommandContext is
+	// built from argv, not "sh -c"), when ctx is cancelled, then the same
+	// ErrInterrupted wrapping applies as the string form (why: setProcAttr /
+	// cancelFunc / the ctx.Err() check are shared by both branches of
+	// execRun — this is the regression guard for that sharing)
+
+	// Arrange
+	cfg := makeArgvRunCfg([]string{"sleep", "5"})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	// Act
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
+
+	// Assert
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("expected ErrInterrupted, got: %v", err)
+	}
+}
+
+func TestKillRunningStep_Argv_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
+	// given a list-form run: step whose direct child (sh, invoked as argv[0]
+	// rather than via the hardcoded "sh -c" branch) ignores SIGTERM, when ctx
+	// cancels and KillRunningStep is then called, then the process group is
+	// force-killed — same as the string form (why: proves setProcAttr's
+	// Setpgid and cancelFunc's group-kill apply regardless of which branch
+	// constructed the *exec.Cmd)
+
+	// Arrange
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "child-finished")
+	cfg := makeArgvRunCfg([]string{"sh", "-c", fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker)})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
