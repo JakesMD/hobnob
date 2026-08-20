@@ -50,7 +50,7 @@ func loadConfig(ctx context.Context, path string, cliVars map[string]string, inv
 	if err != nil {
 		return nil, nil, err
 	}
-	scope, err := cli.BuildScope(ctx, cfg.EnvFileTmpls, cliVars, cfg.TaskfileDir, invDir)
+	scope, err := cli.BuildScope(ctx, cfg.EnvFileTmpls, cfg.ConstEntries, cfg.VarEntries, cliVars, cfg.TaskfileDir, invDir)
 	if err != nil {
 		return nil, nil, err
 	}

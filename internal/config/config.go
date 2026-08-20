@@ -54,6 +54,18 @@ func ParseConfig(path string) (*ConfigFile, error) {
 				return nil, fmt.Errorf("env: %w", err)
 			}
 			cfg.EnvFileTmpls = paths
+		case "const":
+			entries, err := parseSetNode(val)
+			if err != nil {
+				return nil, fmt.Errorf("const: %w", err)
+			}
+			cfg.ConstEntries = entries
+		case "vars":
+			entries, err := parseSetNode(val)
+			if err != nil {
+				return nil, fmt.Errorf("vars: %w", err)
+			}
+			cfg.VarEntries = entries
 		case "modules":
 			mods, err := parseModulesNode(val)
 			if err != nil {
@@ -73,8 +85,21 @@ func ParseConfig(path string) (*ConfigFile, error) {
 				cfg.Tasks[taskName] = task
 				cfg.TaskNames = append(cfg.TaskNames, taskName)
 			}
+		default:
+			return nil, fmt.Errorf("unknown top-level key %q", key)
 		}
 	}
+
+	if err := checkConstClosedWorld(cfg.ConstEntries); err != nil {
+		return nil, err
+	}
+	if err := checkVarsNoSelfReference(cfg.VarEntries); err != nil {
+		return nil, err
+	}
+	if err := checkConstNamesNotShadowed(cfg); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
 }
 

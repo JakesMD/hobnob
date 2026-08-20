@@ -208,18 +208,24 @@ func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
 	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
 }
 
-// applyModuleLayer supplies moduleCfg's own env:/vars: defaults (see
-// config.ConfigFile.ModuleLayer) into scope before a task belonging to that
-// module runs — the fix for a module's own env: block never having reached
-// a module task's runtime scope. Every entry is applied via SetIfDefault, so
-// it only fills a key the caller hasn't already set (directly, via with:, or
-// via a higher-priority layer of its own) — a module's env: is a default for
-// its subtree, not an override of it. Re-running this on every nested call
-// into the same module is idempotent: once applied, a key is no longer
-// ambient, so a later call is a no-op for it.
+// applyModuleLayer supplies moduleCfg's own env:/vars:/const: vars (see
+// config.ConfigFile.ModuleLayer/ModuleConstLayer) into scope before a task
+// belonging to that module runs — the fix for a module's own env: block
+// never having reached a module task's runtime scope. The default tier
+// (env:, vars:) is applied via SetIfDefault, so it only fills a key the
+// caller hasn't already set (directly, via with:, or via a higher-priority
+// layer of its own); const: is applied unconditionally after it, since a
+// module's own const: always wins in its subtree — ordinary lexical
+// shadowing, the nearest declaration wins. Re-running this on every nested
+// call into the same module is idempotent: once a default-tier key is
+// applied it's no longer ambient, so a later call is a no-op for it, and
+// const: always writes the same value.
 func applyModuleLayer(scope *cli.Scope, moduleCfg *config.ConfigFile) {
 	for key, val := range moduleCfg.ModuleLayer {
 		scope.SetIfDefault(key, val, moduleCfg.ModuleLayerSecrets[key])
+	}
+	for key, val := range moduleCfg.ModuleConstLayer {
+		scope.Set(key, val, moduleCfg.ModuleConstLayerSecrets[key])
 	}
 }
 

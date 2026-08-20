@@ -544,3 +544,158 @@ func TestE2E_Modules_OwnEnvFileDoesNotOverrideExplicitWithVar(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "v=from_caller")
 }
+
+func TestE2E_Modules_OwnConstAlwaysOverridesParentValue(t *testing.T) {
+	// given a module's own const: entry and a parent const: entry of the
+	// same name, when a module task runs, then the module's own value wins
+	// in its own subtree (why: a module's const: is a hard fact about that
+	// module, not a default — ordinary lexical shadowing, the nearest
+	// declaration wins, unlike a module's env:/vars:, which only ever fills
+	// a gap)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				const:
+				  - LABEL: from-parent
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				const:
+				  - LABEL: from-module
+				tasks:
+				  show:
+				    steps:
+				      - run: echo label={{.LABEL}}
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "label=from-module")
+}
+
+func TestE2E_Modules_OwnConstDoesNotLeakToParent(t *testing.T) {
+	// given a module's own const: entry, when the PARENT's own task (not a
+	// module task) echoes that name, then it's unset there — a module's
+	// const: never leaks up, matching every other file-scoped rule
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+				      - run: echo "v=${LABEL-UNSET}"
+			`,
+			"mod.yml": `
+				const:
+				  - LABEL: from-module
+				tasks:
+				  show:
+				    steps:
+				      - run: echo label={{.LABEL}}
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "label=from-module", "v=UNSET")
+}
+
+func TestE2E_Modules_OwnConstOverridesEvenACLIArg(t *testing.T) {
+	// given a module's own const: entry and a CLI arg of the same name,
+	// when a module task runs, then the module's const: still wins (why:
+	// const: outranks CLI args at the root, and a module's own const:
+	// shadows its subtree just as completely — the nearest declaration
+	// always wins, regardless of what's above it)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				const:
+				  - LABEL: from-module
+				tasks:
+				  show:
+				    steps:
+				      - run: echo label={{.LABEL}}
+			`,
+		},
+		Args: []string{"t", "LABEL=from-cli"},
+	})
+	res.OK(t)
+	res.Lines(t, "label=from-module")
+}
+
+func TestE2E_Modules_OwnVarsOnlyFillsGapLikeEnvDoes(t *testing.T) {
+	// given a module's own vars: entry and a CLI arg of the same name, when
+	// a module task runs, then the CLI arg wins (why: unlike const:, a
+	// module's vars: is a default for its subtree, not an override — the
+	// module can't tell whether the inherited value came from something
+	// higher-priority than a default, so it never risks clobbering it)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				vars:
+				  - HOST: mod-default
+				tasks:
+				  show:
+				    steps:
+				      - run: echo host={{.HOST}}
+			`,
+		},
+		Args: []string{"t", "HOST=from-cli"},
+	})
+	res.OK(t)
+	res.Lines(t, "host=from-cli")
+}
+
+func TestE2E_Modules_OwnVarsUsedWhenNothingElseSetsIt(t *testing.T) {
+	// given a module's own vars: entry and nothing else supplying that
+	// name, when a module task runs, then the module's default is used —
+	// the positive half of OwnVarsOnlyFillsGapLikeEnvDoes
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				vars:
+				  - HOST: mod-default
+				tasks:
+				  show:
+				    steps:
+				      - run: echo host={{.HOST}}
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "host=mod-default")
+}

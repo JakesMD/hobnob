@@ -23,21 +23,34 @@ type ModuleEntry struct {
 type ConfigFile struct {
 	FilePath     string
 	EnvFileTmpls []EnvFileEntry
+	ConstEntries []SetEntry // const: — outranks env, env files, and CLI args
+	VarEntries   []SetEntry // vars: — overridable; below CLI args, above env files
 	Tasks        map[string]Task
 	TaskNames    []string
 	TaskfileDir  string
 	Modules      []ModuleEntry
 
-	// ModuleLayer/ModuleLayerSecrets hold the vars this file contributes to
-	// its own subtree when reached as a module — currently its env: block,
-	// computed once in resolveModuleFile relative to the parent scope it was
-	// loaded with. nil for a root ConfigFile (never applied at runtime; see
-	// runner.executeTask, gated on Task.Cfg != nil). A module task's own
-	// runtime scope only ever gains these as defaults (Scope.SetIfDefault),
-	// never as an override — matching a root file's own env: block, which is
-	// itself just the lowest layer BuildScope applies.
-	ModuleLayer        map[string]value.Value
-	ModuleLayerSecrets map[string]bool
+	// ModuleLayer/ModuleLayerSecrets hold the default-tier vars this file
+	// contributes to its own subtree when reached as a module — its env:
+	// block plus its vars: block, computed once in resolveModuleFile relative
+	// to the parent scope it was loaded with. Applied at runtime via
+	// Scope.SetIfDefault (see runner.applyModuleLayer): a default for the
+	// subtree, never an override of something the caller (or a higher scope
+	// layer) already supplied — matching how a root file's own env:/vars:
+	// blocks are themselves just low layers BuildScope applies.
+	//
+	// ModuleConstLayer/ModuleConstLayerSecrets hold this file's own const:
+	// block instead — unconditionally overwritten into the subtree's scope
+	// (Scope.Set), since a module's own const: is a hard fact about that
+	// module, not a default: ordinary lexical shadowing, the nearest
+	// declaration wins.
+	//
+	// All four are nil for a root ConfigFile (never applied at runtime; see
+	// runner.executeTask, gated on Task.Cfg != nil).
+	ModuleLayer             map[string]value.Value
+	ModuleLayerSecrets      map[string]bool
+	ModuleConstLayer        map[string]value.Value
+	ModuleConstLayerSecrets map[string]bool
 }
 
 // EnvFileEntry is one env: block entry. SecretOverride is nil unless the

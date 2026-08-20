@@ -139,16 +139,25 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 	}
 
 	// moduleVars/moduleSecrets stay local to this module's own subtree — a
-	// module's env: file is private the same way its vars: block is.
+	// module's env:/vars:/const: blocks are private the same way its tasks
+	// are, unless flatten:/show: makes a task visible.
 	moduleVars = eval.CloneMap(vars)
 	moduleSecrets = eval.CloneMap(secrets)
+
+	moduleCfg.ModuleLayer = make(map[string]value.Value)
+	moduleCfg.ModuleLayerSecrets = make(map[string]bool)
+
+	// vars: first, then env: files on top (matching the root chain's own
+	// vars: < env files ordering) — both land in the same default-tier
+	// layer, applied at runtime via Scope.SetIfDefault.
+	if err := applyModuleSetEntries(moduleCfg.VarEntries, moduleVars, moduleSecrets, moduleCfg.ModuleLayer, moduleCfg.ModuleLayerSecrets); err != nil {
+		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
+	}
 
 	envVars, envSecrets, err := LoadEnvFiles(ctx, moduleCfg.EnvFileTmpls, moduleCfg.TaskfileDir, moduleVars)
 	if err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
-	moduleCfg.ModuleLayer = make(map[string]value.Value, len(envVars))
-	moduleCfg.ModuleLayerSecrets = make(map[string]bool, len(envSecrets))
 	for key, envVal := range envVars {
 		moduleVars[key] = value.Str(envVal)
 		moduleCfg.ModuleLayer[key] = value.Str(envVal)
@@ -158,7 +167,41 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 		}
 	}
 
+	// const: last, into its own hard-override layer — a module's own const:
+	// always wins in its subtree, never just a default (see
+	// ConfigFile.ModuleConstLayer).
+	moduleCfg.ModuleConstLayer = make(map[string]value.Value)
+	moduleCfg.ModuleConstLayerSecrets = make(map[string]bool)
+	if err := applyModuleSetEntries(moduleCfg.ConstEntries, moduleVars, moduleSecrets, moduleCfg.ModuleConstLayer, moduleCfg.ModuleConstLayerSecrets); err != nil {
+		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
+	}
+
 	return moduleCfg, moduleVars, moduleSecrets, absPath, nil
+}
+
+// applyModuleSetEntries evaluates entries (a module's own const: or vars:
+// block) top-to-bottom into vars/secrets — same sequential rule set:
+// follows at step scope, each entry seeing everything set before it,
+// including the parent scope this module inherited — and records every
+// entry into layer/layerSecrets too, so the caller can also apply it, via
+// whichever runtime rule fits that block, to the scope a module task
+// actually executes with (see runner.applyModuleLayer).
+func applyModuleSetEntries(entries []SetEntry, vars map[string]value.Value, secrets map[string]bool, layer map[string]value.Value, layerSecrets map[string]bool) error {
+	for _, entry := range entries {
+		val, err := EvalSetEntry(entry, func(tmpl string) (value.Value, error) {
+			return eval.EvalValue(tmpl, vars)
+		})
+		if err != nil {
+			return fmt.Errorf("%s: %w", entry.Key, err)
+		}
+		vars[entry.Key] = val
+		layer[entry.Key] = val
+		if entry.Secret {
+			secrets[entry.Key] = true
+			layerSecrets[entry.Key] = true
+		}
+	}
+	return nil
 }
 
 // registerModuleTasks applies module's show/hide/flatten filters to moduleCfg's
