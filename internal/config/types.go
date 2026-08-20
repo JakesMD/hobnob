@@ -145,10 +145,12 @@ type Step struct {
 	SetEntries []SetEntry
 
 	// KindRun
-	Command string
-	Argv    []string // run: list form; element templates, mutually exclusive with Command
-	DirTmpl string   // working directory template (run:, call:, and use: steps)
-	Soft    bool     // continue past a non-zero exit instead of halting the timeline (run: and call:)
+	Command  string
+	Argv     []string // run: list form; element templates, mutually exclusive with Command
+	DirTmpl  string   // working directory template (run:, call:, and use: steps)
+	Soft     bool     // continue past a non-zero exit instead of halting the timeline (run: and call:)
+	Quiet    bool     // suppress run: output on success; replayed in full on failure
+	QuietMsg string   // template shown in place of suppressed output; empty is valid (run: only)
 
 	// KindCall
 	CallTarget  string // call: target

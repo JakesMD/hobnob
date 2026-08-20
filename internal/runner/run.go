@@ -49,6 +49,13 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 	for _, displayLine := range tui.RunDisplayLines(displayCmd, execState.task, displayDir) {
 		fmt.Println(displayLine)
 	}
+	if step.Quiet {
+		quietMsg, err := eval.EvalTemplate(step.QuietMsg, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("quiet template: %w", err)
+		}
+		fmt.Println(tui.RunQuietLine(execState.task, maskSecrets(quietMsg, scope)))
+	}
 	prefix := tui.TaskPrefix(execState.task)
 	stdoutLineWriter := tui.NewLineWriter(os.Stdout, prefix)
 	stderrLineWriter := tui.NewLineWriter(os.Stderr, prefix)
@@ -65,10 +72,17 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 	shellCmd.Dir = runDir
 
 	var stdoutBuf, stderrBuf bytes.Buffer
-	if len(step.IntoEntries) > 0 {
+	switch {
+	case step.Quiet:
+		// Buffered only — never teed to the LineWriters live. On failure,
+		// below, the buffers are replayed through them so a hidden step
+		// never fails silently.
+		shellCmd.Stdout = &stdoutBuf
+		shellCmd.Stderr = &stderrBuf
+	case len(step.IntoEntries) > 0:
 		shellCmd.Stdout = io.MultiWriter(stdoutLineWriter, &stdoutBuf)
 		shellCmd.Stderr = io.MultiWriter(stderrLineWriter, &stderrBuf)
-	} else {
+	default:
 		shellCmd.Stdout = stdoutLineWriter
 		shellCmd.Stderr = stderrLineWriter
 	}
@@ -79,6 +93,10 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 		setRunningPID(shellCmd.Process.Pid)
 		err = shellCmd.Wait()
 		clearRunningPID()
+	}
+	if step.Quiet && err != nil {
+		stdoutLineWriter.Write(stdoutBuf.Bytes())
+		stderrLineWriter.Write(stderrBuf.Bytes())
 	}
 	stdoutLineWriter.Flush()
 	stderrLineWriter.Flush()

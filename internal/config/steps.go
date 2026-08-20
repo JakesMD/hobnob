@@ -79,6 +79,16 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			step.Soft = parseBool(fieldVal)
 		case "dir":
 			step.DirTmpl = normalizeTmpl(fieldVal.Value)
+		case "quiet":
+			if fieldVal.Kind != yaml.ScalarNode {
+				return Step{}, fmt.Errorf("quiet: expected true/false or a message string")
+			}
+			if fieldVal.Value == "true" || fieldVal.Value == "false" {
+				step.Quiet = parseBool(fieldVal)
+			} else {
+				step.Quiet = true
+				step.QuietMsg = normalizeTmpl(fieldVal.Value)
+			}
 		case "rerun":
 			return Step{}, fmt.Errorf("rerun: was removed along with use: — omit once: on the target task instead")
 		case "steps":
@@ -88,6 +98,10 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			}
 			step.ForSteps = subSteps
 		}
+	}
+
+	if step.Quiet && step.Kind != KindRun {
+		return Step{}, fmt.Errorf("quiet: is only supported on run: steps")
 	}
 
 	return step, nil

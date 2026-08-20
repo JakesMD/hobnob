@@ -12,8 +12,8 @@ import (
 // taskLineRe matches a line of a run: step's own stdout/stderr, which
 // internal/tui.LineWriter prefixes with "[task] " at column 0 — distinct from
 // hobnob's own chrome ("run: [task] ...", "✓ [task] done", "⊘ [task]
-// skipped"), none of which start with "[" since their own marker comes
-// first.
+// skipped", "⊙ [task] output hidden"), none of which start with "[" since
+// their own marker comes first.
 var taskLineRe = regexp.MustCompile(`(?m)^\[[^\]\n]+\] (.*)$`)
 
 // OK asserts the run succeeded (exit code 0).

@@ -675,6 +675,29 @@ continues past it:
 - run: echo "next step runs regardless"
 ```
 
+`quiet:` hides a step's output on success, printing a one-line message in its
+place — for a noisy command (`npm ci`, `terraform init`) whose output is only
+ever useful when something goes wrong:
+
+```yaml
+- run: npm ci
+  quiet: Installing dependencies
+- run: ./noisy-but-harmless.sh
+  quiet: true # hides output, no custom message
+```
+
+```
+run: [deploy] npm ci
+⊙ [deploy] Installing dependencies… (output hidden)
+```
+
+The message is a template, rendered and masked the same as the command line
+itself. Output is only ever hidden on success — a failing quiet step replays
+its full stdout/stderr before the error propagates, so a hidden step never
+fails silently. `into:` still captures normally; only the live echo is
+suppressed. `quiet:` is only valid on `run:` — it says nothing about a
+`call:`'s own steps.
+
 #### Argv list form
 
 A YAML sequence executes directly, one element per argument — no `sh -c`, so

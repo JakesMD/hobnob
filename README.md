@@ -85,6 +85,8 @@ Select a value for CATEGORY.
 - **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
 - **Env files** — load vars from `.env` files or sourced shell scripts.
 - **Working dir inheritance** — set it once, override per-call or per-step.
+- **Quiet steps** — `quiet: true` on a `run:` hides its output behind a
+  one-line message, replayed in full if it fails.
 - **Secret masking** — flag any var as secret to mask it in output.
 - **CI mode** — skip prompts, fail fast on missing vars.
 - **Task listing** — see or interactively pick from available tasks.

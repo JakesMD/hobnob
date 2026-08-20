@@ -58,6 +58,17 @@ func RunSkipLine(task string) string {
 	return SStep.Render("run:") + " " + TaskPrefix(task) + SInfo.Render("skipped (if: false)")
 }
 
+// RunQuietLine reports a quiet: run: step's suppressed output in its place —
+// otherwise a hidden step reads as if nothing happened. msg is the rendered
+// quiet: message; empty when the step used the bare quiet: true form.
+func RunQuietLine(task, msg string) string {
+	hint := "output hidden"
+	if msg != "" {
+		hint = msg + "… (" + hint + ")"
+	}
+	return SInfo.Render("⊙") + " " + TaskPrefix(task) + SInfo.Render(hint)
+}
+
 // CallCacheHitLine reports a call: step to a once: true task reusing its
 // cached result instead of re-running — otherwise a memoized call: is
 // silent, and the only way to tell it happened is a missing prompt or a
