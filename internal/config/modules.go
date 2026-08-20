@@ -147,10 +147,14 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 	if err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
+	moduleCfg.ModuleLayer = make(map[string]value.Value, len(envVars))
+	moduleCfg.ModuleLayerSecrets = make(map[string]bool, len(envSecrets))
 	for key, envVal := range envVars {
 		moduleVars[key] = value.Str(envVal)
+		moduleCfg.ModuleLayer[key] = value.Str(envVal)
 		if envSecrets[key] {
 			moduleSecrets[key] = true
+			moduleCfg.ModuleLayerSecrets[key] = true
 		}
 	}
 

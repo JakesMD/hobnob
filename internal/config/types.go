@@ -1,5 +1,7 @@
 package config
 
+import "hobnob/internal/value"
+
 type Task struct {
 	Info        string
 	Dir         string // task-level working directory template
@@ -25,6 +27,17 @@ type ConfigFile struct {
 	TaskNames    []string
 	TaskfileDir  string
 	Modules      []ModuleEntry
+
+	// ModuleLayer/ModuleLayerSecrets hold the vars this file contributes to
+	// its own subtree when reached as a module — currently its env: block,
+	// computed once in resolveModuleFile relative to the parent scope it was
+	// loaded with. nil for a root ConfigFile (never applied at runtime; see
+	// runner.executeTask, gated on Task.Cfg != nil). A module task's own
+	// runtime scope only ever gains these as defaults (Scope.SetIfDefault),
+	// never as an override — matching a root file's own env: block, which is
+	// itself just the lowest layer BuildScope applies.
+	ModuleLayer        map[string]value.Value
+	ModuleLayerSecrets map[string]bool
 }
 
 // EnvFileEntry is one env: block entry. SecretOverride is nil unless the

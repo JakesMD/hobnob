@@ -476,3 +476,71 @@ func TestE2E_Modules_OwnEnvFileStaysPrivateToModule(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "v=UNSET")
 }
+
+func TestE2E_Modules_OwnEnvFileVisibleToItsOwnTasks(t *testing.T) {
+	// given a module with its own env: block, when one of the module's own
+	// tasks echoes that var, then it sees the value (why: regression guard —
+	// the module-local scope env: files are loaded into was previously only
+	// ever used to evaluate the module's own load-time templates (path,
+	// show:/hide:/flatten:) and never reached the runtime scope a module task
+	// actually executes with, so this rendered empty despite
+	// OwnEnvFileStaysPrivateToModule already covering the non-leakage half)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:ping
+			`,
+			"mod.yml": `
+				env:
+				  - module.env
+				tasks:
+				  ping:
+				    steps:
+				      - run: echo "v=${MODULE_VAR-UNSET}"
+			`,
+			"module.env": "MODULE_VAR=from_module\n",
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "v=from_module")
+}
+
+func TestE2E_Modules_OwnEnvFileDoesNotOverrideExplicitWithVar(t *testing.T) {
+	// given a module's own env: default and a call: site passing the same var
+	// explicitly via with:, when the module task runs, then the caller's
+	// with: value wins (why: a module's env: block is a default for its
+	// subtree, not an override — matching how a root file's own env: block is
+	// itself just the lowest layer BuildScope applies)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:ping
+				        with:
+				          - MODULE_VAR: from_caller
+			`,
+			"mod.yml": `
+				env:
+				  - module.env
+				tasks:
+				  ping:
+				    steps:
+				      - run: echo "v={{.MODULE_VAR}}"
+			`,
+			"module.env": "MODULE_VAR=from_module\n",
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "v=from_caller")
+}
