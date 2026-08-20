@@ -43,7 +43,10 @@ tasks:
   go:build:release:
     info: Builds release binary for a target OS, ARCH, and VERSION
     steps:
-      - use: _get_os_arch
+      - call: _get_os_arch
+        into:
+          - OS: .OS
+          - ARCH: .ARCH
       - get:
           - VERSION:
               info: Release version (e.g. v1.2.3)
@@ -52,7 +55,10 @@ tasks:
   go:package:
     info: Packages release binary into a tarball
     steps:
-      - use: _get_os_arch
+      - call: _get_os_arch
+        into:
+          - OS: .OS
+          - ARCH: .ARCH
       - run: mv hobnob_release hobnob
       - run: tar -czf hobnob_{{.OS}}_{{.ARCH}}.tar.gz hobnob
 
@@ -62,6 +68,7 @@ tasks:
       - run: hobnob --list
 
   _get_os_arch:
+    once: true
     steps:
       - get:
           - OS:
