@@ -49,21 +49,32 @@ leaf, `_test.go` files only.
 ### `internal/config` — parsing
 
 `ParseConfig` walks a `yaml.Node` tree into a `ConfigFile`: tasks, module
-imports, env-file references.
+imports, env-file references, `const:`/`vars:` entries. An unrecognized
+top-level key is a load-time error, not a silent no-op.
 
 Every field that can contain a `{{ }}` template is stored as a raw string —
 **nothing is evaluated at parse time**, only at runtime once the scope exists.
-This is the load-bearing invariant of the whole system.
+This is the load-bearing invariant of the whole system. `const:`/`vars:`
+entries are the one exception to "not evaluated" in spirit but not in fact:
+their *values* still defer to `BuildScope`, same as everything else — only
+their *reference structure* is inspected at parse time (`constvars.go`), to
+enforce that a `const:` entry names only earlier `const:` entries and the two
+builtins, and that a `vars:` entry doesn't reference itself.
 
 Parsing is split by step kind: `config.go` (`ParseConfig`, task/step-sequence
 parsing), `types.go` (the `ConfigFile`/`Task`/`Step`/... structs), `yaml.go`
 (shared `yaml.Node` helpers), `steps.go` (per-step-kind dispatch, loop
 parsing), `vars.go` (`set:`/`with:` entries, `into:`), `get.go`
-(`get:` entries); `modules.go`/`envfiles.go` each also parse their own block
+(`get:` entries), `constvars.go` (the `const:`/`vars:` closed-world/
+self-reference/reserved-name checks, run once per file after the whole tree
+is parsed); `modules.go`/`envfiles.go` each also parse their own block
 (`modules:`/`env:`) alongside the loading logic below.
 `modules.go`/`envfiles.go` handle _loading_ rather than parsing — resolving and
 merging imported files, run after `BuildScope` since their paths can be
-templated. `collect.go` statically walks parsed steps to find the `get:` params
+templated. A module's own `env:`/`vars:`/`const:` are also folded into a
+`ModuleLayer`/`ModuleConstLayer` delta on its `ConfigFile` here — see
+`internal/runner` below for where that delta actually reaches a module task's
+scope. `collect.go` statically walks parsed steps to find the `get:` params
 a task would prompt for, without running it (powers `--list`'s param hints).
 
 ### `internal/eval` — template and shell evaluation
@@ -108,15 +119,23 @@ first.
 
 ### `internal/cli` — scope and presentation
 
-`Scope` is `{Vars map[string]value.Value, Secrets map[string]bool}` — the
-variable environment a task executes in. `BuildScope` layers it in strict
-precedence order (env → system vars → env-file vars → CLI args) before any
-task runs; every source is wrapped in `value.Str`, never sniffed for JSON
-shape. Above CLI args, precedence is execution order, not a rule: a task's own
-`set:`/`get:`/`loop:`/`use:` steps run afterward and see everything before
-them. `Scope.Copy()` deep-copies both maps, giving every `call:` step an
-isolated sandbox — `use:` deliberately skips this, running the used task's
-steps directly against the caller's `*Scope`.
+`Scope` is `{Vars map[string]value.Value, Secrets map[string]bool, Ambient
+map[string]bool}` — the variable environment a task executes in. `Ambient`
+marks a key whose value still comes only from the OS-environment base layer;
+it's cleared the moment any higher layer touches that key, and it's what lets
+a module's own `env:`/`vars:` block tell a genuinely-inherited default from
+something more specific the caller already set, without being able to see
+which layer actually produced it. `BuildScope` layers it in strict precedence
+order (env → system vars → `vars:` → env-file vars → CLI args → `const:`)
+before any task runs; every source but `const:`/`vars:` is wrapped in
+`value.Str`, never sniffed for JSON shape — `const:`/`vars:` route through
+`config.EvalSetEntry` instead and stay typed. Above `const:`, precedence is
+execution order, not a rule: a task's own `set:`/`get:`/`loop:`/`call:` steps
+run afterward and see everything before them. `Scope.Set` always overwrites;
+`Scope.SetIfDefault` only fills a key that's unset or still `Ambient` — how a
+module's own `env:`/`vars:` supply a default without risking clobbering
+something the caller already committed. `Scope.Copy()` deep-copies all three
+maps, giving every `call:` step an isolated sandbox.
 
 Secrecy is a property of where a value came from, not of where it's used:
 `Secrets` rides along on `Copy()`, and `runner.maskSecrets` matches on _value_
@@ -152,15 +171,24 @@ Step kinds, briefly:
   satisfy prompts). Otherwise uses `default:`, fails, or prompts via
   `tui.PromptText`/`PromptSelect`.
 - **`call:`** — deep-copies scope, applies `with:`, runs the target task, pulls
-  results back via `into:`.
-- **`use:`** — runs the target task's steps directly against the caller's
-  scope (no copy). Memoized per invocation: keyed on the resolved `Task`'s
-  `Steps` slice identity (not the name it was reached by, so a module task
-  used via its qualified name and its bare name share one entry), a
-  `useMemo` carried through `execCtx` — including across a `call:`'s scope
-  swap, which is what lets the snapshot replay into sibling sandboxes. Only
-  the delta (new/changed vars) is captured and replayed, never the whole
-  scope. `rerun: true` opts one step out of the cache.
+  results back via `into:`. If the target has `once: true`, it's memoized per
+  invocation: keyed on the resolved `Task`'s `Steps` slice identity (not the
+  name it was reached by, so a module task called via its qualified name and
+  its bare name share one entry), a `callMemo` carried through `execCtx` —
+  including across a `call:`'s own scope swap, which is what lets the cache
+  replay into sibling sandboxes. The whole target child scope is cached, not
+  a delta — each call site's own `into:` independently decides what it pulls
+  out — and a cache hit is logged, naming what the first run produced.
+  Without `once:`, a target re-runs on every `call:`, same as before `once:`
+  existed. A task skipped by its own `if:` is cached as having produced
+  nothing; a failure under `soft: true` is never cached.
+- **`applyModuleLayer`** (not a step kind — runs inside `executeTask`) —
+  whenever the resolved task belongs to a module (`Task.Cfg != nil`), writes
+  that module's own `env:`/`vars:` layer (`Scope.SetIfDefault`, a default)
+  and `const:` layer (`Scope.Set`, an override) into the scope the task is
+  about to execute with. This is what makes a module's own `env:`/`const:`/
+  `vars:` reach its tasks at all — `internal/config`'s loading step only ever
+  computed the delta; nothing applied it to a live scope before this existed.
 - **`loop:`** — dispatches on the target's `value.Kind()` (Object → map form,
   else list form) rather than sniffing text, then runs
   `execForList`/`execForMap`/`execForMatrix`, setting loop vars (`ITEM`,
@@ -208,13 +236,15 @@ hobnob.yml
    │  ParseConfig (config.go)          — YAML → ConfigFile, all templates raw
    ▼
 ConfigFile
-   │  BuildScope (cli.go)              — env → sysvars → env-files → CLI args
+   │  BuildScope (cli.go)              — env → sysvars → vars: → env-files →
+   │                                      CLI args → const:
    │  LoadModules (modules.go)         — needs scope for templated module paths
    ▼
-Scope{Vars, Secrets}
+Scope{Vars, Secrets, Ambient}
    │  ExecuteTask → executeSteps (runner.go)
    │    each step: EvalTemplate/EvalCondition against *current* scope
-   │    mutates scope.Vars as it goes (set/get/run into/call into/use)
+   │    applyModuleLayer on entering a module task (its own env:/vars:/const:)
+   │    mutates scope.Vars as it goes (set/get/run into/call into, once: memo)
    ▼
 process exit code
 ```

@@ -2,7 +2,10 @@
 
 A yaml task runner built around 3 things others get wrong:
 
-- **JSON, natively.** Dot into nested fields, slice arrays — no `jq` needed.
+- **JSON, natively.** Vars hold real structure — a list, an object, a number —
+  not JSON crammed into a string. Parsed once, when captured; dot into it
+  (`.RESP.items[0].name`) at any later step and it's still typed. A `jq`
+  pipeline re-parses text at every hop.
 - **Tasks return values.** Capture a command's output or a sub-task's results,
   explicitly, back into the caller.
 - **Prompts.** Text input or select menus, dropped anywhere in a task.
@@ -74,9 +77,11 @@ Select a value for CATEGORY.
   shell: no quoting layer, and an Array-typed element splices into multiple
   arguments (`FLAGS: ["-ldflags", "-s -w"]` arrives as one argument, not two).
 - **Modules** — import tasks from other files, namespaced by prefix.
-- **Shared prologues** — `use:` a task's steps directly into the caller's scope,
-  memoized so a shared setup runs once per invocation no matter how many tasks
-  reach it.
+- **Dependencies, via `once:`** — mark a task `once: true` and every `call:`
+  to it, from anywhere, shares one memoized run per invocation. Unlike a
+  static `deps:` list, `call:` is a step — so it can sit behind an `if:`,
+  inside a `loop:`, or halfway down a task — and `into:` hands back the
+  *values* the prerequisite produced, not just a done-flag.
 - **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
 - **Env files** — load vars from `.env` files or sourced shell scripts.
 - **Working dir inheritance** — set it once, override per-call or per-step.
@@ -85,10 +90,18 @@ Select a value for CATEGORY.
 - **Task listing** — see or interactively pick from available tasks.
 - ...and much more in the [hobnob guide](GUIDE.md).
 
-Steps run sequentially, always — hobnob has no parallelism, by design: a
-timeline can't garble concurrent prompts, and streamed output stays readable.
-Shell backgrounding already covers the common case for free:
-`go build -o a & go build -o b & wait`.
+## 🧭 No parallelism, by design
+
+Steps run sequentially, always. Hobnob targets the workflows you run and watch —
+deploy, release, provision, scaffold, migrate. They're ordered by nature, they
+stop to ask questions, and their output is meant to be read as it streams.
+Concurrency buys little there and costs plenty: garbled prompts, interleaved
+logs, failures surfacing out of order.
+
+Hobnob is not a build system — no dependency graph, no file-staleness checks,
+no `-j`. When a step's work is genuinely parallel, call something that's already
+good at it from a `run:` step (`make -j`, `go build`, `turbo`, `xargs -P`), or
+use shell backgrounding: `go build -o a & go build -o b & wait`.
 
 ---
 

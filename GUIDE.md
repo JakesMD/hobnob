@@ -45,9 +45,15 @@ hobnob --upgrade                     # upgrade to the latest release
 
 ## File structure
 
-Three optional top-level keys:
+Five optional top-level keys:
 
 ```yaml
+const: # fixed values — nothing outside the file can override
+  - REGISTRY: ghcr.io
+
+vars: # overridable defaults — CLI wins; fine if nobody passes one
+  - HOST: localhost
+
 env: # files to source (.env or .sh)
   - .env
 
@@ -59,6 +65,9 @@ tasks: # task definitions
     steps:
       - run: echo hello
 ```
+
+An unrecognized top-level key is an error, not a silent no-op — a typo like
+`taks:` fails to load rather than quietly running with no tasks.
 
 ---
 
@@ -81,15 +90,21 @@ modules:
 - **Filters** — `show:` whitelists, `hide:` blacklists.
 - **Flattening** — `flatten: true` also registers tasks under their bare name
   (`build` as well as `docker:build`). Native tasks win on conflicts.
-- **Scoping** — a module's own `env:` block is sourced for that module's own
-  subtree only; it never leaks to the parent.
+- **Scoping** — a module's own `env:`/`const:`/`vars:` blocks are sourced for
+  that module's own subtree only; they never leak to the parent, and a
+  module's own tasks are checked against the module's own `const:`, not the
+  parent's. A module's `const:` always wins in its own subtree, even over a
+  parent `const:` of the same name or a CLI arg — ordinary lexical shadowing,
+  the nearest declaration wins. Its `env:`/`vars:` only ever fill a gap the
+  parent hasn't already set — like the module's own version of the file's
+  lowest layers, never an override of something more specific.
 
 ---
 
 ## Tasks
 
 A task is a named sequence of steps. A `_` prefix (`_compile`) makes it internal
-— hidden from `--list`, only reachable via `call` or `use`.
+— hidden from `--list`, only reachable via `call`.
 
 ### `if:` — conditional execution
 
@@ -162,22 +177,50 @@ Evaluated at runtime with Go templates (`{{ .VAR }}`).
 ### Precedence (highest to lowest)
 
 ```
-env  <  env files  <  CLI args  <  timeline (set / get / loop / use)
+env  <  vars:  <  env files  <  CLI args  <  const:  <  timeline (set / get / loop / call)
 ```
 
 Env is lowest so ambient shell state can't silently change task behavior across
-machines. Env files rank above OS env (explicit project config, not ambient) but
-below CLI args (caller's explicit override wins). Above CLI args, precedence is
-no longer a rule but execution order — a task's own `set:`/`get:`/`loop:`/`use:`
-steps run after the initial scope is built, and each sees everything before it.
+machines. `vars:` sits directly above it — a taskfile-baked default, not
+ambient state, but still meant to be overridden. Env files rank above `vars:`
+(a `.env` is the more local, situational layer — often per-machine or
+gitignored) but below CLI args (caller's explicit override wins). `const:`
+outranks even CLI args — that's what makes it a constant, not a default.
+Above `const:`, precedence is no longer a rule but execution order — a task's
+own `set:`/`get:`/`loop:`/`call:` steps run after the initial scope is built,
+and each sees everything before it.
 
-The two roles a variable can play each have their own verb:
+The three roles a variable can play each have their own place:
 
-- **A known value the task controls** — use `set:`. It always wins over a CLI
-  arg with the same name; nothing should silently override it.
-- **An overridable default** — use `get:` with a `default:`. A caller's CLI arg
-  satisfies the prompt (so it's skipped) and wins; with no arg, the default is
-  used:
+- **A fixed value nothing outside the file should touch** — use file-level
+  `const:`. It outranks every other layer but the timeline, and a task's own
+  `set:`/`get:`/`into:`/`loop:` may not use the same name — const: means the
+  same thing everywhere in the file:
+
+```yaml
+const:
+  - REGISTRY: ghcr.io
+
+tasks:
+  build:
+    steps:
+      - run: docker build -t {{.REGISTRY}}/app .
+```
+
+- **An overridable default, wherever it's needed** — file-level `vars:`, when
+  every task should share it; `get:` with a `default:`, when only one task
+  needs it. A caller's CLI arg satisfies either and wins; with no arg, the
+  default is used:
+
+```yaml
+vars:
+  - HOST: localhost
+
+tasks:
+  deploy:
+    steps:
+      - run: echo host={{.HOST}}
+```
 
 ```yaml
 tasks:
@@ -188,6 +231,76 @@ tasks:
               default: localhost
       - run: echo host={{.HOST}}
 ```
+
+- **A known value one task controls** — use step-level `set:`. It always wins
+  over a CLI arg with the same name; nothing should silently override it.
+
+### `const:` and `vars:`
+
+Two optional top-level blocks holding file-scoped variables, evaluated once
+when the file loads — before `env:` files, before CLI args, before any task
+runs. Each entry is the same shape `set:` takes, including the expanded
+`{ value:, secret: }` form and map/list literals:
+
+```yaml
+const:
+  - JIRA_NAME_ID: customfield_12345
+  - REGION_MAP: { us: us-east-1, eu: eu-west-1 }
+
+vars:
+  - HOST: localhost
+  - API_TOKEN:
+      value: .VAULT_TOKEN
+      secret: true
+```
+
+Both resolve top-to-bottom, same as `set:` — a later entry can reference an
+earlier one in the same block.
+
+**`const:` is a closed world** — an entry may reference only earlier `const:`
+entries and the two [built-in variables](#built-in-variables). Anything else
+is a load-time error:
+
+```yaml
+const:
+  - BASE_URL: https://api.example.com
+  - AUTH_URL: "{{.BASE_URL}}/v1/auth" # ok — earlier entry
+  - HOST: '{{ .HOST | default "x" }}' # error: not a file constant
+```
+
+This is what keeps `const:` a real constant rather than a defaults hack in
+disguise — an entry can't quietly read a lower-priority layer and call itself
+fixed.
+
+**A `const:` name is reserved for the whole file** — no task's own
+`set:`/`get:`/`into:`/`loop:` may write to a name `const:` declares, checked
+at load time:
+
+```yaml
+const:
+  - JIRA_ID: customfield_12345
+
+tasks:
+  deploy:
+    steps:
+      - set:
+          - JIRA_ID: other # error: declared in const: — pick another name
+```
+
+Without this, `const:` would only be constant from *outside* the file — the
+timeline still outranks it in the precedence chain otherwise, so a task could
+silently overwrite it.
+
+**`vars:` rejects referencing its own key** — `vars:` already is the
+fallback layer, so the old `{{ .HOST | default "localhost" }}` pattern is
+always redundant under it:
+
+```yaml
+vars:
+  - HOST: '{{ .HOST | default "localhost" }}' # error: references itself
+```
+
+Write the value directly instead: `- HOST: localhost`.
 
 ### Env files
 
@@ -217,8 +330,9 @@ env:
 ### Scope isolation
 
 `call` gives the child task a deep copy of scope. Mutations stay sandboxed
-unless pulled back with `into:`. `use` is the opposite — see
-[`use` — shared prologues](#use--shared-prologues) below.
+unless pulled back with `into:` — including a `once: true` task's result,
+memoized and replayed into every later `call:` site's own sandbox; see
+[`once:` — memoized tasks](#once--memoized-tasks) below.
 
 ### Top-to-bottom resolution
 
@@ -236,7 +350,7 @@ A variable holds what its data actually is — text, a number, `true`/`false`,
 a list, or an object — not JSON squeezed into a string. Structure only ever
 enters scope from three places:
 
-- a `set:`/`with:` map or list literal
+- a `set:`/`with:`/`const:`/`vars:` map or list literal
 - capturing `run:` output via `into:`, when the output decodes cleanly as a
   JSON array/object (plain text, or text that merely starts with `{` or `[`
   without being valid JSON, stays text)
@@ -542,7 +656,7 @@ any match: `eq .ENV "staging" "qa"`.
 
 ## Steps
 
-Every task is a sequence of six step types.
+Every task is a sequence of five step types.
 
 ### `set` — assign variables
 
@@ -702,6 +816,19 @@ back with `into:`.
     - ARTIFACT_PATH: .LOG_FILE
 ```
 
+An `into:` entry can also be a map/list literal, built from several of the
+called task's values in one shot — the whole thing lands as one typed object,
+same as a `set:`/`with:` literal:
+
+```yaml
+- call: fetch_release_info
+  into:
+    - RELEASE:
+        version: .TAG
+        notes: .CHANGELOG
+    # -> RELEASE = {"version":"v1.2.0","notes":"..."} — still typed
+```
+
 A non-zero exit halts the timeline by default. `soft: true` continues past a
 failed call:
 
@@ -715,15 +842,18 @@ failed call:
 matches on value, so a secret stays masked once passed down, even under a new
 name; mark it secret where it's defined (`set:`, `get:`, or `env:`) instead.
 
-### `use` — shared prologues
+### `once:` — memoized tasks
 
-Runs another task's steps directly against the caller's scope: no sandbox, no
-`with:`/`into:` (both are rejected at parse time — there's nothing to pass in
-or pull back when the scope is already shared).
+`once: true` on a task memoizes it: it runs at most once per hobnob
+invocation, no matter how many `call:` steps reach it. Every later `call:`
+replays the first run's result instead of re-executing, and each call site
+still pulls what it wants out of that result through its own `into:` — a
+memoized call: is otherwise an ordinary `call:`, sandboxed the same way.
 
 ```yaml
 tasks:
   _setup:
+    once: true
     steps:
       - get:
           - ENV:
@@ -735,83 +865,104 @@ tasks:
 
   deploy:
     steps:
-      - use: _setup
+      - call: _setup
+        into:
+          - ENV: .ENV
+          - ACCOUNT: .ACCOUNT
       - run: docker push app:{{.ENV}}
 
   rollback:
     steps:
-      - use: _setup # cached: no second prompt, no second aws call
+      - call: _setup # cached: no second prompt, no second aws call
+        into:
+          - ENV: .ENV
+          - ACCOUNT: .ACCOUNT
       - run: ./rollback.sh {{.ACCOUNT}}
 ```
 
-`call` sandboxes. `use` does not. That is the whole distinction.
+A cache hit is announced, naming what the first run produced, so a memoized
+`call:` is never silently invisible:
 
-**Memoized** — a task reached via `use:` runs at most once per hobnob
-invocation. The first run's variables are snapshotted; a later `use:` of the
-same task replays that snapshot into scope instead of re-executing. This is
-what makes the `rollback` example above skip the prompt and the API call the
-second time, and what makes replay correct across `call:`'s sandbox boundary:
+```
+call: [rollback] _setup (cached — ACCOUNT=123456789 ENV=staging)
+```
+
+**Memoized across sandboxes** — the cache is shared across the whole
+invocation, including through `call:`'s own scope isolation, so two sibling
+`call:`s that each reach the same `once:` task both get its result:
 
 ```yaml
 main:
   steps:
-    - call: _a # sandboxed; uses _setup, ACCOUNT lands in _a's copy
-    - call: _b # sandboxed; uses _setup — replays the snapshot, gets ACCOUNT
+    - call: _a # sandboxed; calls _setup, ACCOUNT lands in _a's copy
+    - call: _b # sandboxed; calls _setup — replays the cache, gets ACCOUNT
 ```
 
-Caching only the fact that a task ran would leave `_b` with nothing — the
-memo replays the actual result, not just a "done" flag. A task skipped by its
-own `if:` is cached as having produced nothing; a failure under `soft: true`
-is not cached and is retried by the next `use:`.
+Caching only the fact that a task ran would leave `_b`'s `into:` with nothing
+to pull from — the memo replays the actual scope the first run produced, not
+just a "done" flag. A task skipped by its own `if:` is cached as having
+produced nothing; a failure under `soft: true` is not cached and is retried
+by the next `call:`.
 
-**`rerun: true`** opts one `use:` step out of memoization — needed inside a
-`loop:`, where a `use:` would otherwise run on the first iteration only:
+Without `once:`, a task runs every time it's `call:`ed — including on every
+iteration of a `loop:`. `once:` is a property of the task, not something a
+call site opts into per-site.
 
-```yaml
-- loop: .SERVICES
-  steps:
-    - use: _check_service
-      rerun: true
-```
-
-**Sharp edge** — replay overwrites. `use:` asserts a task's results are in
-scope; it is not "maybe run something":
+**Sharp edge** — replay overwrites, when a later `into:` names the same var
+a caller set in between. `once:` asserts a task's results are in scope; it is
+not "maybe run something":
 
 ```yaml
-- use: _setup # TOKEN=abc
+- call: _setup
+  into:
+    - TOKEN: .TOKEN # TOKEN=abc
 - set:
     - TOKEN: xyz
-- use: _setup # replays the snapshot — TOKEN is abc again
+- call: _setup
+  into:
+    - TOKEN: .TOKEN # replays the cache — TOKEN is abc again
 ```
 
-`dir:` behaves as it does for `call:` — the used task's own `dir:` applies to
-its own `run:` steps and does not leak into the caller's later steps; a
-step-level `dir:` overrides it. `if:` and `interactive:` also work as they do
-for `call:`.
+Unlike a shared-scope design, the overwrite only ever touches a name the
+`into:` at that call site actually asks for — it's visible at the point it
+happens, not something that can silently clobber the rest of scope.
 
-> Migrating a `vars:` block (removed in v0.3.0): move each entry into a task
-> and `use:` it wherever it's needed.
+`dir:` behaves the same as any other `call:` — the target task's own `dir:`
+applies to its own `run:` steps and does not leak into the caller's later
+steps; a step-level `dir:` overrides it. `if:` and `interactive:` also work
+as they do for any `call:`.
+
+> Migrating a `use:` step (removed in v0.4.0): switch to `call:`, add
+> `once: true` on the target task if it was meant to run once, and add an
+> `into:` for whatever the caller needs back — a `use:` step shared the
+> caller's scope directly, so nothing needed naming before.
 >
 > ```yaml
 > # before
-> vars:
->   - REGISTRY: ghcr.io
->   - HOST: '{{ .HOST | default "localhost" }}'
+> tasks:
+>   _setup:
+>     steps: [...]
+>   deploy:
+>     steps:
+>       - use: _setup
+>       - run: docker push app:{{.ENV}}
 >
 > # after
 > tasks:
 >   _setup:
+>     once: true
+>     steps: [...]
+>   deploy:
 >     steps:
->       - set:
->           - REGISTRY: ghcr.io
->       - get:
->           - HOST:
->               default: localhost
+>       - call: _setup
+>         into:
+>           - ENV: .ENV
+>       - run: docker push app:{{.ENV}}
 > ```
 >
-> Each task that needs the prologue adds `- use: _setup` as its first step.
-> Nothing enforces that — a task that omits it runs with the variables unset,
-> rendering as empty rather than erroring.
+> `rerun: true` has no replacement — omit `once:` on the target task instead,
+> which is now the default (a task runs every time it's called unless it
+> opts into memoizing itself).
 
 ### `loop` — iteration
 
