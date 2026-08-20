@@ -58,6 +58,21 @@ func RunSkipLine(task string) string {
 	return SStep.Render("run:") + " " + TaskPrefix(task) + SInfo.Render("skipped (if: false)")
 }
 
+// CallCacheHitLine reports a call: step to a once: true task reusing its
+// cached result instead of re-running — otherwise a memoized call: is
+// silent, and the only way to tell it happened is a missing prompt or a
+// command that didn't run. summary is the masked "KEY=val KEY2=val2"
+// rendering of what the task's first run produced (see
+// runner.summarizeCallDelta); empty if it produced nothing new.
+func CallCacheHitLine(task, calledTask, summary string) string {
+	line := SStep.Render("call:") + " " + TaskPrefix(task) + SStep.Render(calledTask)
+	hint := "cached"
+	if summary != "" {
+		hint += " — " + summary
+	}
+	return line + " " + SHint.Render("("+hint+")")
+}
+
 func RunDisplayLines(cmd, task, dir string) []string {
 	prefix := TaskPrefix(task)
 	lines := strings.Split(cmd, "\n")

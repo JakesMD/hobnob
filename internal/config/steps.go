@@ -50,8 +50,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			step.Kind = KindCall
 			step.CallTarget = fieldVal.Value
 		case "use":
-			step.Kind = KindUse
-			step.CallTarget = fieldVal.Value
+			return Step{}, fmt.Errorf("use: was removed — use call: with into:, and once: true on the target task")
 		case "loop":
 			step.Kind = KindFor
 			forTarget, forList, forMatrix, err := parseLoopNode(fieldVal)
@@ -84,7 +83,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		case "dir":
 			step.DirTmpl = normalizeTmpl(fieldVal.Value)
 		case "rerun":
-			step.Rerun = parseBool(fieldVal)
+			return Step{}, fmt.Errorf("rerun: was removed along with use: — omit once: on the target task instead")
 		case "steps":
 			subSteps, err := parseStepSequence(fieldVal)
 			if err != nil {
@@ -92,17 +91,6 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			}
 			step.ForSteps = subSteps
 		}
-	}
-
-	if step.Kind == KindUse {
-		if len(step.CallVars) > 0 {
-			return Step{}, fmt.Errorf("use %q: with: is not supported here; use: shares the caller's scope, so there is nothing to pass in — use call: for an isolated task", step.CallTarget)
-		}
-		if len(step.IntoEntries) > 0 {
-			return Step{}, fmt.Errorf("use %q: into: is not supported here; use: shares the caller's scope, so results are already there — use call: for an isolated task", step.CallTarget)
-		}
-	} else if step.Rerun {
-		return Step{}, fmt.Errorf("rerun: is only supported on use: steps")
 	}
 
 	return step, nil

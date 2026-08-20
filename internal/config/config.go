@@ -119,6 +119,8 @@ func parseTaskNode(node *yaml.Node) (Task, error) {
 		case "interactive":
 			v := parseBool(entry.Val)
 			task.Interactive = &v
+		case "once":
+			task.Once = parseBool(entry.Val)
 		case "steps":
 			steps, err := parseStepSequence(entry.Val)
 			if err != nil {

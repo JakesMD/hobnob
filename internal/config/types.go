@@ -7,6 +7,7 @@ type Task struct {
 	Dir         string // task-level working directory template
 	IfExpr      string
 	Interactive *bool
+	Once        bool // memoize this task's result per hobnob invocation (see runner.execCall)
 	Steps       []Step
 	Hidden      bool        // true = omit from --list
 	Cfg         *ConfigFile // non-nil = use this cfg for sub-calls (module task)
@@ -69,7 +70,6 @@ const (
 	KindCall
 	KindFor
 	KindGet
-	KindUse
 )
 
 type SetEntry struct {
@@ -150,15 +150,12 @@ type Step struct {
 	Argv    []string // run: list form; element templates, mutually exclusive with Command
 	DirTmpl string   // working directory template (run:, call:, and use: steps)
 
-	// KindCall, KindUse
-	CallTarget  string // call: target; also use:'s target
+	// KindCall
+	CallTarget  string // call: target
 	CallVars    []SetEntry
 	IntoEntries []IntoEntry
 	Soft        bool
 	Interactive *bool
-
-	// KindUse
-	Rerun bool
 
 	// KindFor
 	ForTarget string

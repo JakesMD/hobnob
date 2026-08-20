@@ -139,14 +139,14 @@ func jsonEscapedForm(secretVal string) (string, bool) {
 // scope is kept separate — a call step swaps in a childScope while
 // cfg/task/noPrompts/dir change together as a unit. memo is shared across the
 // whole run (one ExecuteTask call), including through call:'s scope swap —
-// that's what lets a use: prologue replay into two sibling sandboxes.
+// that's what lets a once: true prologue replay into two sibling sandboxes.
 type execCtx struct {
 	ctx       context.Context
 	cfg       *config.ConfigFile
 	task      string
 	noPrompts bool
 	dir       string
-	memo      *useMemo
+	memo      *callMemo
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
@@ -164,11 +164,11 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; execCall passes the resolved child dir.
-// This is the entry point for one whole run: it owns the use: memo cache, which
-// lives for the lifetime of this call (and everything it recursively executes)
-// and no longer.
+// This is the entry point for one whole run: it owns the once: memo cache,
+// which lives for the lifetime of this call (and everything it recursively
+// executes) and no longer.
 func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newUseMemo()}, taskName, scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, scope)
 }
 
 // executeTask resolves and runs taskName within an already-established
@@ -255,11 +255,6 @@ func executeSteps(execState execCtx, steps []config.Step, scope *cli.Scope) erro
 			err = execSet(step, scope)
 		case config.KindCall:
 			err = execCall(execState, step, scope)
-			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
-				err = nil
-			}
-		case config.KindUse:
-			err = execUse(execState, step, scope)
 			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
 				err = nil
 			}

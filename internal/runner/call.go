@@ -2,13 +2,59 @@ package runner
 
 import (
 	"fmt"
+	"reflect"
+	"sort"
 	"strings"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
+
+// callMemo is the per-run cache backing once: true tasks. It lives for one
+// ExecuteTask call (see runner.go) and is threaded through execCtx, including
+// across a call:'s scope swap — that's what lets a shared prologue replay
+// correctly into two sibling call: sandboxes rather than only working for the
+// first one that reaches it.
+type callMemo struct {
+	// scopes holds the CHILD SCOPE each once: task's first run produced,
+	// keyed by callCacheID — not a delta, the whole thing. Each later call:
+	// site projects what it wants out of that cached scope through its own
+	// into:, so two sites can pull different things from one cached run; a
+	// delta would need to already guess what every future site wants.
+	scopes map[uintptr]*cli.Scope
+	// summaries holds a masked "KEY=val KEY2=val2" rendering of what each
+	// once: task's first run actually produced or changed, computed once at
+	// write time (before/after aren't available on a later cache hit) — the
+	// cache-hit log line's only content.
+	summaries map[uintptr]string
+	// running guards against a once: task (directly or transitively) calling
+	// itself before its first run has completed, which would otherwise
+	// recurse forever since nothing is in scopes yet.
+	running map[uintptr]bool
+}
+
+func newCallMemo() *callMemo {
+	return &callMemo{
+		scopes:    make(map[uintptr]*cli.Scope),
+		summaries: make(map[uintptr]string),
+		running:   make(map[uintptr]bool),
+	}
+}
+
+// callCacheID identifies a task's physical identity for memoization purposes,
+// not the name it was reached by: registerModuleTasks can register the same
+// Task under several names (a module prefix, a flatten: true bare alias, the
+// module's own bare name from inside the module file), and all of those
+// registrations share one Steps backing array. Keying on that array's address
+// means docker:_setup (called from the parent) and _setup (called from
+// inside docker's own file) collapse to one cache entry — calling it from
+// either place only ever prompts, or runs its run: steps, once.
+func callCacheID(task config.Task) uintptr {
+	return reflect.ValueOf(task.Steps).Pointer()
+}
 
 func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 	noPrompts := execState.noPrompts
@@ -21,16 +67,70 @@ func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 		return fmt.Errorf("call target template: %w", err)
 	}
 
-	childScope, err := buildCallScope(scope, step.CallVars)
+	task, _, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
 	}
 
-	if err := runTaskSteps(execState, taskName, step.DirTmpl, noPrompts, childScope); err != nil {
+	if !task.Once || len(task.Steps) == 0 {
+		childScope, err := buildCallScope(scope, step.CallVars)
+		if err != nil {
+			return err
+		}
+		if err := runTaskSteps(execState, taskName, step.DirTmpl, noPrompts, childScope); err != nil {
+			return fmt.Errorf("call %s: %w", taskName, err)
+		}
+		return captureCallInto(step.IntoEntries, scope, childScope)
+	}
+
+	id := callCacheID(task)
+	if cached, ok := execState.memo.scopes[id]; ok {
+		fmt.Println(tui.CallCacheHitLine(execState.task, taskName, execState.memo.summaries[id]))
+		return captureCallInto(step.IntoEntries, scope, cached)
+	}
+	if execState.memo.running[id] {
+		return fmt.Errorf("call %q: cycle detected — task is already running", taskName)
+	}
+
+	childScope, err := buildCallScope(scope, step.CallVars)
+	if err != nil {
+		return err
+	}
+	before := childScope.Copy()
+	execState.memo.running[id] = true
+	err = runTaskSteps(execState, taskName, step.DirTmpl, noPrompts, childScope)
+	delete(execState.memo.running, id)
+	if err != nil {
 		return fmt.Errorf("call %s: %w", taskName, err)
 	}
 
+	execState.memo.scopes[id] = childScope
+	execState.memo.summaries[id] = summarizeCallDelta(before, childScope)
 	return captureCallInto(step.IntoEntries, scope, childScope)
+}
+
+// summarizeCallDelta renders the vars a once: task's first run produced or
+// changed, relative to before it ran, as a masked "KEY=val KEY2=val2"
+// summary for the cache-hit log line — otherwise a replayed call: is
+// invisible, the exact complaint the old use: memo drew (see GUIDE.md's
+// former "Sharp edge" note). Sorted by key for a stable line across runs.
+func summarizeCallDelta(before, after *cli.Scope) string {
+	var keys []string
+	for key, val := range after.Vars {
+		if prior, existed := before.Vars[key]; !existed || !reflect.DeepEqual(prior, val) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, key := range keys {
+		display := after.Vars[key].String()
+		if after.Secrets[key] {
+			display = tui.SecretMask
+		}
+		parts[i] = key + "=" + display
+	}
+	return strings.Join(parts, " ")
 }
 
 // buildCallScope deep-copies scope and evaluates with: entries into it. No
@@ -52,11 +152,9 @@ func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, e
 	return childScope, nil
 }
 
-// runTaskSteps executes taskName against runScope (a call:'s isolated
-// childScope, or a use:'s shared caller scope), resolving its working
-// directory per the dir: priority chain documented on ExecuteTask. Shared by
-// execCall and execUse — the only difference between them is which scope
-// object this is called with and whether the memo cache is consulted.
+// runTaskSteps executes taskName against runScope — a call:'s isolated
+// childScope, resolving its working directory per the dir: priority chain
+// documented on ExecuteTask.
 func runTaskSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, runScope *cli.Scope) error {
 	if dirTmpl == "" {
 		// Priority B (task-level dir) or C (inherit parentDir) — handled inside executeTask
