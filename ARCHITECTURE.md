@@ -48,8 +48,8 @@ leaf, `_test.go` files only.
 
 ### `internal/config` — parsing
 
-`ParseConfig` walks a `yaml.Node` tree into a `ConfigFile`: tasks, global vars,
-module imports, env-file references.
+`ParseConfig` walks a `yaml.Node` tree into a `ConfigFile`: tasks, module
+imports, env-file references.
 
 Every field that can contain a `{{ }}` template is stored as a raw string —
 **nothing is evaluated at parse time**, only at runtime once the scope exists.
@@ -58,7 +58,7 @@ This is the load-bearing invariant of the whole system.
 Parsing is split by step kind: `config.go` (`ParseConfig`, task/step-sequence
 parsing), `types.go` (the `ConfigFile`/`Task`/`Step`/... structs), `yaml.go`
 (shared `yaml.Node` helpers), `steps.go` (per-step-kind dispatch, loop
-parsing), `vars.go` (`set:`/`with:`/`vars:` entries, `into:`), `get.go`
+parsing), `vars.go` (`set:`/`with:` entries, `into:`), `get.go`
 (`get:` entries); `modules.go`/`envfiles.go` each also parse their own block
 (`modules:`/`env:`) alongside the loading logic below.
 `modules.go`/`envfiles.go` handle _loading_ rather than parsing — resolving and
@@ -80,7 +80,7 @@ Four primitives everything else is built from:
   against `value.Filters` instead of executing it, so the result keeps its
   `value.Value` kind (Array, Object, ...) rather than flattening to text.
   Anything else falls back to `EvalTemplate` and comes back wrapped in a
-  String. Backs `set:`/`with:`/`vars:` scalar leaves and `loop:`'s target.
+  String. Backs `set:`/`with:` scalar leaves and `loop:`'s target.
 - `EvalCondition(ctx, expr, vars, dir)` — renders then runs via `sh -c` with
   `exec.CommandContext`, exit code 0 = true. Backs `if:`/`check:`; ctx
   cancellation (CTRL+C) kills a hung condition outright.
@@ -91,7 +91,7 @@ Four primitives everything else is built from:
 
 A scope variable is a typed `value.Value` — string, bool, number, array, or
 object — never JSON-as-text. Structure enters from exactly three places:
-`set:`/`with:`/`vars:` map/list literals, `run: into:` capture, and the
+`set:`/`with:` map/list literals, `run: into:` capture, and the
 explicit `json` filter; env vars, CLI args, and env-file values are always
 strings, never sniffed. `pluck`/`keys`/`values`/`first` require an
 Array/Object and error (naming `| json`) rather than silently re-parsing a
@@ -101,10 +101,13 @@ string — see `internal/value/filter.go`. `pluck` uses RFC 9535 JSONPath.
 
 `Scope` is `{Vars map[string]value.Value, Secrets map[string]bool}` — the
 variable environment a task executes in. `BuildScope` layers it in strict
-precedence order (env → system vars → env-file vars → CLI args → global
-`vars:`) before any task runs; every source but `vars:` is wrapped in
-`value.Str`, never sniffed for JSON shape. `Scope.Copy()` deep-copies both
-maps, giving every `call:` step an isolated sandbox.
+precedence order (env → system vars → env-file vars → CLI args) before any
+task runs; every source is wrapped in `value.Str`, never sniffed for JSON
+shape. Above CLI args, precedence is execution order, not a rule: a task's own
+`set:`/`get:`/`loop:`/`use:` steps run afterward and see everything before
+them. `Scope.Copy()` deep-copies both maps, giving every `call:` step an
+isolated sandbox — `use:` deliberately skips this, running the used task's
+steps directly against the caller's `*Scope`.
 
 Secrecy is a property of where a value came from, not of where it's used:
 `Secrets` rides along on `Copy()`, and `runner.maskSecrets` matches on _value_
@@ -139,15 +142,24 @@ Step kinds, briefly:
   `tui.PromptText`/`PromptSelect`.
 - **`call:`** — deep-copies scope, applies `with:`, runs the target task, pulls
   results back via `into:`.
+- **`use:`** — runs the target task's steps directly against the caller's
+  scope (no copy). Memoized per invocation: keyed on the resolved `Task`'s
+  `Steps` slice identity (not the name it was reached by, so a module task
+  used via its qualified name and its bare name share one entry), a
+  `useMemo` carried through `execCtx` — including across a `call:`'s scope
+  swap, which is what lets the snapshot replay into sibling sandboxes. Only
+  the delta (new/changed vars) is captured and replayed, never the whole
+  scope. `rerun: true` opts one step out of the cache.
 - **`loop:`** — dispatches on the target's `value.Kind()` (Object → map form,
   else list form) rather than sniffing text, then runs
   `execForList`/`execForMap`/`execForMatrix`, setting loop vars (`ITEM`,
   `KEY`/`VALUE`, or matrix vars, each still typed) and restoring prior values
   on exit.
 
-Split by step kind — `run.go`, `set.go`, `get.go`, `call.go`, `loop.go` —
-mirroring `internal/config`'s convention; `runner.go` keeps only the shared
-core (`execCtx`, `ExecuteTask`/`executeSteps`, dir/mask helpers).
+Split by step kind — `run.go`, `set.go`, `get.go`, `call.go`, `use.go`,
+`loop.go` — mirroring `internal/config`'s convention; `runner.go` keeps only
+the shared core (`execCtx`, `ExecuteTask`/`executeTask`/`executeSteps`,
+dir/mask helpers).
 `runner_unix.go`/`runner_windows.go` handle process-group signaling: 1st
 CTRL+C sends a graceful signal to the whole group (catching child processes a
 single-command signal would miss), 2nd force-kills.
@@ -185,13 +197,13 @@ hobnob.yml
    │  ParseConfig (config.go)          — YAML → ConfigFile, all templates raw
    ▼
 ConfigFile
-   │  BuildScope (cli.go)              — env → sysvars → env-files → CLI args → vars:
+   │  BuildScope (cli.go)              — env → sysvars → env-files → CLI args
    │  LoadModules (modules.go)         — needs scope for templated module paths
    ▼
 Scope{Vars, Secrets}
    │  ExecuteTask → executeSteps (runner.go)
    │    each step: EvalTemplate/EvalCondition against *current* scope
-   │    mutates scope.Vars as it goes (set/get/run into/call into)
+   │    mutates scope.Vars as it goes (set/get/run into/call into/use)
    ▼
 process exit code
 ```

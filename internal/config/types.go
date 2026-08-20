@@ -20,7 +20,6 @@ type ModuleEntry struct {
 
 type ConfigFile struct {
 	FilePath     string
-	Vars         []SetEntry
 	EnvFileTmpls []EnvFileEntry
 	Tasks        map[string]Task
 	TaskNames    []string
@@ -44,6 +43,7 @@ const (
 	KindCall
 	KindFor
 	KindGet
+	KindUse
 )
 
 type SetEntry struct {
@@ -121,14 +121,17 @@ type Step struct {
 
 	// KindRun
 	Command string
-	DirTmpl string // working directory template (run: and call: steps)
+	DirTmpl string // working directory template (run:, call:, and use: steps)
 
-	// KindCall
-	CallTarget  string
+	// KindCall, KindUse
+	CallTarget  string // call: target; also use:'s target
 	CallVars    []SetEntry
 	IntoEntries []IntoEntry
 	Soft        bool
 	Interactive *bool
+
+	// KindUse
+	Rerun bool
 
 	// KindFor
 	ForTarget string

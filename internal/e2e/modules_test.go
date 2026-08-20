@@ -448,8 +448,8 @@ func TestE2E_Modules_CircularImportErrors(t *testing.T) {
 
 func TestE2E_Modules_OwnEnvFileStaysPrivateToModule(t *testing.T) {
 	// given a module with its own env: block, when a parent task echoes that
-	// var, then it's unset there — a module's env: is as private as its
-	// vars: (why: ${VAR-UNSET} distinguishes "unset" from "empty", proving
+	// var, then it's unset there — a module's env: never leaks to the parent
+	// (why: ${VAR-UNSET} distinguishes "unset" from "empty", proving
 	// this isn't just an empty string)
 	res := Run(t, Case{
 		Files: Files{

@@ -94,7 +94,7 @@ func TestE2E_Env_RelativePathResolvesAgainstTaskfileDirNotCwd(t *testing.T) {
 
 func TestE2E_Env_LaterFileWinsOverEarlier(t *testing.T) {
 	// given two env: files that both set the same var, when run, then the
-	// later file's value wins — env: is an ordered list, same as vars:
+	// later file's value wins — env: is an ordered list
 	res := Run(t, Case{
 		Files: Files{
 			"hobnob.yml": `
@@ -189,7 +189,7 @@ func TestE2E_Env_PathTemplateReferencesEarlierEntryVar(t *testing.T) {
 	// given an earlier env: entry sets a var and a later entry's path is a
 	// template referencing it, when run, then the later path resolves
 	// against the accumulated vars — env: follows the same top-to-bottom
-	// resolution as vars:
+	// resolution as set:
 	res := Run(t, Case{
 		Files: Files{
 			"hobnob.yml": `

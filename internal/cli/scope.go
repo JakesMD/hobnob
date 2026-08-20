@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"hobnob/internal/config"
@@ -31,21 +30,19 @@ func (scope *Scope) Copy() *Scope {
 
 // BuildScope constructs the initial variable scope: env vars as the base,
 // then system vars (HOBNOB_FILE_DIR, HOBNOB_INVOCATION_DIR), then vars sourced
-// from env: files, then CLI KEY=VALUE args, then global vars evaluated on top
-// (highest priority).
+// from env: files, then CLI KEY=VALUE args (highest priority).
 // CLI args win over env: files so a caller's explicit override always beats a
-// sourced default. Globals win over CLI args because vars: is internal wiring
-// detail — the public API for caller input is get: steps, which are skipped
-// when a var is already set.
-// Also returns a secrets map for any global vars marked secret: true, and for
-// any var sourced from an env: file per its default/override (see config.LoadEnvFiles).
+// sourced default. Above this, precedence is no longer a rule but execution
+// order: a task's own set:/get:/loop/use: steps run after BuildScope and see
+// everything it produced.
+// Also returns a secrets map for any var sourced from an env: file per its
+// default/override (see config.LoadEnvFiles).
 //
-// Every source below is wrapped in value.Str, never sniffed for JSON shape —
+// Every source here is wrapped in value.Str, never sniffed for JSON shape —
 // env vars, CLI args, and env-file values are always plain strings, no matter
-// how JSON-shaped their text looks. Only vars: globals go through EvalValue,
-// so a global can hold real structure (a map/list literal) or a reference to
-// one.
-func BuildScope(ctx context.Context, vars []config.SetEntry, envFileEntries []config.EnvFileEntry, cliVars map[string]string, taskfileDir, invocationDir string) (*Scope, error) {
+// how JSON-shaped their text looks. Real structure only ever enters scope from
+// a set:/with: literal, a run: into: capture, or the explicit json filter.
+func BuildScope(ctx context.Context, envFileEntries []config.EnvFileEntry, cliVars map[string]string, taskfileDir, invocationDir string) (*Scope, error) {
 	scope := &Scope{
 		Vars:    make(map[string]value.Value),
 		Secrets: make(map[string]bool),
@@ -70,16 +67,6 @@ func BuildScope(ctx context.Context, vars []config.SetEntry, envFileEntries []co
 
 	for key, val := range cliVars {
 		scope.Vars[key] = value.Str(val)
-	}
-
-	for _, globalVar := range vars {
-		val, err := config.EvalSetEntry(globalVar, func(tmpl string) (value.Value, error) {
-			return eval.EvalValue(tmpl, scope.Vars)
-		})
-		if err != nil {
-			return nil, fmt.Errorf("global var %q: %w", globalVar.Key, err)
-		}
-		scope.Set(globalVar.Key, val, globalVar.Secret)
 	}
 
 	return scope, nil

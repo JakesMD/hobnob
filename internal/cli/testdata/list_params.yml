@@ -1,6 +1,3 @@
-vars:
-  - DEFAULT_RETRIES: "3"
-
 tasks:
   deploy:
     info: Deploy the service to an environment

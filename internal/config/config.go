@@ -48,12 +48,6 @@ func ParseConfig(path string) (*ConfigFile, error) {
 			continue
 		}
 		switch key {
-		case "vars":
-			entries, err := parseSetNode(val)
-			if err != nil {
-				return nil, fmt.Errorf("vars: %w", err)
-			}
-			cfg.Vars = entries
 		case "env":
 			paths, err := parseEnvNode(val)
 			if err != nil {

@@ -69,7 +69,7 @@ func TestPrintHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	scope, err := BuildScope(context.Background(), cfg.Vars, nil, nil, "/tmp/taskfile", "/tmp/invocation")
+	scope, err := BuildScope(context.Background(), nil, map[string]string{"ANIMAL": "cat"}, "/tmp/taskfile", "/tmp/invocation")
 	if err != nil {
 		t.Fatalf("scope error: %v", err)
 	}

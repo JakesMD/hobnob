@@ -2,31 +2,66 @@ package e2e
 
 import "testing"
 
-// The full scope precedence chain, highest to lowest: vars: (globals) > CLI
-// KEY=VALUE args > env: files > OS env. See GUIDE.md's "Variables >
-// Precedence" table and its rationale.
+// The full scope precedence chain, highest to lowest: timeline (set:/get:
+// default/loop/use:, in execution order) > CLI KEY=VALUE args > env: files >
+// OS env. See GUIDE.md's "Variables > Precedence" table.
 
-func TestE2E_Scope_GlobalVarsResolveWithDefaultFallback(t *testing.T) {
-	// given a top-level vars: block, when a task echoes a var, then it
-	// resolves — including the | default fallback pattern GUIDE.md
-	// documents for pulling from a lower-priority source
+func TestE2E_Scope_SetStepWinsOverCLIArgs(t *testing.T) {
+	// given a set: step and a matching CLI KEY=VALUE arg, when the task
+	// runs, then the set: value wins (why: set: is a known value the task
+	// author controls — a caller can't silently override it; get: is the
+	// public API for caller input)
 	res := Yml(t, `
-		vars:
-		  - HOST: localhost
-		  - TIMEOUT: '{{ .TIMEOUT | default "30" }}'
 		tasks:
 		  t:
 		    steps:
-		      - run: echo host={{.HOST}} timeout={{.TIMEOUT}}
+		      - set:
+		          - HOST: localhost
+		      - run: echo host={{.HOST}}
+	`, "t", "HOST=remotehost")
+	res.OK(t)
+	res.Lines(t, "host=localhost")
+}
+
+func TestE2E_Scope_GetDefaultLosesToCLIArgs(t *testing.T) {
+	// given a get: step with a default: and a matching CLI KEY=VALUE arg,
+	// when the task runs, then the CLI arg satisfies the prompt and wins
+	// (why: this is how a caller overrides an overridable default — the
+	// replacement for the old vars: '{{ .HOST | default "localhost" }}' idiom)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - HOST:
+		              default: localhost
+		      - run: echo host={{.HOST}}
+	`, "t", "HOST=remotehost")
+	res.OK(t)
+	res.Lines(t, "host=remotehost")
+}
+
+func TestE2E_Scope_GetDefaultUsedWhenNoOverride(t *testing.T) {
+	// given a get: step with a default: and no CLI arg, when the task runs,
+	// then the default is used (why: this is the fallback half of the
+	// overridable-default idiom)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - HOST:
+		              default: localhost
+		      - run: echo host={{.HOST}}
 	`, "t")
 	res.OK(t)
-	res.Lines(t, "host=localhost timeout=30")
+	res.Lines(t, "host=localhost")
 }
 
 func TestE2E_Scope_SystemVarsAlwaysInjected(t *testing.T) {
 	// given any taskfile, when a task echoes HOBNOB_FILE_DIR and
 	// HOBNOB_INVOCATION_DIR, then both are populated (why: these built-ins
-	// must always be available, with no vars: block needed to opt in)
+	// must always be available, with no opt-in step needed)
 	res := Yml(t, `
 		tasks:
 		  t:
@@ -35,23 +70,6 @@ func TestE2E_Scope_SystemVarsAlwaysInjected(t *testing.T) {
 	`, "t")
 	res.OK(t)
 	res.Lines(t, "dir="+res.Dir)
-}
-
-func TestE2E_Scope_GlobalVarsWinOverCLIArgs(t *testing.T) {
-	// given a global var and a matching CLI KEY=VALUE arg, when the task
-	// runs, then the global value wins (why: vars: is internal wiring the
-	// author controls — a caller can't silently override it; get: is the
-	// public API for caller input)
-	res := Yml(t, `
-		vars:
-		  - HOST: localhost
-		tasks:
-		  t:
-		    steps:
-		      - run: echo host={{.HOST}}
-	`, "t", "HOST=remotehost")
-	res.OK(t)
-	res.Lines(t, "host=localhost")
 }
 
 func TestE2E_Scope_CLIArgsWinOverEnvFile(t *testing.T) {
@@ -76,20 +94,20 @@ func TestE2E_Scope_CLIArgsWinOverEnvFile(t *testing.T) {
 	res.Lines(t, "foo=fromcli")
 }
 
-func TestE2E_Scope_GlobalVarsWinOverEnvFile(t *testing.T) {
-	// given an env: file and a global vars: entry setting the same var, when
-	// the task runs, then the global value wins (why: vars: sits above
-	// env: files in the precedence chain)
+func TestE2E_Scope_SetStepWinsOverEnvFile(t *testing.T) {
+	// given an env: file and a set: step assigning the same var, when the
+	// task runs, then the set: value wins (why: the timeline sits above
+	// every BuildScope-layer source, env: files included)
 	res := Run(t, Case{
 		Files: Files{
 			"hobnob.yml": `
-				vars:
-				  - HOST: localhost
 				env:
 				  - .env
 				tasks:
 				  t:
 				    steps:
+				      - set:
+				          - HOST: localhost
 				      - run: echo host={{.HOST}}
 			`,
 			".env": "HOST=fromfile\n",
@@ -125,7 +143,7 @@ func TestE2E_Scope_EnvFileWinsOverOSEnv(t *testing.T) {
 }
 
 func TestE2E_Scope_OSEnvVisibleWhenNothingElseSetsIt(t *testing.T) {
-	// given an OS env var with no vars:/CLI-arg/env: file override, when a
+	// given an OS env var with no CLI-arg/env: file/timeline override, when a
 	// task reads it, then the ambient value still passes through (why: OS
 	// env is the lowest-priority layer, not an excluded one)
 	res := Run(t, Case{

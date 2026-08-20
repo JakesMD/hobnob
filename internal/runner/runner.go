@@ -115,13 +115,16 @@ func jsonEscapedForm(secretVal string) (string, bool) {
 
 // execCtx bundles the state threaded through every step-execution function.
 // scope is kept separate — a call step swaps in a childScope while
-// cfg/task/noPrompts/dir change together as a unit.
+// cfg/task/noPrompts/dir change together as a unit. memo is shared across the
+// whole run (one ExecuteTask call), including through call:'s scope swap —
+// that's what lets a use: prologue replay into two sibling sandboxes.
 type execCtx struct {
 	ctx       context.Context
 	cfg       *config.ConfigFile
 	task      string
 	noPrompts bool
 	dir       string
+	memo      *useMemo
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
@@ -139,15 +142,27 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; execCall passes the resolved child dir.
+// This is the entry point for one whole run: it owns the use: memo cache, which
+// lives for the lifetime of this call (and everything it recursively executes)
+// and no longer.
 func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	task, execCfg, err := resolveTask(taskName, cfg)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newUseMemo()}, taskName, scope)
+}
+
+// executeTask resolves and runs taskName within an already-established
+// execCtx, carrying its memo forward. call: uses this (rather than the public
+// ExecuteTask) so a used task's memoized results survive the sandbox swap at
+// a call: boundary.
+func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
+	task, execCfg, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
 	}
+	noPrompts := execState.noPrompts
 	if task.Interactive != nil && !*task.Interactive {
 		noPrompts = true
 	}
-	currentDir := parentDir
+	currentDir := execState.dir
 	if task.Dir != "" {
 		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
 		if err != nil {
@@ -156,7 +171,7 @@ func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *co
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
 	if task.IfExpr != "" {
-		ok, err := eval.EvalCondition(ctx, task.IfExpr, scope.Vars, currentDir)
+		ok, err := eval.EvalCondition(execState.ctx, task.IfExpr, scope.Vars, currentDir)
 		if err != nil {
 			return fmt.Errorf("task %q if: %w", taskName, err)
 		}
@@ -165,7 +180,7 @@ func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *co
 			return nil
 		}
 	}
-	return executeSteps(execCtx{ctx: ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: currentDir}, task.Steps, scope)
+	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
 }
 
 func executeSteps(execState execCtx, steps []config.Step, scope *cli.Scope) error {
@@ -194,6 +209,11 @@ func executeSteps(execState execCtx, steps []config.Step, scope *cli.Scope) erro
 			err = execSet(step, scope)
 		case config.KindCall:
 			err = execCall(execState, step, scope)
+			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
+				err = nil
+			}
+		case config.KindUse:
+			err = execUse(execState, step, scope)
 			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
 				err = nil
 			}

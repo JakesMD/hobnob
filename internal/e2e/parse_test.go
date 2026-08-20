@@ -30,11 +30,12 @@ func TestE2E_Parse_NullDocumentIsValid(t *testing.T) {
 }
 
 func TestE2E_Parse_BareTopLevelKeysAreValid(t *testing.T) {
-	// given vars:/modules:/tasks: present but each with no children, when
+	// given env:/modules:/tasks: present but each with no children, when
 	// parsed, then it's valid and yields nothing (why: a bare key is a
 	// legitimate way to say "none of these yet", not malformed structure)
 	res := Yml(t, `
-		vars:
+		env:
+		modules:
 		tasks:
 	`, "--list")
 	res.OK(t)

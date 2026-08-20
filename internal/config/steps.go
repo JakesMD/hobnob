@@ -37,6 +37,9 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		case "call":
 			step.Kind = KindCall
 			step.CallTarget = fieldVal.Value
+		case "use":
+			step.Kind = KindUse
+			step.CallTarget = fieldVal.Value
 		case "loop":
 			step.Kind = KindFor
 			forTarget, forList, forMatrix, err := parseLoopNode(fieldVal)
@@ -68,6 +71,8 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			step.Interactive = &interactive
 		case "dir":
 			step.DirTmpl = normalizeTmpl(fieldVal.Value)
+		case "rerun":
+			step.Rerun = parseBool(fieldVal)
 		case "steps":
 			subSteps, err := parseStepSequence(fieldVal)
 			if err != nil {
@@ -75,6 +80,17 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			}
 			step.ForSteps = subSteps
 		}
+	}
+
+	if step.Kind == KindUse {
+		if len(step.CallVars) > 0 {
+			return Step{}, fmt.Errorf("use %q: with: is not supported here; use: shares the caller's scope, so there is nothing to pass in — use call: for an isolated task", step.CallTarget)
+		}
+		if len(step.IntoEntries) > 0 {
+			return Step{}, fmt.Errorf("use %q: into: is not supported here; use: shares the caller's scope, so results are already there — use call: for an isolated task", step.CallTarget)
+		}
+	} else if step.Rerun {
+		return Step{}, fmt.Errorf("rerun: is only supported on use: steps")
 	}
 
 	return step, nil
@@ -86,12 +102,12 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 // parent's secrets into the child, so a secret passed down is already masked
 // under its new name. Flagging it here only over-masks — a composed value like
 // "postgres://{{.USER}}:{{.PASS}}@db" would blank out entirely instead of just
-// the password. Declare secrecy where the value originates (set:/get:/vars:/
-// env:) and let it propagate.
+// the password. Declare secrecy where the value originates (set:/get:/env:) and
+// let it propagate.
 func rejectSecretCallVars(entries []SetEntry) error {
 	for _, entry := range entries {
 		if entry.Secret {
-			return fmt.Errorf("with entry %q: secret: is not supported here; mark the variable secret where it's defined (set:, get:, vars: or env:) — it stays masked when passed through with:", entry.Key)
+			return fmt.Errorf("with entry %q: secret: is not supported here; mark the variable secret where it's defined (set:, get: or env:) — it stays masked when passed through with:", entry.Key)
 		}
 	}
 	return nil

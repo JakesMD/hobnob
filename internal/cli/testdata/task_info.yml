@@ -1,6 +1,3 @@
-vars:
-  - ANIMAL: cat
-
 tasks:
   adopt:
     info: "Adopt a {{.ANIMAL}} from the shelter"

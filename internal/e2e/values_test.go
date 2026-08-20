@@ -50,7 +50,7 @@ func TestE2E_Values_CLIArgStaysTextEvenWhenJSONShaped(t *testing.T) {
 	// given a CLI KEY=VALUE arg whose value looks like a JSON array, when
 	// used directly, then it stays plain text — pluck on it errors naming
 	// | json rather than silently treating it as structure (why: only set:/
-	// with:/vars: literals, into: capture, and the explicit | json filter
+	// with: literals, into: capture, and the explicit | json filter
 	// ever introduce structure — CLI args never do)
 	res := Yml(t, `
 		tasks:

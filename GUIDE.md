@@ -45,12 +45,9 @@ hobnob --upgrade                     # upgrade to the latest release
 
 ## File structure
 
-Four optional top-level keys:
+Three optional top-level keys:
 
 ```yaml
-vars: # global variables
-  - KEY: value
-
 env: # files to source (.env or .sh)
   - .env
 
@@ -84,16 +81,15 @@ modules:
 - **Filters** — `show:` whitelists, `hide:` blacklists.
 - **Flattening** — `flatten: true` also registers tasks under their bare name
   (`build` as well as `docker:build`). Native tasks win on conflicts.
-- **Scoping** — modules inherit root `vars:` read-only; a module's own `vars:`
-  never leaks to the parent. The same rule applies to a module's own `env:`
-  block — sourced for that module's own subtree only.
+- **Scoping** — a module's own `env:` block is sourced for that module's own
+  subtree only; it never leaks to the parent.
 
 ---
 
 ## Tasks
 
 A task is a named sequence of steps. A `_` prefix (`_compile`) makes it internal
-— hidden from `--list`, only callable via `call`.
+— hidden from `--list`, only reachable via `call` or `use`.
 
 ### `if:` — conditional execution
 
@@ -165,33 +161,32 @@ Evaluated at runtime with Go templates (`{{ .VAR }}`).
 
 ### Precedence (highest to lowest)
 
-| Priority | Scope     | Description                               |
-| -------- | --------- | ----------------------------------------- |
-| **1**    | Local     | Set via `set`, `get`, or loop iterators.  |
-| **2**    | Passed    | Injected explicitly via `call`'s `with:`. |
-| **3**    | Inherited | Copied from the calling task.             |
-| **4**    | Global    | Declared in the root `vars:` block.       |
-| **5**    | CLI args  | `KEY=VALUE` args on the command line.     |
-| **6**    | Env files | Sourced via the root `env:` block.        |
-| **7**    | Env       | OS environment variables.                 |
-
-<details>
-<summary>Rationale</summary>
+```
+env  <  env files  <  CLI args  <  timeline (set / get / loop / use)
+```
 
 Env is lowest so ambient shell state can't silently change task behavior across
 machines. Env files rank above OS env (explicit project config, not ambient) but
-below CLI args (caller's explicit override wins). Global vars rank above CLI
-args because `vars:` is internal wiring that shouldn't be silently overridden —
-callers should use `get:` steps instead, which auto-skip once the variable is
-already in scope.
+below CLI args (caller's explicit override wins). Above CLI args, precedence is
+no longer a rule but execution order — a task's own `set:`/`get:`/`loop:`/`use:`
+steps run after the initial scope is built, and each sees everything before it.
 
-</details>
+The two roles a variable can play each have their own verb:
 
-Use `{{ .VAR | default "fallback" }}` to fall back to a lower-priority layer:
+- **A known value the task controls** — use `set:`. It always wins over a CLI
+  arg with the same name; nothing should silently override it.
+- **An overridable default** — use `get:` with a `default:`. A caller's CLI arg
+  satisfies the prompt (so it's skipped) and wins; with no arg, the default is
+  used:
 
 ```yaml
-vars:
-  - HOST: "{{ .HOST | default "localhost" }}"
+tasks:
+  deploy:
+    steps:
+      - get:
+          - HOST:
+              default: localhost
+      - run: echo host={{.HOST}}
 ```
 
 ### Env files
@@ -216,13 +211,14 @@ env:
 - Vars are not masked in output by default, regardless of filename. Add
   `secret: true` to an entry, using the expanded `path: { secret: true }` form
   shown above, to mask its vars.
-- Later entries override earlier ones (same ordering rule as `vars:`); if two
+- Later entries override earlier ones (same ordering rule as `set:`); if two
   entries set the same var, masking follows whichever value won.
 
 ### Scope isolation
 
 `call` gives the child task a deep copy of scope. Mutations stay sandboxed
-unless pulled back with `into:`.
+unless pulled back with `into:`. `use` is the opposite — see
+[`use` — shared prologues](#use--shared-prologues) below.
 
 ### Top-to-bottom resolution
 
@@ -240,7 +236,7 @@ A variable holds what its data actually is — text, a number, `true`/`false`,
 a list, or an object — not JSON squeezed into a string. Structure only ever
 enters scope from three places:
 
-- a `set:`/`with:`/`vars:` map or list literal
+- a `set:`/`with:` map or list literal
 - capturing `run:` output via `into:`, when the output decodes cleanly as a
   JSON array/object (plain text, or text that merely starts with `{` or `[`
   without being valid JSON, stays text)
@@ -281,8 +277,8 @@ Falls back to a lower-priority layer when the piped value is empty — see
 [Variables](#variables) for the precedence chain this is typically used with:
 
 ```yaml
-vars:
-  - HOST: "{{ .HOST | default "localhost" }}"
+- set:
+    - REGION: '{{ .AWS_REGION | default "us-east-1" }}'
 ```
 
 #### `trim`
@@ -436,11 +432,41 @@ can omit `{{ }}`:
         default: .VERSIONS | first
 ```
 
+#### Comparisons
+
+`eq` / `ne` / `lt` / `le` / `gt` / `ge` compare two typed values directly —
+handy in `if:`, which runs its rendered `true`/`false` as a shell condition:
+
+```yaml
+- run: ./deploy-prod.sh
+  if: '{{ eq .OS "darwin" }}'
+- run: echo "batch too large"
+  if: '{{ gt (.ITEMS | len) 100 }}'
+```
+
+Comparison is lenient about representation: if both sides are plain JSON
+number text — `-3`, `1.5`, `1e9` — regardless of which `Kind` actually
+carries it, they compare numerically (exactly, at any magnitude — never
+through a lossy float64), so `{{ lt .A .B }}` with `A=9` and `B=10` (CLI
+args, always text) is `true`, not `false` as a lexical `"10" < "9"` would
+give. Text that merely looks numeric to a human but isn't valid JSON number
+grammar — `Inf`, `NaN`, `0x10`, a leading-zero `007`, a leading-plus `+3` —
+is compared as text instead, not parsed as a lenient float would. A missing
+var compares equal to `""`, matching the `IsEmpty` rule used everywhere
+else. Otherwise comparison falls back to exact text equality / lexical
+ordering.
+
+Bools compare for `eq`/`ne` only — `lt`/`le`/`gt`/`ge` on a bool is an error,
+same as text/template's own builtins. Arrays and objects aren't comparable at
+all; pluck out the field you actually mean to compare. `eq` (like
+text/template's own) accepts multiple right-hand arguments and is true if
+any match: `eq .ENV "staging" "qa"`.
+
 ---
 
 ## Steps
 
-Every task is a sequence of five step types.
+Every task is a sequence of six step types.
 
 ### `set` — assign variables
 
@@ -482,8 +508,8 @@ templates — `stdout | lines | first`, `stdout | pluck "field"`, and so on.
 ```
 
 > Unbuffered Python: scripts buffer stdout when not attached to a terminal, so
-> `run:` output can appear late or all at once. Fix with `PYTHONUNBUFFERED: 1`
-> in `vars:`, or `python -u` per script. See
+> `run:` output can appear late or all at once. Fix with `- set: [{PYTHONUNBUFFERED: 1}]`,
+> or `python -u` per script. See
 > [Python `-u` docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u).
 
 ### `get` — interactive prompts
@@ -550,8 +576,105 @@ failed call:
 
 `with:` entries take no `secret:` flag — it's rejected at parse time. Masking
 matches on value, so a secret stays masked once passed down, even under a new
-name; mark it secret where it's defined (`set:`, `get:`, `vars:`, `env:`)
-instead.
+name; mark it secret where it's defined (`set:`, `get:`, or `env:`) instead.
+
+### `use` — shared prologues
+
+Runs another task's steps directly against the caller's scope: no sandbox, no
+`with:`/`into:` (both are rejected at parse time — there's nothing to pass in
+or pull back when the scope is already shared).
+
+```yaml
+tasks:
+  _setup:
+    steps:
+      - get:
+          - ENV:
+              options: [staging, production]
+              default: staging
+      - run: aws sts get-caller-identity
+        into:
+          - ACCOUNT: stdout | pluck "Account"
+
+  deploy:
+    steps:
+      - use: _setup
+      - run: docker push app:{{.ENV}}
+
+  rollback:
+    steps:
+      - use: _setup # cached: no second prompt, no second aws call
+      - run: ./rollback.sh {{.ACCOUNT}}
+```
+
+`call` sandboxes. `use` does not. That is the whole distinction.
+
+**Memoized** — a task reached via `use:` runs at most once per hobnob
+invocation. The first run's variables are snapshotted; a later `use:` of the
+same task replays that snapshot into scope instead of re-executing. This is
+what makes the `rollback` example above skip the prompt and the API call the
+second time, and what makes replay correct across `call:`'s sandbox boundary:
+
+```yaml
+main:
+  steps:
+    - call: _a # sandboxed; uses _setup, ACCOUNT lands in _a's copy
+    - call: _b # sandboxed; uses _setup — replays the snapshot, gets ACCOUNT
+```
+
+Caching only the fact that a task ran would leave `_b` with nothing — the
+memo replays the actual result, not just a "done" flag. A task skipped by its
+own `if:` is cached as having produced nothing; a failure under `soft: true`
+is not cached and is retried by the next `use:`.
+
+**`rerun: true`** opts one `use:` step out of memoization — needed inside a
+`loop:`, where a `use:` would otherwise run on the first iteration only:
+
+```yaml
+- loop: .SERVICES
+  steps:
+    - use: _check_service
+      rerun: true
+```
+
+**Sharp edge** — replay overwrites. `use:` asserts a task's results are in
+scope; it is not "maybe run something":
+
+```yaml
+- use: _setup # TOKEN=abc
+- set:
+    - TOKEN: xyz
+- use: _setup # replays the snapshot — TOKEN is abc again
+```
+
+`dir:` behaves as it does for `call:` — the used task's own `dir:` applies to
+its own `run:` steps and does not leak into the caller's later steps; a
+step-level `dir:` overrides it. `if:` and `interactive:` also work as they do
+for `call:`.
+
+> Migrating a `vars:` block (removed in v0.3.0): move each entry into a task
+> and `use:` it wherever it's needed.
+>
+> ```yaml
+> # before
+> vars:
+>   - REGISTRY: ghcr.io
+>   - HOST: '{{ .HOST | default "localhost" }}'
+>
+> # after
+> tasks:
+>   _setup:
+>     steps:
+>       - set:
+>           - REGISTRY: ghcr.io
+>       - get:
+>           - HOST:
+>               default: localhost
+> ```
+>
+> Each task that needs the prologue adds `- use: _setup` as its first step.
+> Nothing enforces that — a task that omits it runs with the variables unset,
+> rendering as empty rather than erroring.
 
 ### `loop` — iteration
 

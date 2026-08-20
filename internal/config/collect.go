@@ -62,6 +62,19 @@ func collectGetParams(steps []Step, cfg *ConfigFile, visited map[string]bool, pr
 					alreadySet[intoEntry.ParentKey] = true
 				}
 			}
+		case KindUse:
+			if cfg != nil && !strings.Contains(step.CallTarget, "{{") && !visited[step.CallTarget] {
+				visited[step.CallTarget] = true
+				if task, ok := cfg.Tasks[step.CallTarget]; ok {
+					for _, getEntry := range collectGetParams(task.Steps, cfg, visited, alreadySet) {
+						if !alreadySet[getEntry.VarName] {
+							entries = append(entries, getEntry)
+						}
+						alreadySet[getEntry.VarName] = true
+					}
+				}
+				delete(visited, step.CallTarget)
+			}
 		}
 	}
 	return entries

@@ -26,7 +26,7 @@ func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 		return err
 	}
 
-	if err := runCallSteps(execState, taskName, step.DirTmpl, noPrompts, childScope); err != nil {
+	if err := runTaskSteps(execState, taskName, step.DirTmpl, noPrompts, childScope); err != nil {
 		return fmt.Errorf("call %s: %w", taskName, err)
 	}
 
@@ -52,24 +52,27 @@ func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, e
 	return childScope, nil
 }
 
-// runCallSteps executes the called task in childScope, resolving its working
-// directory per the dir: priority chain documented on ExecuteTask.
-func runCallSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, childScope *cli.Scope) error {
+// runTaskSteps executes taskName against runScope (a call:'s isolated
+// childScope, or a use:'s shared caller scope), resolving its working
+// directory per the dir: priority chain documented on ExecuteTask. Shared by
+// execCall and execUse — the only difference between them is which scope
+// object this is called with and whether the memo cache is consulted.
+func runTaskSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, runScope *cli.Scope) error {
 	if dirTmpl == "" {
-		// Priority B (task-level dir) or C (inherit parentDir) — handled inside ExecuteTask
-		return ExecuteTask(execState.ctx, taskName, childScope, execState.cfg, noPrompts, execState.dir)
+		// Priority B (task-level dir) or C (inherit parentDir) — handled inside executeTask
+		return executeTask(execCtx{ctx: execState.ctx, cfg: execState.cfg, noPrompts: noPrompts, dir: execState.dir, memo: execState.memo}, taskName, runScope)
 	}
-	// Priority A: call step dir overrides task-level dir
+	// Priority A: step-level dir overrides task-level dir
 	task, execCfg, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
 	}
-	resolved, err := eval.EvalTemplate(dirTmpl, childScope.Vars)
+	resolved, err := eval.EvalTemplate(dirTmpl, runScope.Vars)
 	if err != nil {
-		return fmt.Errorf("call dir template: %w", err)
+		return fmt.Errorf("dir template: %w", err)
 	}
 	childDir := resolveDirPath(resolved, execState.cfg.TaskfileDir)
-	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: childDir}, task.Steps, childScope)
+	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: childDir, memo: execState.memo}, task.Steps, runScope)
 }
 
 // captureCallInto pulls into: results back from childScope into the caller's

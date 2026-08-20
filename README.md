@@ -71,6 +71,9 @@ Select a value for CATEGORY.
 ## ✨ Other features
 
 - **Modules** — import tasks from other files, namespaced by prefix.
+- **Shared prologues** — `use:` a task's steps directly into the caller's
+  scope, memoized so a shared setup runs once per invocation no matter how
+  many tasks reach it.
 - **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
 - **Env files** — load vars from `.env` files or sourced shell scripts.
 - **Working dir inheritance** — set it once, override per-call or per-step.
@@ -78,6 +81,11 @@ Select a value for CATEGORY.
 - **CI mode** — skip prompts, fail fast on missing vars.
 - **Task listing** — see or interactively pick from available tasks.
 - ...and much more in the [hobnob guide](GUIDE.md).
+
+Steps run sequentially, always — hobnob has no parallelism, by design: a
+timeline can't garble concurrent prompts, and streamed output stays readable.
+Shell backgrounding already covers the common case for free:
+`go build -o a & go build -o b & wait`.
 
 ---
 

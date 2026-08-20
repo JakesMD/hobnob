@@ -24,6 +24,12 @@
 // 13. swallow the check: re-prompt loop in get.go                    -> get_test.go
 // 14. make step-level dir: lose to task-level                        -> dir_test.go
 // 15. drop the missing-env-file warning in envfiles.go               -> env_test.go stderr
+//
+// 16. make asNumber assert Any().(string) instead of String()        -> compare_test.go (YAML int literal)
+//
+// 17. key the use: memo on task name instead of Steps identity       -> use_test.go (module identity)
+// 18. skip writing the use: delta snapshot after a successful run    -> use_test.go (rerun/loop, sandbox replay)
+// 19. drop the with:/into: parse-time rejection on use: steps        -> use_test.go (rejected at parse time)
 package e2e
 
 import (
