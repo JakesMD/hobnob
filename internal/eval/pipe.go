@@ -8,32 +8,34 @@ import (
 )
 
 // EvalRunIntoPipe evaluates a run: into: pipe expression against captured
-// stdout/stderr. expr format: "stdout" | "stderr" [| filter | filter ...].
-// The source is captured once via value.Capture — sniffed into an Array or
-// Object only when it decodes cleanly as one, else left a String — and any
-// filter chain then runs typed from there through evalChainOn (the same
-// evaluator EvalValue uses). Capturing at the source rather than at the end
-// of the chain matters: a filter chain that ends on a String leaf (stdout |
-// pluck "cfg", where cfg's value is itself a JSON-looking string) must stay
-// a String, not get re-sniffed into structure.
+// stdout/stderr. expr format: "stdout"/"stderr", each optionally followed by
+// an accessor ([0].name) and/or a filter chain (| filter | filter ...) —
+// e.g. "stdout[0].name" or "stdout | trim". The source is captured once via
+// value.Capture — sniffed into an Array or Object only when it decodes
+// cleanly as one, else left a String — and any accessor/filter chain then
+// runs typed from there through evalChainOn (the same evaluator EvalValue
+// uses). Capturing at the source rather than at the end of the chain
+// matters: a chain that ends on a String leaf (stdout.cfg, where cfg's
+// value is itself a JSON-looking string) must stay a String, not get
+// re-sniffed into structure.
 func EvalRunIntoPipe(expr, stdout, stderr string) (value.Value, error) {
 	source, chain, _ := strings.Cut(expr, " | ")
-	source = strings.TrimSpace(source)
+	name, accessor := SplitSourceAccessor(strings.TrimSpace(source))
 
 	var src value.Value
-	switch source {
+	switch name {
 	case "stdout":
 		src = value.Capture(stdout)
 	case "stderr":
 		src = value.Capture(stderr)
 	default:
-		return value.Value{}, fmt.Errorf("run into: unknown source %q: must be stdout or stderr", source)
+		return value.Value{}, fmt.Errorf("run into: unknown source %q: must be stdout or stderr", name)
 	}
-	if chain == "" {
+	if accessor == "" && chain == "" {
 		return src, nil
 	}
 
-	result, err := evalChainOn(src, chain)
+	result, err := evalChainOn(src, accessor, chain)
 	if err != nil {
 		return value.Value{}, fmt.Errorf("run into pipe: %w", err)
 	}

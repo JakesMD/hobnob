@@ -106,7 +106,7 @@ func TestE2E_RunArgv_ObjectElementErrors(t *testing.T) {
 		      - run: [echo, .RESP]
 	`, "t")
 	res.Fails(t)
-	res.Err(t, "pluck the field")
+	res.Err(t, "select the field")
 }
 
 func TestE2E_RunArgv_EmptyListIsParseError(t *testing.T) {

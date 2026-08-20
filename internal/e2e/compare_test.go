@@ -25,8 +25,8 @@ func TestE2E_Compare_StringVarAgainstStringLiteral(t *testing.T) {
 }
 
 func TestE2E_Compare_NumberVarAgainstNumericLiteral(t *testing.T) {
-	// given a Number var (from pluck on captured JSON), when compared eq
-	// against a template numeric literal, then true (why: a literal 3
+	// given a Number var (from an accessor on captured JSON), when compared
+	// eq against a template numeric literal, then true (why: a literal 3
 	// stringifies via coerce today, so comparing it against a real Number
 	// errors "incompatible types for comparison: number, string")
 	res := Yml(t, `
@@ -37,7 +37,7 @@ func TestE2E_Compare_NumberVarAgainstNumericLiteral(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - COUNT: '{{ .RESP | pluck "count" }}'
+		          - COUNT: .RESP.count
 		      - run: 'echo {{ eq .COUNT 3 }}'
 	`, "t")
 	res.OK(t)
@@ -55,7 +55,7 @@ func TestE2E_Compare_NumericOrderingOnCapturedNumber(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - COUNT: '{{ .RESP | pluck "count" }}'
+		          - COUNT: .RESP.count
 		      - run: 'echo {{ gt .COUNT 1 }}'
 	`, "t")
 	res.OK(t)
@@ -77,7 +77,7 @@ func TestE2E_Compare_NumericStringsOrderNumerically(t *testing.T) {
 }
 
 func TestE2E_Compare_BoolVarAgainstBoolLiteral(t *testing.T) {
-	// given a Bool var (from pluck), when compared eq against a bool
+	// given a Bool var (from an accessor), when compared eq against a bool
 	// literal, then true (why: literal true stringifies via coerce today,
 	// so comparing it against a real Bool errors)
 	res := Yml(t, `
@@ -88,7 +88,7 @@ func TestE2E_Compare_BoolVarAgainstBoolLiteral(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - ACTIVE: '{{ .RESP | pluck "active" }}'
+		          - ACTIVE: .RESP.active
 		      - run: 'echo {{ eq .ACTIVE true }}'
 	`, "t")
 	res.OK(t)
@@ -107,7 +107,7 @@ func TestE2E_Compare_BoolVarAgainstQuotedText(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - ACTIVE: '{{ .RESP | pluck "active" }}'
+		          - ACTIVE: .RESP.active
 		      - run: 'echo {{ eq .ACTIVE "true" }}'
 	`, "t")
 	res.OK(t)
@@ -127,8 +127,8 @@ func TestE2E_Compare_LargeIntegersNotCollapsedByFloat(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - A: '{{ .RESP | pluck "a" }}'
-		          - B: '{{ .RESP | pluck "b" }}'
+		          - A: .RESP.a
+		          - B: .RESP.b
 		      - run: 'echo {{ eq .A .B }}'
 	`, "t")
 	res.OK(t)
@@ -182,7 +182,7 @@ func TestE2E_Compare_NeMirrorsEq(t *testing.T) {
 }
 
 func TestE2E_Compare_BoolOrderingRejected(t *testing.T) {
-	// given two real Bool vars (from pluck — a set: scalar literal like
+	// given two real Bool vars (from an accessor — a set: scalar literal like
 	// "A: true" is a template, not a bare .VAR ref, so it renders as text,
 	// not a Bool; see GUIDE.md's "Typed values"), when compared lt, then the
 	// run fails naming the unorderable kind (why: bools are equality-only,
@@ -196,8 +196,8 @@ func TestE2E_Compare_BoolOrderingRejected(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - A: '{{ .RESP | pluck "a" }}'
-		          - B: '{{ .RESP | pluck "b" }}'
+		          - A: .RESP.a
+		          - B: .RESP.b
 		      - run: 'echo {{ lt .A .B }}'
 	`, "t")
 	res.Fails(t)
@@ -227,9 +227,9 @@ func TestE2E_Compare_StructuredValueRejected(t *testing.T) {
 }
 
 func TestE2E_Compare_YAMLIntLiteralComparesNumerically(t *testing.T) {
-	// given a YAML int nested in a set: map literal, when plucked and
+	// given a YAML int nested in a set: map literal, when accessed and
 	// compared eq against a numeric literal, then true (why: regression —
-	// pluck surfaces a Go int, not json.Number; asNumber's raw
+	// an accessor surfaces a Go int, not json.Number; asNumber's raw
 	// Any().(string) assertion panics on it, recovered by text/template into
 	// "interface conversion: interface {} is int, not string")
 	res := Yml(t, `
@@ -239,7 +239,7 @@ func TestE2E_Compare_YAMLIntLiteralComparesNumerically(t *testing.T) {
 		      - set:
 		          - CFG: { port: 8080 }
 		      - set:
-		          - PORT: '{{ .CFG | pluck "port" }}'
+		          - PORT: .CFG.port
 		      - run: 'echo {{ eq .PORT 8080 }}'
 	`, "t")
 	res.OK(t)
@@ -247,7 +247,7 @@ func TestE2E_Compare_YAMLIntLiteralComparesNumerically(t *testing.T) {
 }
 
 func TestE2E_Compare_YAMLFloatLiteralOrdersNumerically(t *testing.T) {
-	// given a YAML float nested in a set: map literal, when plucked and
+	// given a YAML float nested in a set: map literal, when accessed and
 	// compared gt against a numeric literal, then true (why: same
 	// non-canonical-underlying-type bug as the int case, float variant)
 	res := Yml(t, `
@@ -257,7 +257,7 @@ func TestE2E_Compare_YAMLFloatLiteralOrdersNumerically(t *testing.T) {
 		      - set:
 		          - CFG: { ratio: 1.5 }
 		      - set:
-		          - RATIO: '{{ .CFG | pluck "ratio" }}'
+		          - RATIO: .CFG.ratio
 		      - run: 'echo {{ gt .RATIO 1 }}'
 	`, "t")
 	res.OK(t)
@@ -279,8 +279,8 @@ func TestE2E_Compare_MixedIntFloatKeepsPrecision(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - A: '{{ .RESP | pluck "a" }}'
-		          - B: '{{ .RESP | pluck "b" }}'
+		          - A: .RESP.a
+		          - B: .RESP.b
 		      - run: 'echo {{ gt .A .B }}'
 	`, "t")
 	res.OK(t)
@@ -389,7 +389,7 @@ func TestE2E_Compare_IfConditionGatesOnNumericComparison(t *testing.T) {
 		        into:
 		          - RESP: stdout
 		      - set:
-		          - COUNT: '{{ .RESP | pluck "count" }}'
+		          - COUNT: .RESP.count
 		      - run: echo gated
 		        if: '{{ gt .COUNT 1 }}'
 		      - run: echo skipped

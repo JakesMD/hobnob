@@ -2,7 +2,7 @@
 
 A yaml task runner built around 3 things others get wrong:
 
-- **JSON, natively.** Query, filter, slice — no `jq` needed.
+- **JSON, natively.** Dot into nested fields, slice arrays — no `jq` needed.
 - **Tasks return values.** Capture a command's output or a sub-task's results,
   explicitly, back into the caller.
 - **Prompts.** Text input or select menus, dropped anywhere in a task.
@@ -42,13 +42,8 @@ tasks:
         into:
           - JOKE: .RESP
 
-      # JSON handling: pluck fields out of the blob, no jq
-      - set:
-          - SETUP: '{{ .JOKE | pluck "[0].setup" }}'
-          - PUNCHLINE: '{{ .JOKE | pluck "[0].punchline" }}'
-
-      # Typed argv: no shell, so no quoting to get wrong
-      - run: [echo, .SETUP, "...", .PUNCHLINE]
+      # JSON handling: dot into the blob, no jq
+      - run: echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
 
   _fetch-joke:
     steps:
@@ -79,9 +74,9 @@ Select a value for CATEGORY.
   shell: no quoting layer, and an Array-typed element splices into multiple
   arguments (`FLAGS: ["-ldflags", "-s -w"]` arrives as one argument, not two).
 - **Modules** — import tasks from other files, namespaced by prefix.
-- **Shared prologues** — `use:` a task's steps directly into the caller's
-  scope, memoized so a shared setup runs once per invocation no matter how
-  many tasks reach it.
+- **Shared prologues** — `use:` a task's steps directly into the caller's scope,
+  memoized so a shared setup runs once per invocation no matter how many tasks
+  reach it.
 - **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
 - **Env files** — load vars from `.env` files or sourced shell scripts.
 - **Working dir inheritance** — set it once, override per-call or per-step.

@@ -48,7 +48,7 @@ func TestE2E_Values_CapturedTextThatMerelyStartsWithBraceStaysString(t *testing.
 
 func TestE2E_Values_CLIArgStaysTextEvenWhenJSONShaped(t *testing.T) {
 	// given a CLI KEY=VALUE arg whose value looks like a JSON array, when
-	// used directly, then it stays plain text — pluck on it errors naming
+	// used directly, then it stays plain text — indexing it errors naming
 	// | json rather than silently treating it as structure (why: only set:/
 	// with: literals, into: capture, and the explicit | json filter
 	// ever introduce structure — CLI args never do)
@@ -56,7 +56,7 @@ func TestE2E_Values_CLIArgStaysTextEvenWhenJSONShaped(t *testing.T) {
 		tasks:
 		  t:
 		    steps:
-		      - run: echo {{.TAGS | pluck "[0]"}}
+		      - run: echo {{.TAGS[0]}}
 	`, "t", `TAGS=["a","b"]`)
 	res.Fails(t)
 	res.Err(t, "json")
@@ -64,12 +64,12 @@ func TestE2E_Values_CLIArgStaysTextEvenWhenJSONShaped(t *testing.T) {
 
 func TestE2E_Values_JSONFilterParsesPlainStringExplicitly(t *testing.T) {
 	// given a CLI arg that's JSON-shaped text, when explicitly piped through
-	// | json, then it becomes real structure usable by pluck/loop
+	// | json, then it becomes real structure usable by an accessor/loop
 	res := Yml(t, `
 		tasks:
 		  t:
 		    steps:
-		      - run: echo first={{.TAGS | json | pluck "[0]"}}
+		      - run: echo first={{(.TAGS | json)[0]}}
 	`, "t", `TAGS=["a","b"]`)
 	res.OK(t)
 	res.Lines(t, "first=a")

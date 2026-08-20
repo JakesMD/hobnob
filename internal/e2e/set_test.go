@@ -41,7 +41,8 @@ func TestE2E_Set_MapLiteralBecomesObjectKeepingJSONTypes(t *testing.T) {
 	// leaf, when executed, then it becomes a real JSON object whose non-
 	// string scalars keep their native type (a bool stays a bool, a number
 	// stays a number) and whose template leaf resolves against scope —
-	// provable via pluck, which errors on a string but not on real structure
+	// provable via an accessor, which errors on a string but not on real
+	// structure
 	res := Yml(t, `
 		tasks:
 		  t:
@@ -53,7 +54,7 @@ func TestE2E_Set_MapLiteralBecomesObjectKeepingJSONTypes(t *testing.T) {
 		              replicas: 3
 		              enabled: true
 		              tag: "{{.ENV}}"
-		      - run: echo host={{.CONFIG | pluck "host"}} replicas={{.CONFIG | pluck "replicas"}} enabled={{.CONFIG | pluck "enabled"}} tag={{.CONFIG | pluck "tag"}} gt={{gt (.CONFIG | pluck "replicas") 2}}
+		      - run: echo host={{.CONFIG.host}} replicas={{.CONFIG.replicas}} enabled={{.CONFIG.enabled}} tag={{.CONFIG.tag}} gt={{gt .CONFIG.replicas 2}}
 	`, "t")
 	res.OK(t)
 	res.Lines(t, "host=prod.example.com replicas=3 enabled=true tag=prod gt=true")
@@ -73,7 +74,7 @@ func TestE2E_Set_QuoteInTemplateLeafDoesNotCorruptJSON(t *testing.T) {
 		          - OBJ:
 		              name: "{{.NAME}}"
 		      - run: |
-		          echo '{{.OBJ | pluck "name"}}'
+		          echo '{{.OBJ.name}}'
 	`, "t")
 	res.OK(t)
 	res.Lines(t, `he said "hi"`)

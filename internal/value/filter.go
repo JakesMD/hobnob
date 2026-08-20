@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
-	"github.com/theory/jsonpath"
 )
 
 // Filter is a scope template filter: args holds every argument in the order
 // written, with the piped value always last (Go template pipe convention —
-// {{ .DATA | pluck "path" }} calls pluck with args = [Str("path"), DATA]).
+// {{ .DATA | trim }} calls trim with args = [DATA]).
 type Filter func(args []Value) (Value, error)
 
 // Filters is the single registry every template filter is defined in.
@@ -27,7 +25,6 @@ var Filters = map[string]Filter{
 	"split":      filterSplit,
 	"lines":      filterLines,
 	"first":      filterFirst,
-	"pluck":      filterPluck,
 	"keys":       filterKeys,
 	"values":     filterValues,
 	"jsonEscape": filterJSONEscape,
@@ -50,17 +47,20 @@ func requireString(v Value, name string) (string, error) {
 
 // filterDefault returns the piped value unchanged when it's non-empty,
 // preserving its type — falling back to a String/Array/etc only stringifies
-// the piped side, never the default.
+// the piped side, never the default. Also falls back when the piped value
+// is a deferred "path not found" sentinel (see Missing) — the one and only
+// way an accessor's missing-path error is caught rather than raised. Both
+// triggers produce the same result, so there's nothing new to reason about.
 func filterDefault(args []Value) (Value, error) {
 	if len(args) < 2 {
 		return Value{}, fmt.Errorf("default: expected a fallback and a value")
 	}
 	def := args[0]
 	value := piped(args)
-	if !value.IsEmpty() {
-		return value, nil
+	if value.IsMissing() || value.IsEmpty() {
+		return def, nil
 	}
-	return def, nil
+	return value, nil
 }
 
 // filterTrim is identity on non-String kinds — into: RESP: stdout | trim
@@ -121,8 +121,9 @@ func filterLines(args []Value) (Value, error) {
 	return Of(lines), nil
 }
 
-// filterFirst requires an Array — a String never auto-parses (bug: pluck on
-// a JSON-looking string silently re-sniffing). Empty array yields Nil.
+// filterFirst requires an Array — a String never auto-parses (bug: indexing
+// a JSON-looking string would otherwise silently re-sniff it). Empty array
+// yields Nil.
 func filterFirst(args []Value) (Value, error) {
 	value := piped(args)
 	if value.Kind() != KindArray {
@@ -133,61 +134,6 @@ func filterFirst(args []Value) (Value, error) {
 		return Nil(), nil
 	}
 	return Of(arr[0]), nil
-}
-
-// jsonPathParser is reused across calls — safe for concurrent use, parsing
-// is the expensive part.
-var jsonPathParser = jsonpath.NewParser()
-
-// normalizeJSONPath lets pluck callers write "profile.name" or "[2]" instead
-// of the RFC-required "$.profile.name" / "$[2]" — pluck always addresses
-// from the root, so the "$" is implied rather than typed out each time.
-func normalizeJSONPath(path string) string {
-	switch {
-	case strings.HasPrefix(path, "$"):
-		return path
-	case strings.HasPrefix(path, "["):
-		return "$" + path
-	default:
-		return "$." + path
-	}
-}
-
-// filterPluck requires the piped value to already be an Array/Object — it
-// never auto-parses a String, even one holding valid JSON text. That
-// discipline is what makes a JSON-string leaf ({"cfg":"[1,2]"}) stay a
-// string end to end instead of silently becoming an array on the next pluck.
-func filterPluck(args []Value) (Value, error) {
-	if len(args) < 2 {
-		return Value{}, fmt.Errorf("pluck: expected a path and a value")
-	}
-	value := piped(args)
-	path := args[0].String()
-	fallback := args[1 : len(args)-1] // present iff len == 1 (path, fallback, value)
-
-	if value.Kind() != KindArray && value.Kind() != KindObject {
-		if len(fallback) == 1 {
-			return fallback[0], nil
-		}
-		return Value{}, fmt.Errorf("pluck %q: value is a %s; pipe through | json to parse it first", path, value.Kind())
-	}
-
-	parsedPath, err := jsonPathParser.Parse(normalizeJSONPath(path))
-	if err != nil {
-		return Value{}, fmt.Errorf("pluck %q: %w", path, err)
-	}
-	nodes := parsedPath.Select(value.Any())
-	switch len(nodes) {
-	case 0:
-		if len(fallback) == 1 {
-			return fallback[0], nil
-		}
-		return Value{}, fmt.Errorf("pluck %q: no match", path)
-	case 1:
-		return Of(nodes[0]), nil
-	default:
-		return Of([]any(nodes)), nil
-	}
 }
 
 func sortedKeys(obj map[string]any) []string {
@@ -213,7 +159,7 @@ func filterKeys(args []Value) (Value, error) {
 }
 
 // filterValues returns real typed children — not their stringified form —
-// so a nested object stays an object and chains into another pluck.
+// so a nested object stays an object and chains into further accessor steps.
 func filterValues(args []Value) (Value, error) {
 	value := piped(args)
 	if value.Kind() != KindObject {
@@ -240,7 +186,7 @@ func filterJSONEscape(args []Value) (Value, error) {
 // String, and is identity on every other kind (including one already
 // structured). An optional fallback before the piped value — json
 // "fallback" — swallows a parse failure and returns the fallback instead of
-// erroring, the same convention pluck uses for a missing key.
+// erroring, the same convention default uses for an accessor's missing path.
 func filterJSON(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return Value{}, fmt.Errorf("json: expected a value")

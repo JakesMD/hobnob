@@ -17,9 +17,9 @@ Requires Go 1.24+. No external services, no codegen, no build step beyond
 `go build`. The project self-hosts its own dev tasks in `hobnob.yml` — see
 [CONTRIBUTING.md](CONTRIBUTING.md).
 
-Dependencies: `gopkg.in/yaml.v3` (parsing), `github.com/theory/jsonpath` (the
-`pluck` filter), `github.com/charmbracelet/{bubbletea,bubbles,lipgloss}`
-(interactive prompts and styled output).
+Dependencies: `gopkg.in/yaml.v3` (parsing),
+`github.com/charmbracelet/{bubbletea,bubbles,lipgloss}` (interactive prompts
+and styled output).
 
 ## Package layout
 
@@ -71,31 +71,40 @@ a task would prompt for, without running it (powers `--list`'s param hints).
 Four primitives everything else is built from:
 
 - `EvalTemplate(tmpl, vars)` — renders `{{ .VAR }}` to a **string** via Go's
-  `text/template` plus hobnob's filters (`default`, `trim`, `split`, `pluck`,
+  `text/template` plus hobnob's filters (`default`, `trim`, `split`,
   `keys`, ...), adapted from the single registry in `internal/value` at
-  package init since this runs on nearly every step.
+  package init since this runs on nearly every step. Before parsing,
+  `rewriteAccessors` (`accessor.go`) rewrites any `.A.b[0][.KEY][1:3][*]`
+  accessor chain into a call to hobnob's own `hbpath` template func — a
+  source-to-source lexer pass, not a departure from `text/template`.
 - `EvalValue(expr, vars)` — the type-preserving counterpart: when `expr` is
-  exactly one template action (a bare `.VAR`, optionally through a filter
-  chain), it walks the parsed template's tree and evaluates it directly
-  against `value.Filters` instead of executing it, so the result keeps its
-  `value.Value` kind (Array, Object, ...) rather than flattening to text.
-  Anything else falls back to `EvalTemplate` and comes back wrapped in a
-  String. Backs `set:`/`with:` scalar leaves and `loop:`'s target.
+  exactly one template action (a bare `.VAR`, an accessor chain, optionally
+  through a filter chain), it walks the parsed template's tree and evaluates
+  it directly against `value.Filters`/`value.Path` instead of executing it,
+  so the result keeps its `value.Value` kind (Array, Object, ...) rather than
+  flattening to text. Anything else falls back to `EvalTemplate` and comes
+  back wrapped in a String. Backs `set:`/`with:` scalar leaves and `loop:`'s
+  target.
 - `EvalCondition(ctx, expr, vars, dir)` — renders then runs via `sh -c` with
   `exec.CommandContext`, exit code 0 = true. Backs `if:`/`check:`; ctx
   cancellation (CTRL+C) kills a hung condition outright.
 - `EvalRunIntoPipe(expr, stdout, stderr)` — the `run: ... into:` pipe syntax
-  (`stdout | trim`, `stderr | lines`). Captures stdout/stderr into a
-  `value.Value` via `value.Capture` (structure only if it decodes cleanly as a
-  JSON array/object), then runs any filter chain typed from there.
+  (`stdout | trim`, `stdout[0].name`, `stderr | lines`). Captures
+  stdout/stderr into a `value.Value` via `value.Capture` (structure only if
+  it decodes cleanly as a JSON array/object), then runs any accessor/filter
+  chain typed from there.
 
 A scope variable is a typed `value.Value` — string, bool, number, array, or
 object — never JSON-as-text. Structure enters from exactly three places:
 `set:`/`with:` map/list literals, `run: into:` capture, and the
 explicit `json` filter; env vars, CLI args, and env-file values are always
-strings, never sniffed. `pluck`/`keys`/`values`/`first` require an
-Array/Object and error (naming `| json`) rather than silently re-parsing a
-string — see `internal/value/filter.go`. `pluck` uses RFC 9535 JSONPath.
+strings, never sniffed. `keys`/`values`/`first` and an accessor step all
+require an Array/Object and error (naming `| json`) rather than silently
+re-parsing a string — see `internal/value/filter.go` and `internal/value/path.go`.
+A missing accessor path is deferred instead: `value.Path` returns a sentinel
+(`Value.IsMissing`) rather than an error, so a later `| default` in the same
+pipeline can still catch it; every other consumer raises it as a real error
+first.
 
 ### `internal/cli` — scope and presentation
 
@@ -231,8 +240,8 @@ observe: signals and process groups (`cmd/hobnob/main_signal_test.go`,
 `internal/runner`'s `TestKillRunningStep_*`/`TestExecRun_CtxCancelled_*`),
 `--upgrade`'s network/tarball handling (`internal/app/upgrade_test.go`),
 bubbletea model `Update`/`View` behavior (`internal/tui`), and combinatorial
-pure functions like `pluck`'s JSONPath selectors
-(`internal/value/filter_test.go`) or dotenv/shell-sourcing edge cases
+pure functions like the accessor evaluator's step semantics
+(`internal/value/path_test.go`) or dotenv/shell-sourcing edge cases
 (`internal/eval/shell_test.go`). Those still follow table-driven `t.Run`
 subtests per package; see [CONTRIBUTING.md](CONTRIBUTING.md) for
 naming/structure conventions (Given/When/Then/Why, Arrange/Act/Assert).

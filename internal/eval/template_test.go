@@ -71,13 +71,23 @@ func TestEvalTemplate(t *testing.T) {
 	}
 }
 
-// TestPluck covers only what internal/value/filter_test.go's TestFilterPluck
-// (and friends) don't already: RFC 9535 selectors deep enough to need real
-// template/JSONPath integration (negative index, wildcard, filter
-// expressions), the object-leaf/chained-pluck case, and two behaviors with no
-// direct-call equivalent. Basic path/nested/numeric-leaf/slice/missing-key
-// cases live in filter_test.go — see that file for the base grammar.
-func TestPluck(t *testing.T) {
+// TestAccessor covers what internal/value/path_test.go's direct Path() calls
+// don't already: real template/EvalTemplate integration (negative index,
+// wildcard, chained dotted access, deferred-error-via-default). Basic
+// path/nested/numeric-leaf/slice/missing-key semantics live in path_test.go
+// — see that file for the base grammar. Replaces the old pluck-filter suite
+// (TestPluck) — its two RFC 9535 filter-expression cases have no accessor
+// equivalent and are deliberately not replaced; see DESIGN-PATH.md "What is
+// lost".
+func TestAccessor(t *testing.T) {
+	dataVar := func(json string) map[string]value.Value {
+		v, err := value.Parse(json)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", json, err)
+		}
+		return map[string]value.Value{"DATA": v}
+	}
+
 	tests := []struct {
 		name     string
 		tmpl     string
@@ -86,52 +96,40 @@ func TestPluck(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "given bool leaf, when plucked, then returns plain bool text (why: chainable into shell if: conditions)",
-			tmpl:     `{{ .DATA | json | pluck "active" }}`,
-			vars:     sv(map[string]string{"DATA": `{"active":true}`}),
+			name:     "given bool leaf, when accessed, then returns plain bool text (why: chainable into shell if: conditions)",
+			tmpl:     `{{ .DATA.active }}`,
+			vars:     dataVar(`{"active":true}`),
 			expected: "true",
 		},
 		{
-			name:     "given object leaf, when plucked, then returns compact JSON so result stays chainable (why: pluck | pluck)",
-			tmpl:     `{{ .DATA | json | pluck "meta" | pluck "region" }}`,
-			vars:     sv(map[string]string{"DATA": `{"meta":{"region":"eu"}}`}),
+			name:     "given nested object leaf, when accessed by chained dots, then returns the leaf directly (why: no re-parsing needed between levels, unlike pluck | pluck)",
+			tmpl:     `{{ .DATA.meta.region }}`,
+			vars:     dataVar(`{"meta":{"region":"eu"}}`),
 			expected: "eu",
 		},
 		{
-			name:    "given out-of-range array index, when plucked, then returns error (why: fail fast on bad path)",
-			tmpl:    `{{ .DATA | json | pluck "items[5]" }}`,
-			vars:    sv(map[string]string{"DATA": `{"items":["a"]}`}),
+			name:    "given out-of-range array index, when accessed with no default, then returns error (why: fail fast on bad path)",
+			tmpl:    `{{ .DATA.items[5] }}`,
+			vars:    dataVar(`{"items":["a"]}`),
 			wantErr: true,
 		},
 		{
-			name:     "given present key with a default, when plucked, then returns the actual value, not the default (why: default only kicks in on failure)",
-			tmpl:     `{{ .DATA | json | pluck "name" "fallback" }}`,
-			vars:     sv(map[string]string{"DATA": `{"name":"hobnob"}`}),
+			name:     "given present key with a default, when accessed, then returns the actual value, not the default (why: default only kicks in on a missing path)",
+			tmpl:     `{{ .DATA.name | default "fallback" }}`,
+			vars:     dataVar(`{"name":"hobnob"}`),
 			expected: "hobnob",
 		},
 		{
-			name:     "given a negative index, when plucked, then counts from the end (why: RFC 9535 negative index selector)",
-			tmpl:     `{{ .DATA | json | pluck "items[-1]" }}`,
-			vars:     sv(map[string]string{"DATA": `{"items":["a","b","c"]}`}),
+			name:     "given a negative index, when accessed, then counts from the end",
+			tmpl:     `{{ .DATA.items[-1] }}`,
+			vars:     dataVar(`{"items":["a","b","c"]}`),
 			expected: "c",
 		},
 		{
-			name:     "given a wildcard path segment, when plucked, then returns every matched value as a JSON array (why: RFC 9535 wildcard selector)",
-			tmpl:     `{{ .DATA | json | pluck "items[*].name" }}`,
-			vars:     sv(map[string]string{"DATA": `{"items":[{"name":"a"},{"name":"b"}]}`}),
+			name:     "given a wildcard step, when accessed, then returns every matched value as a JSON array",
+			tmpl:     `{{ .DATA.items[*].name }}`,
+			vars:     dataVar(`{"items":[{"name":"a"},{"name":"b"}]}`),
 			expected: `["a","b"]`,
-		},
-		{
-			name:     "given a filter expression matching one element, when plucked, then returns that element unwrapped, same as any single match (why: RFC 9535 filter selector; bare @.field is an existence test, not truthy, so the comparison is explicit)",
-			tmpl:     `{{ .DATA | json | pluck "items[?@.active == true]" }}`,
-			vars:     sv(map[string]string{"DATA": `{"items":[{"name":"a","active":true},{"name":"b","active":false}]}`}),
-			expected: `{"active":true,"name":"a"}`,
-		},
-		{
-			name:     "given a filter expression matching multiple elements, when plucked, then returns a JSON array (why: multi-match results stay chainable like keys/values)",
-			tmpl:     `{{ .DATA | json | pluck "items[?@.active == true]" }}`,
-			vars:     sv(map[string]string{"DATA": `{"items":[{"name":"a","active":true},{"name":"b","active":false},{"name":"c","active":true}]}`}),
-			expected: `[{"active":true,"name":"a"},{"active":true,"name":"c"}]`,
 		},
 	}
 	for _, test := range tests {

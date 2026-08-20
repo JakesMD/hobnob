@@ -34,6 +34,15 @@
 // 20. make run:'s Array-splice loop stringify the whole Array        -> run_test.go (ArrayElementSplices)
 // 21. drop the empty-argument-preserved rule in eval.ResolveArgv     -> run_test.go (EmptyElementPreserved)
 // 22. allow run: [] to parse instead of erroring                     -> run_test.go (EmptyListIsParseError)
+//
+// 23. make hbpath return Nil instead of the missing sentinel         -> accessor_test.go (MissingPathErrorsNamingThePath)
+// 24. drop the IsMissing trigger in filterDefault                    -> accessor_test.go (DefaultCatchesMissingPath)
+// 25. let a wrong-kind access return missing, not an error           -> accessor_test.go (WrongKindNotCaughtByDefault)
+// 26. drop the marker scan in eval.EvalTemplate                      -> accessor_test.go (bare {{ .A.b }} render)
+// 27. keep no-match elements under [*] instead of dropping them      -> accessor_test.go (WildcardMapsAndDropsNoMatchElements)
+// 28. stop skipping string literals in rewriteAccessors              -> accessor_test.go (StringLiteralBracketsSurviveUnchanged)
+// 29. drop the accessor peel in eval.EvalRunIntoPipe                 -> accessor_test.go (IntoSourceWithAccessorAndFilterChain)
+// 30. narrow eval.IsBareRef back to ^\.[A-Z][A-Z0-9_]*$               -> accessor_test.go (BraceFreeOptionsForm, BraceFreeDirForm)
 package e2e
 
 import (

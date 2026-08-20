@@ -34,14 +34,14 @@ func ResolveArgv(tmpls []string, vars map[string]value.Value) ([]string, error) 
 func argvElements(v value.Value, index int) ([]string, error) {
 	switch v.Kind() {
 	case value.KindObject:
-		return nil, fmt.Errorf("run: argument %d resolved to an object; pluck the field you mean to pass", index)
+		return nil, fmt.Errorf("run: argument %d resolved to an object; use an accessor (.VAR.field) to select the field you mean to pass", index)
 	case value.KindArray:
 		arr := v.Any().([]any)
 		args := make([]string, 0, len(arr))
 		for _, elem := range arr {
 			ev := value.Of(elem)
 			if ev.Kind() == value.KindObject || ev.Kind() == value.KindArray {
-				return nil, fmt.Errorf("run: argument %d resolved to an object; pluck the field you mean to pass", index)
+				return nil, fmt.Errorf("run: argument %d resolved to an object; use an accessor (.VAR.field) to select the field you mean to pass", index)
 			}
 			args = append(args, ev.String())
 		}

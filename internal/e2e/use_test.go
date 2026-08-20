@@ -204,9 +204,9 @@ func TestE2E_Use_RerunRejectedOnCallStep(t *testing.T) {
 
 func TestE2E_Use_UsedTasksOwnIfFalseSkipsAndCaches(t *testing.T) {
 	// given a used task whose own if: is false, when used: twice, then both
-	// uses are silent no-ops (why: a skip is authored and deterministic —
-	// caching it as "nothing" is what DESIGN-USE.md calls the first attempt
-	// giving the later caller what it got, not re-evaluating the condition)
+	// uses are silent no-ops (why: a skip is authored and deterministic — the
+	// first attempt gives the later caller what it got, not a re-evaluated
+	// condition)
 	res := Yml(t, `
 		tasks:
 		  t:

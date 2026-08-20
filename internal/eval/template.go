@@ -24,9 +24,9 @@ import (
 var templateFuncs = buildTemplateFuncs()
 
 func buildTemplateFuncs() template.FuncMap {
-	funcs := make(template.FuncMap, len(value.Filters)+6)
+	funcs := make(template.FuncMap, len(value.Filters)+9)
 	for name, filter := range value.Filters {
-		funcs[name] = adaptFilter(filter)
+		funcs[name] = adaptFilter(name, filter)
 	}
 	// text/template's builtin eq/ne/lt/le/gt/ge compare via each arg's raw
 	// reflect.Kind, which for a value.Value is always Struct — so a bare
@@ -42,7 +42,33 @@ func buildTemplateFuncs() template.FuncMap {
 	funcs["le"] = templateLe
 	funcs["gt"] = templateGt
 	funcs["ge"] = templateGe
+	// hbpath/hbstar/hbslice are never written by a task author — the
+	// accessor rewriter (accessor.go) emits them in place of .A.b[0][*]
+	// syntax before parsing. Registered here so the ordinary text/template
+	// reflection path (any template not shaped for chainvalue.go's typed
+	// evaluator — e.g. a bare {{ .A.b }} with no filter, or an accessor
+	// used as an eq/lt argument) still evaluates them correctly; the typed
+	// path (chainvalue.go's evalPathCommand) calls value.PathCall/
+	// StarCall/SliceCall directly instead of going through reflection.
+	funcs["hbpath"] = hbpathReflect
+	funcs["hbstar"] = hbstarReflect
+	funcs["hbslice"] = hbsliceReflect
 	return funcs
+}
+
+func hbpathReflect(src string, root any, steps ...any) (value.Value, error) {
+	args := make([]value.Value, 0, len(steps)+2)
+	args = append(args, value.Str(src), coerce(root))
+	for _, s := range steps {
+		args = append(args, coerce(s))
+	}
+	return value.PathCall(args)
+}
+
+func hbstarReflect() value.Value { return value.Star() }
+
+func hbsliceReflect(lo, hi any) value.Value {
+	return value.Slice(coerce(lo), coerce(hi))
 }
 
 // isJSONNumber reports whether s is exactly a JSON number literal. The
@@ -106,6 +132,12 @@ func unorderable(k value.Kind) bool {
 // its original raw text verbatim, so two structurally-identical objects
 // captured with different whitespace would otherwise compare unequal.
 func equalValues(a, b value.Value) (bool, error) {
+	if a.IsMissing() {
+		return false, a.MissingErr()
+	}
+	if b.IsMissing() {
+		return false, b.MissingErr()
+	}
 	if a.Kind() == value.KindArray || a.Kind() == value.KindObject ||
 		b.Kind() == value.KindArray || b.Kind() == value.KindObject {
 		return false, fmt.Errorf("comparison not supported for %s and %s (no structural equality for array/object)", a.Kind(), b.Kind())
@@ -122,6 +154,12 @@ func equalValues(a, b value.Value) (bool, error) {
 // as a number, else lexical ordering via String(). Bools and Arrays/Objects
 // are refused outright — see unorderable.
 func orderValues(a, b value.Value) (int, error) {
+	if a.IsMissing() {
+		return 0, a.MissingErr()
+	}
+	if b.IsMissing() {
+		return 0, b.MissingErr()
+	}
 	if unorderable(a.Kind()) || unorderable(b.Kind()) {
 		return 0, fmt.Errorf("comparison not supported for %s and %s", a.Kind(), b.Kind())
 	}
@@ -198,11 +236,24 @@ func templateGe(arg1, arg2 any) (bool, error) {
 // default "x" }}. coerce normalizes whatever text/template hands us — a raw
 // string literal, that missing-var nil, or a prior filter's Value result —
 // before the filter itself runs.
-func adaptFilter(filter value.Filter) func(...any) (value.Value, error) {
+// adaptFilter's name parameter gates the one missing-sentinel exemption:
+// default is the sole filter allowed to see a deferred "path not found"
+// value (see value.Missing) — every other filter never runs at all when an
+// argument is missing, raising the deferred error here instead so it
+// surfaces before the filter's own body could stringify or otherwise
+// consume the sentinel.
+func adaptFilter(name string, filter value.Filter) func(...any) (value.Value, error) {
 	return func(args ...any) (value.Value, error) {
 		coerced := make([]value.Value, len(args))
 		for i, arg := range args {
 			coerced[i] = coerce(arg)
+		}
+		if name != "default" {
+			for _, a := range coerced {
+				if a.IsMissing() {
+					return value.Value{}, a.MissingErr()
+				}
+			}
 		}
 		return filter(coerced)
 	}
@@ -233,7 +284,15 @@ func parseTemplateCached(tmpl string) (*template.Template, error) {
 	if cached, ok := templateCache.Load(tmpl); ok {
 		return cached.(*template.Template), nil
 	}
-	parsed, err := template.New("").Funcs(templateFuncs).Parse(tmpl)
+	// Cache keyed on the original (pre-rewrite) source, not the rewritten
+	// one — so a repeated EvalTemplate/EvalValue call for the same task-file
+	// template text pays the rewrite cost once, same as it already pays the
+	// parse cost once.
+	rewritten, err := rewriteAccessors(tmpl)
+	if err != nil {
+		return nil, err
+	}
+	parsed, err := template.New("").Funcs(templateFuncs).Parse(rewritten)
 	if err != nil {
 		return nil, err
 	}
@@ -245,6 +304,12 @@ func parseTemplateCached(tmpl string) (*template.Template, error) {
 // value.Value implements fmt.Stringer, so {{ .VAR }} prints exactly what
 // Value.String() returns with no conversion needed. Use EvalValue instead
 // when the result should keep its type rather than flatten to text.
+//
+// A missing accessor path (value.Missing) that reaches bare render position
+// — no filter chain at all, so adaptFilter's guard never ran — still leaves
+// Value.String() returning a poison marker rather than "". This is the one
+// place that scans for it and turns it into the real, deferred error it
+// always was.
 func EvalTemplate(tmpl string, vars map[string]value.Value) (string, error) {
 	parsed, err := parseTemplateCached(tmpl)
 	if err != nil {
@@ -254,7 +319,11 @@ func EvalTemplate(tmpl string, vars map[string]value.Value) (string, error) {
 	if err := parsed.Execute(&buf, vars); err != nil {
 		return "", err
 	}
-	return buf.String(), nil
+	out := buf.String()
+	if msg, ok := value.ScanMissing(out); ok {
+		return "", fmt.Errorf("%s", msg)
+	}
+	return out, nil
 }
 
 // ResolveItems renders a literal list or a template that resolves to an

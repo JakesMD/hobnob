@@ -250,10 +250,10 @@ value through `| json` to parse it explicitly:
 - loop: .TAGS | json # TAGS='["a","b"]' on the command line
 ```
 
-A field that's exactly one variable reference — a bare `.VAR`, or a single
-`{{ .VAR }}` action, optionally through a filter chain — keeps that
-variable's type. Any surrounding text renders it to a plain string, same as
-always:
+A field that's exactly one variable reference — a bare `.VAR`, an accessor
+chain (`.VAR.field[0]`), or a single `{{ }}` action, optionally through a
+filter chain — keeps that variable's type. Any surrounding text renders it
+to a plain string, same as always:
 
 ```yaml
 - set:
@@ -261,6 +261,109 @@ always:
     - B: "{{ .USERS }}" # renders to text — JSON text, if USERS is structured
     - C: "count: {{ .USERS | len }}" # text either way — surrounding text forces it
 ```
+
+### Accessors
+
+Query a variable holding a real array or object — a map/list literal (see
+[`set`](#set--assign-variables)), JSON captured via `into:`, or anything
+already run through `| json` — with the same dot/bracket syntax the value
+itself resembles, instead of a quoted path string:
+
+```yaml
+- run: curl -s https://api.example.com/user
+  into:
+    - RESP: stdout
+- set:
+    - NAME: .RESP.profile.name
+```
+
+| Form | Meaning |
+| --- | --- |
+| `.A.b.c` | object keys |
+| `.A[0]` | array index |
+| `.A[-1]` | negative index, from the end |
+| `.A[1:3]` | slice |
+| `.A[*]` | every element (array) or every value (object) |
+| `.A["key with . or /"]` | a literal key that isn't a valid identifier |
+| `.A[.KEY]` | dynamic key or index, taken from a variable |
+| `.A[.KEY][0].name` | any combination, any depth |
+
+Dynamic keys are what accessors solve that a path string can't: looking up a
+key held in another variable is a plain reference, not string concatenation
+— so a key containing `.` or `[` (`app.kubernetes.io/name`, say) is looked up
+literally rather than silently mis-parsed as a nested path:
+
+```yaml
+- set:
+    - KEY: app.kubernetes.io/name
+- run: echo {{ .LABELS[.KEY] }}
+```
+
+A `(pipeline)` result can be the head of an accessor too, when there's no
+variable to hang it on: `(.TAGS | json)[0]`.
+
+#### Multiplicity
+
+A slice or `[*]` yields multiple nodes. A step after one **maps over the
+results** and yields an Array:
+
+```yaml
+.ITEMS[*].name # ["ada", "grace"]
+.ITEMS[1:3].name # the same, over a slice
+```
+
+Elements with no match, or the wrong kind, are **dropped**, not held as nil
+placeholders or a hard failure — matching hobnob's existing convention
+(`lines` drops blank lines, `split` drops empty parts). A slice or `[*]` that
+matches nothing yields an empty Array, not an error: multiplicity is not
+absence.
+
+Slice bounds clamp like Go's own slice semantics — `.ITEMS[0:99]` on a
+3-element array returns all 3, it doesn't error. `[*]` on an object yields
+every value, in sorted-key order — the same order `| values` uses, so
+`.CFG[*]` and `.CFG | values` give the same result.
+
+#### Absence is an error, caught by `default`
+
+A missing key, an out-of-range index, or a value that isn't an array/object
+(a plain string, even one holding valid-looking JSON text — see [Typed
+values](#typed-values)) errors — before every step but a slice/`[*]` has
+run, at least. Pipe through `default` to opt out per accessor, same as any
+other empty value:
+
+```yaml
+{{ .RESP.profile.name | default "Andrew" }} # "Andrew" if missing
+{{ .RESP.profile.name }} # error: path not found
+```
+
+`default` only ever catches *absence*. A wrong-kind access — indexing a
+string, slicing an object — is never caught by it, even with `| default`
+right after: that's a task-file bug with a specific remedy (`| json`), not a
+fact about the data, and hobnob won't blur the two. This is why structure is
+sniffed exactly once (see [Typed values](#typed-values)) — a String is never
+silently re-interpreted as an array or object by an accessor either.
+
+Because an accessor errors by default, it's strict everywhere a filter
+chain's result lands, including [argv elements](#argv-list-form) — a typo
+aborts the run instead of passing an empty argument:
+
+```yaml
+- run: [aws, s3, rm, --recursive, .CONFIG.bucket] # a typo'd bucket key fails loudly
+```
+
+> Migrating from `pluck` (removed in v0.3.0): rewrite the path string as an
+> accessor chain.
+>
+> ```
+> {{ .RESP | pluck "profile.name" }}      →  {{ .RESP.profile.name }}
+> {{ .RESP | pluck "items[0]" }}          →  {{ .RESP.items[0] }}
+> {{ .RESP | pluck "items[1:3]" }}        →  {{ .RESP.items[1:3] }}
+> {{ .RESP | pluck "items[*].name" }}     →  {{ .RESP.items[*].name }}
+> {{ .RESP | pluck "a.b" "unknown" }}     →  {{ .RESP.a.b | default "unknown" }}
+> {{ .RESP | pluck "items[?@.x]" }}       →  no direct equivalent — filter expressions
+>                                             are gone; a shell step with jq covers
+>                                             the rare case that needs one
+> ```
 
 ### Built-in variables
 
@@ -343,55 +446,14 @@ you'll reach for it explicitly is a var that was never captured through
 ```
 
 It's identity on a value that's already structured, so `| json` is always
-safe to add defensively before `pluck`/`keys`/`values` without checking the
-source first. An optional fallback swallows a parse failure instead of
-erroring: `.TEXT | json "fallback"`.
-
-#### `pluck`
-
-Queries a variable holding a real array or object — a map/list literal (see
-[`set`](#set--assign-variables)), JSON captured via `into:`, or anything
-already run through `| json`:
-
-```yaml
-- run: curl -s https://api.example.com/user
-  into:
-    - RESP: stdout
-- set:
-    - NAME: '{{ .RESP | pluck "profile.name" }}' # dot/bracket path: a.b[0].c
-```
-
-Path is [RFC 9535 JSONPath](https://www.rfc-editor.org/rfc/rfc9535.html) (via
-[github.com/theory/jsonpath](https://github.com/theory/jsonpath)), minus the
-leading `$` — implied, since pluck always addresses from the root. Beyond
-`a.b[0].c`, that also covers slices, negative indices, wildcards, and filters:
-
-```yaml
-- set:
-    - PAIR: '{{ .RESP | pluck "items[1:3]" }}' # slice -> ["b","c"]
-    - LAST: '{{ .RESP | pluck "items[-1]" }}' # negative index -> "c"
-    - NAMES: '{{ .RESP | pluck "items[*].name" }}' # wildcard -> ["a","b","c"]
-    - ACTIVE: '{{ .RESP | pluck "items[?@.active == true]" }}' # filter
-```
-
-One match returns unwrapped, typed; multiple return a list (chains into other
-filters and `loop:`, same as `keys`/`values`). In filters, `@` is the node under
-test — bare `@.field` only checks existence, so compare explicitly for a truthy
-check: `@.active == true`.
-
-A missing key, a bad index, or a value that isn't an array/object (a plain
-string, even one holding valid-looking JSON text — see [Typed
-values](#typed-values)) errors by default. Add a fallback to opt out per
-call: `pluck "profile.name" "unknown"` returns `"unknown"` instead of
-failing.
-
-Also works on plain lists — `pluck "[2]"` grabs the 3rd item. Prefer `first` for
-the first item.
+safe to add defensively before an [accessor](#accessors)/`keys`/`values`
+without checking the source first. An optional fallback swallows a parse
+failure instead of erroring: `.TEXT | json "fallback"`.
 
 #### `keys` / `values`
 
 Query a variable holding a real object — a map literal or JSON captured via
-`into:`, same sources as `pluck`:
+`into:`, same sources an [accessor](#accessors) reads:
 
 ```yaml
 - set:
@@ -472,7 +534,7 @@ ordering.
 
 Bools compare for `eq`/`ne` only — `lt`/`le`/`gt`/`ge` on a bool is an error,
 same as text/template's own builtins. Arrays and objects aren't comparable at
-all; pluck out the field you actually mean to compare. `eq` (like
+all; access the field you actually mean to compare. `eq` (like
 text/template's own) accepts multiple right-hand arguments and is true if
 any match: `eq .ENV "staging" "qa"`.
 
@@ -508,16 +570,17 @@ parse it.
     - ERROR_LOG: stderr
 ```
 
-The pipe after `stdout`/`stderr` accepts any
-[template filter](#template-filters), chained the same way as in `{{ }}`
-templates — `stdout | lines | first`, `stdout | pluck "field"`, and so on.
+`stdout`/`stderr` accepts a trailing [accessor](#accessors)
+(`stdout[0].name`) and/or a pipe into any [template filter](#template-filters),
+chained the same way as in `{{ }}` templates — `stdout | lines | first`, and
+so on.
 
 ```yaml
 - run: curl -s https://api.example.com/user
   into:
     - CUSTOM:
-        id: stdout | pluck "id"
-        name: stdout | pluck "profile.name"
+        id: stdout.id
+        name: stdout.profile.name
     # -> CUSTOM = {"id":42,"name":"Ada"} — id stays a real number
 ```
 
@@ -555,8 +618,9 @@ typed values a plain task runner can't offer:
 
 An empty array splices to nothing; an element resolving to `""` is preserved
 as an empty argument (dropping it would shift every later positional
-argument). An Object element is an error — pluck the field you mean to pass
-instead of letting it stringify by accident.
+argument). An Object element is an error — use an [accessor](#accessors)
+(`.VAR.field`) to select the field you mean to pass instead of letting it
+stringify by accident.
 
 What it gives up: no pipes, redirects, globs, `&&`, or shell builtins. `cd` in
 particular is unavailable — that's what [`dir:`](#dir--working-directory) is
@@ -572,7 +636,7 @@ quotes are literal, so nested `"` no longer need escaping:
 
 ```yaml
 - run: |
-    echo "{{ .JOKE | pluck "[0].setup" }} ... {{ .JOKE | pluck "[0].punchline" }}"
+    echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
 ```
 
 For any command using more than one filter, name the intermediate value
@@ -581,8 +645,8 @@ name when it needs debugging:
 
 ```yaml
 - set:
-    - SETUP: '{{ .JOKE | pluck "[0].setup" }}'
-- run: [echo, .SETUP]
+    - FIRST_TAG: '{{ .TAGS_TEXT | json | first }}'
+- run: [echo, .FIRST_TAG]
 ```
 
 ### `get` — interactive prompts
@@ -667,7 +731,7 @@ tasks:
               default: staging
       - run: aws sts get-caller-identity
         into:
-          - ACCOUNT: stdout | pluck "Account"
+          - ACCOUNT: stdout.Account
 
   deploy:
     steps:

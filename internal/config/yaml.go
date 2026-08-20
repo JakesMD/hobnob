@@ -2,22 +2,19 @@ package config
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"hobnob/internal/eval"
 )
 
-// bareVarRef matches a bare .VAR reference with an optional pipe chain,
-// e.g. ".RELEASE_LIST" or ".RELEASE_LIST | first". Relative paths (./infra,
-// ../tests) and dotfiles (.git) never match — they contain "/" or a
-// lowercase-leading segment, which this pattern excludes.
-var bareVarRef = regexp.MustCompile(`^\.[A-Z][A-Z0-9_]*(\s*\|[^{]+)?$`)
-
-// normalizeTmpl wraps a bare .VAR or .VAR | filter expression in {{ }} so
-// users can write `default: .LIST | first` instead of `default: '{{.LIST | first}}'`.
+// normalizeTmpl wraps a bare accessor or accessor | filter expression in
+// {{ }} so users can write `default: .LIST | first` or
+// `options: .CFG.items[0].name` instead of the {{ }}-wrapped form. See
+// eval.IsBareRef.
 func normalizeTmpl(value string) string {
-	if bareVarRef.MatchString(value) {
+	if eval.IsBareRef(value) {
 		return "{{" + value + "}}"
 	}
 	return value

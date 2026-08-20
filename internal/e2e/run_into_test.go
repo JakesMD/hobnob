@@ -50,7 +50,7 @@ func TestE2E_RunInto_FilterChain(t *testing.T) {
 		{name: "upper", command: `printf 'hello'`, filter: "stdout | upper", rawLines: []string{"hello"}, wantEcho: "out=HELLO"},
 		{name: "lower", command: `printf 'HELLO'`, filter: "stdout | lower", rawLines: []string{"HELLO"}, wantEcho: "out=hello"},
 		{name: "trim-then-upper-chains-left-to-right", command: `printf '  hello  \n'`, filter: "stdout | trim | upper", rawLines: []string{"  hello  "}, wantEcho: "out=HELLO"},
-		{name: "pluck-shares-the-template-filter-registry", command: `printf '{"name":"hobnob"}'`, filter: `stdout | pluck "name"`, rawLines: []string{`{"name":"hobnob"}`}, wantEcho: "out=hobnob"},
+		{name: "accessor-on-the-into-source", command: `printf '{"name":"hobnob"}'`, filter: `stdout.name`, rawLines: []string{`{"name":"hobnob"}`}, wantEcho: "out=hobnob"},
 		{name: "lines-then-first-chains-through-a-typed-array", command: `printf 'alpha\nbeta\n'`, filter: "stdout | lines | first", rawLines: []string{"alpha", "beta"}, wantEcho: "out=alpha"},
 	}
 	for _, test := range tests {
@@ -132,7 +132,7 @@ func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
 }
 
 func TestE2E_RunInto_NestedObjectAssemblesTypedFields(t *testing.T) {
-	// given a nested-object into: entry whose leaves pluck from one JSON
+	// given a nested-object into: entry whose leaves access one JSON
 	// response, when executed, then it assembles a single JSON var with
 	// numbers kept as real numbers, not stringified (why: the tree is built
 	// typed and marshaled once, not string-concatenated)
@@ -143,19 +143,19 @@ func TestE2E_RunInto_NestedObjectAssemblesTypedFields(t *testing.T) {
 		      - run: printf '{"id":42,"profile":{"name":"Ada"}}'
 		        into:
 		          - CUSTOM:
-		              id: stdout | pluck "id"
-		              name: stdout | pluck "profile.name"
-		      - run: echo id={{.CUSTOM | pluck "id"}} name={{.CUSTOM | pluck "name"}}
+		              id: stdout.id
+		              name: stdout.profile.name
+		      - run: echo id={{.CUSTOM.id}} name={{.CUSTOM.name}}
 	`, "t")
 	res.OK(t)
 	res.Lines(t, `{"id":42,"profile":{"name":"Ada"}}`, "id=42 name=Ada")
 }
 
 func TestE2E_RunInto_NestedObjectQuoteEscaped(t *testing.T) {
-	// given a nested into: leaf whose plucked value contains a double quote,
-	// when assembled, then the quote is escaped rather than corrupting the
-	// resulting JSON (why: same injection-bug regression as set:/with: —
-	// marshal happens once, after every leaf evaluates)
+	// given a nested into: leaf whose accessed value contains a double
+	// quote, when assembled, then the quote is escaped rather than
+	// corrupting the resulting JSON (why: same injection-bug regression as
+	// set:/with: — marshal happens once, after every leaf evaluates)
 	res := Yml(t, `
 		tasks:
 		  t:
@@ -164,9 +164,9 @@ func TestE2E_RunInto_NestedObjectQuoteEscaped(t *testing.T) {
 		          printf '%s' '{"msg":"he said \"hi\""}'
 		        into:
 		          - OUT:
-		              msg: stdout | pluck "msg"
+		              msg: stdout.msg
 		      - run: |
-		          echo '{{.OUT | pluck "msg"}}'
+		          echo '{{.OUT.msg}}'
 	`, "t")
 	res.OK(t)
 	res.Lines(t, `{"msg":"he said \"hi\""}`, `he said "hi"`)

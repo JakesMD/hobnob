@@ -70,7 +70,7 @@ func TestFilterTrim(t *testing.T) {
 func TestFilterTrim_IdentityOnNonString(t *testing.T) {
 	// given a captured object, when trim called, then the object passes
 	// through unchanged (why: into: RESP: stdout | trim must not stringify
-	// a captured API response before the next pluck)
+	// a captured API response before the next accessor)
 	// Arrange
 	obj := Of(map[string]any{"a": "b"})
 
@@ -170,73 +170,6 @@ func TestFilterFirst_ErrorsOnString(t *testing.T) {
 	}
 }
 
-func TestFilterPluck(t *testing.T) {
-	tests := []struct {
-		name  string
-		path  string
-		input Value
-		want  string
-	}{
-		{"given top-level key, when plucked, then returns string value", "name", Of(map[string]any{"name": "hobnob"}), "hobnob"},
-		{"given nested path with array index, when plucked, then traverses object and array", "data.items[0].name",
-			Of(map[string]any{"data": map[string]any{"items": []any{map[string]any{"name": "first"}, map[string]any{"name": "second"}}}}), "first"},
-		{"given numeric leaf, when plucked, then returns plain number text", "count", Of(map[string]any{"count": json.Number("3")}), "3"},
-		{"given a slice path, when plucked, then returns matched elements as JSON array", "items[1:3]",
-			Of(map[string]any{"items": []any{"a", "b", "c", "d"}}), `["b","c"]`},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := call(t, "pluck", Str(test.path), test.input)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.String() != test.want {
-				t.Errorf("got %q, want %q", got.String(), test.want)
-			}
-		})
-	}
-}
-
-func TestFilterPluck_ErrorsOnString(t *testing.T) {
-	// given a String piped in, when plucked, then errors naming | json (why:
-	// pluck must never auto-parse — this is the fix for silent type
-	// confusion where {"a":"[1,2,3]"} | pluck "a" | pluck "[0]" used to
-	// return 1 by re-sniffing a string leaf as an array)
-	_, err := call(t, "pluck", Str("a"), Str(`{"a":1}`))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestFilterPluck_FallbackOnStringInput(t *testing.T) {
-	// given a String piped in with a fallback, when plucked, then returns
-	// the fallback rather than attempting to parse the string
-	got, err := call(t, "pluck", Str("a"), Str("fallback"), Str(`{"a":1}`))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.String() != "fallback" {
-		t.Errorf("got %q, want %q", got.String(), "fallback")
-	}
-}
-
-func TestFilterPluck_MissingKeyErrors(t *testing.T) {
-	_, err := call(t, "pluck", Str("missing"), Of(map[string]any{"name": "hobnob"}))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestFilterPluck_MissingKeyWithFallback(t *testing.T) {
-	got, err := call(t, "pluck", Str("missing"), Str("fallback"), Of(map[string]any{"name": "hobnob"}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.String() != "fallback" {
-		t.Errorf("got %q, want %q", got.String(), "fallback")
-	}
-}
-
 func TestFilterKeysValues(t *testing.T) {
 	obj := Of(map[string]any{"us": "us-east-1", "eu": "eu-west-1"})
 
@@ -257,11 +190,11 @@ func TestFilterKeysValues(t *testing.T) {
 	}
 }
 
-func TestFilterValues_ChildrenStayTypedForFurtherPluck(t *testing.T) {
-	// given an object whose values are themselves objects, when values then
-	// pluck called, then the nested field is reachable (why: bug — values
-	// used to stringify each child, so a second pluck saw JSON text instead
-	// of structure and failed with "no match")
+func TestFilterValues_ChildrenStayTyped(t *testing.T) {
+	// given an object whose values are themselves objects, when values
+	// called, then each child stays real structure (why: bug — values used
+	// to stringify each child, so further accessor traversal like
+	// .OBJ | values | first).x saw JSON text instead of structure)
 	// Arrange
 	obj := Of(map[string]any{"a": map[string]any{"x": json.Number("1")}})
 
@@ -270,14 +203,15 @@ func TestFilterValues_ChildrenStayTypedForFurtherPluck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("values: unexpected error: %v", err)
 	}
-	got, err := call(t, "pluck", Str("[0].x"), values)
 
 	// Assert
-	if err != nil {
-		t.Fatalf("pluck: unexpected error: %v", err)
+	arr := values.Any().([]any)
+	if len(arr) != 1 {
+		t.Fatalf("got %d values, want 1", len(arr))
 	}
-	if got.String() != "1" {
-		t.Errorf("got %q, want %q", got.String(), "1")
+	child := Of(arr[0])
+	if child.Kind() != KindObject {
+		t.Fatalf("child kind: got %v, want Object (stayed structured, not stringified)", child.Kind())
 	}
 }
 
@@ -331,8 +265,8 @@ func TestFilterJSON(t *testing.T) {
 func TestFilterJSON_FallbackOnParseFailure(t *testing.T) {
 	// given malformed JSON text with a fallback, when json called, then
 	// returns the fallback instead of erroring (why: same convention as
-	// pluck's fallback — a caller can opt into graceful degradation on bad
-	// source data rather than a hard failure)
+	// default — a caller can opt into graceful degradation on bad source
+	// data rather than a hard failure)
 	got, err := call(t, "json", Str("fallback"), Str("not-json"))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -345,7 +279,7 @@ func TestFilterJSON_FallbackOnParseFailure(t *testing.T) {
 func TestFilterString(t *testing.T) {
 	// given a structured value, when string called, then returns its
 	// compact JSON text as a String (why: the explicit way to opt back into
-	// text after pluck/values/etc)
+	// text after values/keys/an accessor/etc)
 	got, err := call(t, "string", Of([]any{"a", "b"}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

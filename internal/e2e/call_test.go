@@ -30,6 +30,49 @@ func TestE2E_Call_WithAndIntoRoundTrip(t *testing.T) {
 	res.Lines(t, "result=hello_processed")
 }
 
+func TestE2E_Call_IntoFilterChainOnBareKey(t *testing.T) {
+	// given a bare into: leaf with a filter chain ("KEY | filter"), when the
+	// call completes, then the chain actually applies (regression: this used
+	// to build an unbraced ".KEY | chain" template, which text/template
+	// parses as literal text with no action at all — so the filter silently
+	// never ran and the raw source string ".KEY | chain" leaked into the var)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - RESULT: OUTPUT | upper
+		      - run: echo result={{.RESULT}}
+		  child:
+		    steps:
+		      - set:
+		          - OUTPUT: hello
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "result=HELLO")
+}
+
+func TestE2E_Call_IntoAccessorOnBareKey(t *testing.T) {
+	// given a bare into: leaf combining an accessor and a filter chain
+	// ("KEY.field | filter"), when the call completes, then both apply
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - RESULT: OUTPUT.name | upper
+		      - run: echo result={{.RESULT}}
+		  child:
+		    steps:
+		      - set:
+		          - OUTPUT: { name: ada }
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "result=ADA")
+}
+
 func TestE2E_Call_LaterIntoEntryTemplatesOverEarlier(t *testing.T) {
 	// given two into: entries in one call: step, when the second templates
 	// over the first, then it sees the first entry's already-mapped value
@@ -112,7 +155,7 @@ func TestE2E_Call_IntoNestedObjectMixesBareAndTemplateLeaves(t *testing.T) {
 		          - CUSTOM:
 		              output: .OUTPUT
 		              label: "{{.PREFIX}}-entry"
-		      - run: echo output={{.CUSTOM | pluck "output"}} label={{.CUSTOM | pluck "label"}}
+		      - run: echo output={{.CUSTOM.output}} label={{.CUSTOM.label}}
 		  child:
 		    steps:
 		      - set:
@@ -124,7 +167,7 @@ func TestE2E_Call_IntoNestedObjectMixesBareAndTemplateLeaves(t *testing.T) {
 
 func TestE2E_Call_WithMapLiteralQuoteEscaped(t *testing.T) {
 	// given a with: map literal whose template leaf value contains a double
-	// quote, when the child reads it back via pluck, then the quote is
+	// quote, when the child reads it back via an accessor, then the quote is
 	// escaped rather than corrupting the JSON (why: with: shares parseSetNode
 	// with set:, so it inherited — and must stay fixed for — the same
 	// marshal-after-eval discipline)
@@ -139,13 +182,13 @@ func TestE2E_Call_WithMapLiteralQuoteEscaped(t *testing.T) {
 		          - CUSTOM:
 		              name: "{{.NAME}}"
 		        into:
-		          - RESULT: .PLUCKED
+		          - RESULT: .RESOLVED
 		      - run: |
 		          echo '{{.RESULT}}'
 		  child:
 		    steps:
 		      - set:
-		          - PLUCKED: '{{ .CUSTOM | json | pluck "name" }}'
+		          - RESOLVED: .CUSTOM.name
 	`, "parent")
 	res.OK(t)
 	res.Lines(t, `he said "hi"`)

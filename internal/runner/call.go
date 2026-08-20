@@ -81,15 +81,17 @@ func runTaskSteps(execState execCtx, taskName, dirTmpl string, noPrompts bool, r
 //     (evolving) scope — so later into: entries in the same block can
 //     reference earlier ones, e.g. ARCHIVE_PATH: "{{.LOG_PATH}}/archive"
 //     where LOG_PATH was itself just set by a prior entry in this call.
-//   - a bare key (with or without a leading "."), optionally followed by
-//     " | filter | filter" — read straight out of childScope, typed, then
-//     run through the filter chain if there is one.
+//   - a bare key (with or without a leading "."), optionally followed by an
+//     accessor ([0].name) and/or " | filter | filter" — read straight out
+//     of childScope, typed, then resolved/filtered if there's an accessor
+//     or chain.
 func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) error {
 	evalLeaf := func(valueTmpl string) (value.Value, error) {
 		if strings.Contains(valueTmpl, "{{") {
 			return eval.EvalValue(valueTmpl, scope.Vars)
 		}
-		return resolveChildRef(valueTmpl, childScope.Vars)
+		val, _, err := resolveChildRef(valueTmpl, childScope.Vars)
+		return val, err
 	}
 	for _, intoEntry := range entries {
 		parentKey := intoEntry.ParentKey
@@ -112,29 +114,42 @@ func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) e
 			continue
 		}
 
-		key, chain, hasChain := strings.Cut(intoEntry.ValueTmpl, " | ")
-		key = strings.TrimPrefix(strings.TrimSpace(key), ".")
-		if !hasChain {
-			scope.Set(parentKey, childScope.Vars[key], childScope.Secrets[key])
-			continue
-		}
-		val, err := eval.EvalValue("."+key+" | "+chain, childScope.Vars)
+		val, plainKey, err := resolveChildRef(intoEntry.ValueTmpl, childScope.Vars)
 		if err != nil {
 			return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
+		}
+		if plainKey != "" {
+			scope.Set(parentKey, val, childScope.Secrets[plainKey])
+			continue
 		}
 		scope.Vars[parentKey] = val
 	}
 	return nil
 }
 
-// resolveChildRef evaluates a bare into: leaf (no {{ }}) against childVars: a
-// plain key ("KEY" or ".KEY") is a direct typed lookup, a key followed by
-// " | filter | ..." runs that chain typed via EvalValue.
-func resolveChildRef(valueTmpl string, childVars map[string]value.Value) (value.Value, error) {
+// resolveChildRef evaluates a bare into: leaf (no {{ }}) against childVars:
+// "KEY", ".KEY", "KEY.field[0]", "KEY | trim", "KEY[0].name | upper". When
+// the leaf is exactly one bare var name with no accessor or filter chain,
+// plainKey returns that name so the caller can propagate its secret flag —
+// every other shape loses the secret annotation, same as passing a value
+// through any filter does.
+func resolveChildRef(valueTmpl string, childVars map[string]value.Value) (val value.Value, plainKey string, err error) {
 	key, chain, hasChain := strings.Cut(valueTmpl, " | ")
 	key = strings.TrimPrefix(strings.TrimSpace(key), ".")
-	if !hasChain {
-		return childVars[key], nil
+	if !hasChain && isPlainKey(key) {
+		return childVars[key], key, nil
 	}
-	return eval.EvalValue("."+key+" | "+chain, childVars)
+	expr := "{{ ." + key
+	if hasChain {
+		expr += " | " + chain
+	}
+	val, err = eval.EvalValue(expr+" }}", childVars)
+	return val, "", err
+}
+
+func isPlainKey(s string) bool {
+	if s == "" {
+		return false
+	}
+	return !strings.ContainsAny(s, ".[")
 }

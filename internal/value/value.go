@@ -22,6 +22,10 @@ const (
 	KindNumber
 	KindArray
 	KindObject
+	// KindMissing is a deferred "path not found" sentinel produced by an
+	// accessor lookup — see Missing in path.go. Added at the end of the
+	// block so no existing Kind's ordinal shifts.
+	KindMissing
 )
 
 func (k Kind) String() string {
@@ -38,6 +42,8 @@ func (k Kind) String() string {
 		return "array"
 	case KindObject:
 		return "object"
+	case KindMissing:
+		return "missing"
 	default:
 		return "unknown"
 	}
@@ -45,9 +51,10 @@ func (k Kind) String() string {
 
 // Value is a scope variable's value: nil, a string, a bool, a json.Number
 // (never float64 — avoids precision loss and unwanted ".0" suffixes), a
-// []any, or a map[string]any. Nested arrays/objects use the same element
-// types recursively, so Any() feeds github.com/theory/jsonpath directly with
-// no adaptation.
+// []any, or a map[string]any — or, only transiently within a single
+// accessor evaluation, a deferred "path not found" sentinel (see Missing in
+// path.go). Nested arrays/objects use the same element types recursively,
+// so Any() feeds Path (path.go) directly with no adaptation.
 type Value struct {
 	v   any
 	raw string // original captured text; set only by Capture, else ""
@@ -105,6 +112,8 @@ func (v Value) Kind() Kind {
 		return KindArray
 	case map[string]any:
 		return KindObject
+	case missing:
+		return KindMissing
 	default:
 		return KindString
 	}
@@ -142,6 +151,8 @@ func stringify(v any) (string, error) {
 		return strconv.FormatBool(typed), nil
 	case json.Number:
 		return typed.String(), nil
+	case missing:
+		return missingMarker(typed.msg), nil
 	default:
 		jsonBytes, err := json.Marshal(typed)
 		if err != nil {
@@ -171,8 +182,9 @@ func Parse(s string) (Value, error) {
 // string whose trimmed form starts with '[' or '{' and decodes cleanly as a
 // single JSON value becomes structured; anything else — including
 // almost-JSON like "{not json}" — stays a String. This is the only place
-// hobnob guesses at a string's shape; every filter downstream trusts Kind()
-// instead of re-sniffing (see pluck/keys/values requiring Array/Object).
+// hobnob guesses at a string's shape; every filter and accessor step
+// downstream trusts Kind() instead of re-sniffing (see keys/values/Path
+// requiring Array/Object).
 func Capture(s string) Value {
 	trimmed := strings.TrimSpace(s)
 	if len(trimmed) == 0 || (trimmed[0] != '[' && trimmed[0] != '{') {
