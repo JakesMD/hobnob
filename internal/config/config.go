@@ -116,9 +116,6 @@ func parseTaskNode(node *yaml.Node) (Task, error) {
 			task.IfExpr = entry.Val.Value
 		case "dir":
 			task.Dir = normalizeTmpl(entry.Val.Value)
-		case "interactive":
-			v := parseBool(entry.Val)
-			task.Interactive = &v
 		case "once":
 			task.Once = parseBool(entry.Val)
 		case "steps":

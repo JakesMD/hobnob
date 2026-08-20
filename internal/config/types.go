@@ -3,14 +3,13 @@ package config
 import "hobnob/internal/value"
 
 type Task struct {
-	Info        string
-	Dir         string // task-level working directory template
-	IfExpr      string
-	Interactive *bool
-	Once        bool // memoize this task's result per hobnob invocation (see runner.execCall)
-	Steps       []Step
-	Hidden      bool        // true = omit from --list
-	Cfg         *ConfigFile // non-nil = use this cfg for sub-calls (module task)
+	Info   string
+	Dir    string // task-level working directory template
+	IfExpr string
+	Once   bool // memoize this task's result per hobnob invocation (see runner.execCall)
+	Steps  []Step
+	Hidden bool        // true = omit from --list
+	Cfg    *ConfigFile // non-nil = use this cfg for sub-calls (module task)
 }
 
 type ModuleEntry struct {
@@ -149,13 +148,12 @@ type Step struct {
 	Command string
 	Argv    []string // run: list form; element templates, mutually exclusive with Command
 	DirTmpl string   // working directory template (run:, call:, and use: steps)
+	Soft    bool     // continue past a non-zero exit instead of halting the timeline (run: and call:)
 
 	// KindCall
 	CallTarget  string // call: target
 	CallVars    []SetEntry
 	IntoEntries []IntoEntry
-	Soft        bool
-	Interactive *bool
 
 	// KindFor
 	ForTarget string

@@ -77,9 +77,6 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 			step.IntoEntries = entries
 		case "soft":
 			step.Soft = parseBool(fieldVal)
-		case "interactive":
-			interactive := parseBool(fieldVal)
-			step.Interactive = &interactive
 		case "dir":
 			step.DirTmpl = normalizeTmpl(fieldVal.Value)
 		case "rerun":

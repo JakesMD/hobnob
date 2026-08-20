@@ -69,15 +69,15 @@ func TestE2E_Get_BareVarPipeDefaultResolvesLikeTemplate(t *testing.T) {
 		  t:
 		    steps:
 		      - set:
-		          - MY_LIST: [first-item, second-item]
+		          - RAW: "  padded  "
 		      - get:
 		          - ITEM:
 		              info: Pick item
-		              default: .MY_LIST | first
+		              default: .RAW | trim
 		      - run: echo item={{.ITEM}}
 	`, "t", "--no-input")
 	res.OK(t)
-	res.Lines(t, "item=first-item")
+	res.Lines(t, "item=padded")
 }
 
 func TestE2E_Get_CheckValidatesPresetValue(t *testing.T) {
@@ -389,74 +389,3 @@ func TestE2E_Get_CLIArgSatisfiesPromptWithoutAsking(t *testing.T) {
 	res.Prompted(t /* none */)
 }
 
-func TestE2E_Get_TaskInteractiveFalseSkipsPromptsUsingDefault(t *testing.T) {
-	// given a task with interactive: false and a get: with a default, when
-	// run even on a simulated TTY, then the default is used without
-	// prompting (why: task-level interactive: overrides the CLI's own
-	// terminal-driven default)
-	res := Run(t, Case{
-		Yml: `
-			tasks:
-			  t:
-			    interactive: false
-			    steps:
-			      - get:
-			          - FOO:
-			              default: bar
-			      - run: echo foo={{.FOO}}
-		`,
-		Args: []string{"t"},
-		TTY:  true,
-	})
-	res.OK(t)
-	res.Lines(t, "foo=bar")
-	res.Prompted(t /* none */)
-}
-
-func TestE2E_Get_TaskInteractiveFalsePropagatesToCalledTasks(t *testing.T) {
-	// given a parent task with interactive: false calling a child with its
-	// own get:, when run, then the child also skips prompting (why:
-	// interactive: false propagates down the whole call chain, a called
-	// task can't re-enable it)
-	res := Run(t, Case{
-		Yml: `
-			tasks:
-			  parent:
-			    interactive: false
-			    steps:
-			      - call: child
-			  child:
-			    steps:
-			      - get:
-			          - FOO:
-			              default: from-child
-			      - run: echo foo={{.FOO}}
-		`,
-		Args: []string{"parent"},
-		TTY:  true,
-	})
-	res.OK(t)
-	res.Lines(t, "foo=from-child")
-	res.Prompted(t /* none */)
-}
-
-func TestE2E_Get_TaskInteractiveFalseNoDefaultErrors(t *testing.T) {
-	// given a task with interactive: false and a get: with no default, when
-	// run, then it fails rather than opening a prompt (why: interactive:
-	// false means never prompt, so an unsatisfiable get: must error)
-	res := Run(t, Case{
-		Yml: `
-			tasks:
-			  t:
-			    interactive: false
-			    steps:
-			      - get:
-			          - FOO:
-			              info: Enter foo
-		`,
-		Args: []string{"t"},
-		TTY:  true,
-	})
-	res.Fails(t)
-	res.Err(t, "FOO requires input")
-}

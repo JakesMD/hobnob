@@ -109,7 +109,7 @@ A scope variable is a typed `value.Value` — string, bool, number, array, or
 object — never JSON-as-text. Structure enters from exactly three places:
 `set:`/`with:` map/list literals, `run: into:` capture, and the
 explicit `json` filter; env vars, CLI args, and env-file values are always
-strings, never sniffed. `keys`/`values`/`first` and an accessor step all
+strings, never sniffed. `keys` and an accessor step both
 require an Array/Object and error (naming `| json`) rather than silently
 re-parsing a string — see `internal/value/filter.go` and `internal/value/path.go`.
 A missing accessor path is deferred instead: `value.Path` returns a sentinel

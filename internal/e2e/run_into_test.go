@@ -51,7 +51,6 @@ func TestE2E_RunInto_FilterChain(t *testing.T) {
 		{name: "lower", command: `printf 'HELLO'`, filter: "stdout | lower", rawLines: []string{"HELLO"}, wantEcho: "out=hello"},
 		{name: "trim-then-upper-chains-left-to-right", command: `printf '  hello  \n'`, filter: "stdout | trim | upper", rawLines: []string{"  hello  "}, wantEcho: "out=HELLO"},
 		{name: "accessor-on-the-into-source", command: `printf '{"name":"hobnob"}'`, filter: `stdout.name`, rawLines: []string{`{"name":"hobnob"}`}, wantEcho: "out=hobnob"},
-		{name: "lines-then-first-chains-through-a-typed-array", command: `printf 'alpha\nbeta\n'`, filter: "stdout | lines | first", rawLines: []string{"alpha", "beta"}, wantEcho: "out=alpha"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -229,4 +228,19 @@ func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 	res.OK(t)
 	res.Out(t, "run:", "[t]", "skipped")
 	res.NotOut(t, "should-not-run")
+}
+
+func TestE2E_Run_SoftSwallowsFailure(t *testing.T) {
+	// given a soft: true run: step whose command exits non-zero, when
+	// executed, then the error is swallowed and execution continues past it
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: exit 1
+		        soft: true
+		      - run: echo after
+	`, "t")
+	res.OK(t)
+	res.Lines(t, "after")
 }

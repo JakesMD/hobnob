@@ -10,7 +10,7 @@ import (
 // EvalValue evaluates expr against vars, preserving structure when expr is
 // exactly one template action referencing a var, optionally through a
 // filter chain or an accessor — ".USERS", "{{ .USERS }}",
-// "{{ .USERS | first }}", "{{ .RESP.profile.name }}". Anything else
+// "{{ .USERS | trim }}", "{{ .RESP.profile.name }}". Anything else
 // (surrounding text, multiple actions, control structures, a shape the
 // typed evaluator below doesn't recognize) falls back to ordinary string
 // rendering and comes back wrapped in a String — unsupported syntax still
@@ -39,7 +39,7 @@ func EvalValue(expr string, vars map[string]value.Value) (value.Value, error) {
 }
 
 // evalChainOn evaluates an accessor and/or filter chain — the text written
-// after "| " in a run: into: pipe expression, e.g. `trim` or `first`, plus
+// after "| " in a run: into: pipe expression, e.g. `trim` or `upper`, plus
 // an optional accessor tail peeled off the source token (SplitSourceAccessor)
 // — against a single starting value, through the same typed pipeline
 // evaluator EvalValue uses. One implementation backs both run: into: pipes

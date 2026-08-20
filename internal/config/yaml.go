@@ -10,7 +10,7 @@ import (
 )
 
 // normalizeTmpl wraps a bare accessor or accessor | filter expression in
-// {{ }} so users can write `default: .LIST | first` or
+// {{ }} so users can write `default: .LIST[0]` or
 // `options: .CFG.items[0].name` instead of the {{ }}-wrapped form. See
 // eval.IsBareRef.
 func normalizeTmpl(value string) string {

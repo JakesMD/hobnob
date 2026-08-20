@@ -297,63 +297,6 @@ func TestE2E_Call_DirTemplateUsesWithVar(t *testing.T) {
 	res.Lines(t, want, "pwd="+want)
 }
 
-func TestE2E_Call_StepInteractiveFalseDisablesPrompts(t *testing.T) {
-	// given a call: step with interactive: false, when the called task has a
-	// get: with a default, when run even on a simulated TTY, then the
-	// default is used without prompting (why: interactive: false works the
-	// same at a call site as it does on a task itself)
-	res := Run(t, Case{
-		Yml: `
-			tasks:
-			  parent:
-			    steps:
-			      - call: child
-			        interactive: false
-			  child:
-			    steps:
-			      - get:
-			          - FOO:
-			              default: silent-val
-			      - run: echo foo={{.FOO}}
-		`,
-		Args: []string{"parent"},
-		TTY:  true,
-	})
-	res.OK(t)
-	res.Lines(t, "foo=silent-val")
-	res.Prompted(t /* none */)
-}
-
-func TestE2E_Call_StepInteractiveFalsePropagatesThroughSubTree(t *testing.T) {
-	// given a call: step with interactive: false calling a task that itself
-	// calls another task, when the grandchild has a get:, then it also skips
-	// prompting (why: interactive: false propagates through the entire
-	// sub-tree, not just the immediate callee)
-	res := Run(t, Case{
-		Yml: `
-			tasks:
-			  root:
-			    steps:
-			      - call: mid
-			        interactive: false
-			  mid:
-			    steps:
-			      - call: leaf
-			  leaf:
-			    steps:
-			      - get:
-			          - X:
-			              default: deep
-			      - run: echo x={{.X}}
-		`,
-		Args: []string{"root"},
-		TTY:  true,
-	})
-	res.OK(t)
-	res.Lines(t, "x=deep")
-	res.Prompted(t /* none */)
-}
-
 func TestE2E_Call_SoftSwallowsOrdinaryChildFailure(t *testing.T) {
 	// given a soft: true call: step whose child fails with an ordinary
 	// command error, when executed, then the error is swallowed and

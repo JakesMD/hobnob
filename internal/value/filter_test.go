@@ -1,9 +1,6 @@
 package value
 
-import (
-	"encoding/json"
-	"testing"
-)
+import "testing"
 
 func call(t *testing.T, name string, args ...Value) (Value, error) {
 	t.Helper()
@@ -127,50 +124,7 @@ func TestFilterLines(t *testing.T) {
 	}
 }
 
-func TestFilterFirst(t *testing.T) {
-	tests := []struct {
-		name  string
-		input Value
-		want  string
-	}{
-		{"given array of strings, when first called, then returns first element", Of([]any{"v0.3.0", "v0.2.1"}), "v0.3.0"},
-		{"given array of numbers, when first called, then returns first element typed (why: bug — first used to error unmarshaling a number into string)", Of([]any{json.Number("1"), json.Number("2"), json.Number("3")}), "1"},
-		{"given array of objects, when first called, then returns first element typed (why: bug — first used to error unmarshaling an object into string)", Of([]any{map[string]any{"a": "b"}}), `{"a":"b"}`},
-	}
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got, err := call(t, "first", test.input)
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got.String() != test.want {
-				t.Errorf("got %q, want %q", got.String(), test.want)
-			}
-		})
-	}
-}
-
-func TestFilterFirst_EmptyArrayReturnsNil(t *testing.T) {
-	got, err := call(t, "first", Of([]any{}))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.Kind() != KindNil {
-		t.Errorf("kind: got %v, want Nil", got.Kind())
-	}
-}
-
-func TestFilterFirst_ErrorsOnString(t *testing.T) {
-	// given a String — even one holding valid JSON array text — when first
-	// called, then errors naming | json (why: first must never auto-parse;
-	// that's the discipline that keeps type confusion from creeping back in)
-	_, err := call(t, "first", Str(`["a","b","c"]`))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-}
-
-func TestFilterKeysValues(t *testing.T) {
+func TestFilterKeys(t *testing.T) {
 	obj := Of(map[string]any{"us": "us-east-1", "eu": "eu-west-1"})
 
 	keys, err := call(t, "keys", obj)
@@ -179,39 +133,6 @@ func TestFilterKeysValues(t *testing.T) {
 	}
 	if keys.String() != `["eu","us"]` {
 		t.Errorf("keys: got %q, want %q", keys.String(), `["eu","us"]`)
-	}
-
-	values, err := call(t, "values", obj)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if values.String() != `["eu-west-1","us-east-1"]` {
-		t.Errorf("values: got %q, want %q", values.String(), `["eu-west-1","us-east-1"]`)
-	}
-}
-
-func TestFilterValues_ChildrenStayTyped(t *testing.T) {
-	// given an object whose values are themselves objects, when values
-	// called, then each child stays real structure (why: bug — values used
-	// to stringify each child, so further accessor traversal like
-	// .OBJ | values | first).x saw JSON text instead of structure)
-	// Arrange
-	obj := Of(map[string]any{"a": map[string]any{"x": json.Number("1")}})
-
-	// Act
-	values, err := call(t, "values", obj)
-	if err != nil {
-		t.Fatalf("values: unexpected error: %v", err)
-	}
-
-	// Assert
-	arr := values.Any().([]any)
-	if len(arr) != 1 {
-		t.Fatalf("got %d values, want 1", len(arr))
-	}
-	child := Of(arr[0])
-	if child.Kind() != KindObject {
-		t.Fatalf("child kind: got %v, want Object (stayed structured, not stringified)", child.Kind())
 	}
 }
 
@@ -259,20 +180,6 @@ func TestFilterJSON(t *testing.T) {
 				t.Errorf("kind: got %v, want %v", got.Kind(), test.wantKind)
 			}
 		})
-	}
-}
-
-func TestFilterJSON_FallbackOnParseFailure(t *testing.T) {
-	// given malformed JSON text with a fallback, when json called, then
-	// returns the fallback instead of erroring (why: same convention as
-	// default — a caller can opt into graceful degradation on bad source
-	// data rather than a hard failure)
-	got, err := call(t, "json", Str("fallback"), Str("not-json"))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if got.String() != "fallback" {
-		t.Errorf("got %q, want %q", got.String(), "fallback")
 	}
 }
 

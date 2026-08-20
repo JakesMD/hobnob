@@ -24,9 +24,7 @@ var Filters = map[string]Filter{
 	"lower":      filterLower,
 	"split":      filterSplit,
 	"lines":      filterLines,
-	"first":      filterFirst,
 	"keys":       filterKeys,
-	"values":     filterValues,
 	"jsonEscape": filterJSONEscape,
 	"json":       filterJSON,
 	"string":     filterString,
@@ -121,21 +119,6 @@ func filterLines(args []Value) (Value, error) {
 	return Of(lines), nil
 }
 
-// filterFirst requires an Array — a String never auto-parses (bug: indexing
-// a JSON-looking string would otherwise silently re-sniff it). Empty array
-// yields Nil.
-func filterFirst(args []Value) (Value, error) {
-	value := piped(args)
-	if value.Kind() != KindArray {
-		return Value{}, fmt.Errorf("first: expected an array, got %s; pipe through | json to parse it first", value.Kind())
-	}
-	arr := value.Any().([]any)
-	if len(arr) == 0 {
-		return Nil(), nil
-	}
-	return Of(arr[0]), nil
-}
-
 func sortedKeys(obj map[string]any) []string {
 	keys := make([]string, 0, len(obj))
 	for k := range obj {
@@ -158,22 +141,6 @@ func filterKeys(args []Value) (Value, error) {
 	return Of(arr), nil
 }
 
-// filterValues returns real typed children — not their stringified form —
-// so a nested object stays an object and chains into further accessor steps.
-func filterValues(args []Value) (Value, error) {
-	value := piped(args)
-	if value.Kind() != KindObject {
-		return Value{}, fmt.Errorf("values: expected an object, got %s; pipe through | json to parse it first", value.Kind())
-	}
-	obj := value.Any().(map[string]any)
-	keys := sortedKeys(obj)
-	arr := make([]any, len(keys))
-	for i, k := range keys {
-		arr[i] = obj[k]
-	}
-	return Of(arr), nil
-}
-
 func filterJSONEscape(args []Value) (Value, error) {
 	jsonBytes, err := json.Marshal(piped(args).String())
 	if err != nil {
@@ -184,24 +151,17 @@ func filterJSONEscape(args []Value) (Value, error) {
 
 // filterJSON is the explicit escape hatch into structure: strictly parses a
 // String, and is identity on every other kind (including one already
-// structured). An optional fallback before the piped value — json
-// "fallback" — swallows a parse failure and returns the fallback instead of
-// erroring, the same convention default uses for an accessor's missing path.
+// structured).
 func filterJSON(args []Value) (Value, error) {
 	if len(args) == 0 {
 		return Value{}, fmt.Errorf("json: expected a value")
 	}
 	value := piped(args)
-	fallback := args[:len(args)-1] // present iff len(args) == 2
-
 	if value.Kind() != KindString {
 		return value, nil
 	}
 	parsed, err := Parse(value.String())
 	if err != nil {
-		if len(fallback) == 1 {
-			return fallback[0], nil
-		}
 		return Value{}, fmt.Errorf("json: %w", err)
 	}
 	return parsed, nil

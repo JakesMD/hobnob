@@ -58,9 +58,6 @@ func callCacheID(task config.Task) uintptr {
 
 func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 	noPrompts := execState.noPrompts
-	if step.Interactive != nil && !*step.Interactive {
-		noPrompts = true
-	}
 
 	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars)
 	if err != nil {

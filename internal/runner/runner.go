@@ -184,9 +184,6 @@ func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
 		applyModuleLayer(scope, execCfg)
 	}
 	noPrompts := execState.noPrompts
-	if task.Interactive != nil && !*task.Interactive {
-		noPrompts = true
-	}
 	currentDir := execState.dir
 	if task.Dir != "" {
 		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
@@ -251,6 +248,9 @@ func executeSteps(execState execCtx, steps []config.Step, scope *cli.Scope) erro
 		switch step.Kind {
 		case config.KindRun:
 			err = execRun(execState, step, scope)
+			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
+				err = nil
+			}
 		case config.KindSet:
 			err = execSet(step, scope)
 		case config.KindCall:

@@ -119,28 +119,6 @@ tasks:
       - run: ./deploy.sh
 ```
 
-### `interactive:` — disable prompts
-
-`interactive: false` disables all `get:` prompts for the whole sub-tree: prompts
-with a `default:` use it automatically, required prompts without one abort. Once
-disabled, a called task can't re-enable it. Works on tasks and `call` steps:
-
-```yaml
-tasks:
-  deploy:
-    interactive: false
-    steps:
-      - get:
-          - ENV:
-              default: staging # used automatically
-      - call: _setup # also runs with prompts disabled
-
-  release:
-    steps:
-      - call: deploy
-        interactive: false # only this call site disables prompts
-```
-
 ### `dir:` — working directory
 
 Paths resolve relative to the hobnob file. No `dir:` set anywhere → steps run in
@@ -434,8 +412,7 @@ absence.
 
 Slice bounds clamp like Go's own slice semantics — `.ITEMS[0:99]` on a
 3-element array returns all 3, it doesn't error. `[*]` on an object yields
-every value, in sorted-key order — the same order `| values` uses, so
-`.CFG[*]` and `.CFG | values` give the same result.
+every value, in sorted-key order — the same order `| keys` uses.
 
 #### Absence is an error, caught by `default`
 
@@ -534,19 +511,6 @@ blank ones — handy for turning multi-line `stdout` into a list:
     - FILES: stdout | lines
 ```
 
-#### `first`
-
-Returns the first element of an array, typed:
-
-```yaml
-- set:
-    - LATEST: "{{ .VERSIONS | first }}"
-```
-
-Requires an actual array — a string, even one holding JSON array text, errors
-naming `| json` rather than being auto-parsed. See [Typed
-values](#typed-values).
-
 #### `json`
 
 Parses a string as JSON, producing a real array or object. The one place
@@ -560,24 +524,23 @@ you'll reach for it explicitly is a var that was never captured through
 ```
 
 It's identity on a value that's already structured, so `| json` is always
-safe to add defensively before an [accessor](#accessors)/`keys`/`values`
-without checking the source first. An optional fallback swallows a parse
-failure instead of erroring: `.TEXT | json "fallback"`.
+safe to add defensively before an [accessor](#accessors)/`keys`
+without checking the source first.
 
-#### `keys` / `values`
+#### `keys`
 
 Query a variable holding a real object — a map literal or JSON captured via
-`into:`, same sources an [accessor](#accessors) reads:
+`into:`, same sources an [accessor](#accessors) reads — returning a sorted
+list of its top-level keys:
 
 ```yaml
 - set:
     - FIELDS: "{{ .RESP | keys }}" # sorted list of top-level keys
-    - VALUES: "{{ .RESP | values }}" # values in that same sorted-key order, still typed
 ```
 
-Results are lists, so they chain into other filters: `{{ .RESP | keys | first
-}}`. A value that isn't a real object — including a string, even one holding
-object-shaped text — is an error naming `| json`.
+A value that isn't a real object — including a string, even one holding
+object-shaped text — is an error naming `| json`. To get values instead of
+keys, use `[*]` (`.RESP[*]` yields every value, same sorted-key order).
 
 #### `string`
 
@@ -619,7 +582,7 @@ can omit `{{ }}`:
 - get:
     - RELEASE:
         options: .VERSIONS
-        default: .VERSIONS | first
+        default: .VERSIONS[0]
 ```
 
 #### Comparisons
@@ -686,7 +649,7 @@ parse it.
 
 `stdout`/`stderr` accepts a trailing [accessor](#accessors)
 (`stdout[0].name`) and/or a pipe into any [template filter](#template-filters),
-chained the same way as in `{{ }}` templates — `stdout | lines | first`, and
+chained the same way as in `{{ }}` templates — `stdout | lines | trim`, and
 so on.
 
 ```yaml
@@ -702,6 +665,15 @@ so on.
 > `run:` output can appear late or all at once. Fix with `- set: [{PYTHONUNBUFFERED: 1}]`,
 > or `python -u` per script. See
 > [Python `-u` docs](https://docs.python.org/3/using/cmdline.html#cmdoption-u).
+
+A non-zero exit halts the timeline by default, same as `call:`. `soft: true`
+continues past it:
+
+```yaml
+- run: ./flaky-cleanup.sh
+  soft: true
+- run: echo "next step runs regardless"
+```
 
 #### Argv list form
 
@@ -759,8 +731,8 @@ name when it needs debugging:
 
 ```yaml
 - set:
-    - FIRST_TAG: '{{ .TAGS_TEXT | json | first }}'
-- run: [echo, .FIRST_TAG]
+    - TAGS: '{{ .TAGS_TEXT | json }}'
+- run: [echo, .TAGS[0]]
 ```
 
 ### `get` — interactive prompts
@@ -929,8 +901,8 @@ happens, not something that can silently clobber the rest of scope.
 
 `dir:` behaves the same as any other `call:` — the target task's own `dir:`
 applies to its own `run:` steps and does not leak into the caller's later
-steps; a step-level `dir:` overrides it. `if:` and `interactive:` also work
-as they do for any `call:`.
+steps; a step-level `dir:` overrides it. `if:` also works as it does for any
+`call:`.
 
 > Migrating a `use:` step (removed in v0.4.0): switch to `call:`, add
 > `once: true` on the target task if it was meant to run once, and add an
