@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"hobnob/internal/value"
 )
 
 // isExpandedSetForm reports whether the yaml mapping node m is the expanded
@@ -76,7 +78,7 @@ func parseJSONLiteralNode(n *yaml.Node, transformLeaf func(string) string, path 
 		if err := n.Decode(&literal); err != nil {
 			return JSONNode{}, fmt.Errorf("%s: failed to decode literal %q: %w", path, n.Value, err)
 		}
-		return JSONNode{Kind: JSONLiteral, Literal: literal}, nil
+		return JSONNode{Kind: JSONLiteral, Literal: value.Canonical(literal)}, nil
 	default:
 		return JSONNode{}, fmt.Errorf("%s: unsupported YAML node in JSON literal", path)
 	}

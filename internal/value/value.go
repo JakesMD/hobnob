@@ -68,6 +68,28 @@ func Of(v any) Value { return Value{v: v} }
 // Num wraps an int as a Value holding a json.Number.
 func Num(n int) Value { return Value{v: json.Number(strconv.Itoa(n))} }
 
+// Canonical converts a scalar decoded by a non-JSON decoder (YAML's
+// int/float, say) into the type Value expects, so Kind() reports KindNumber
+// rather than falling through to its KindString default — see Kind and Of's
+// "callers are responsible for numbers being json.Number" note. Non-numeric
+// scalars and already-canonical values pass through unchanged.
+func Canonical(v any) any {
+	switch n := v.(type) {
+	case int:
+		return json.Number(strconv.Itoa(n))
+	case int64:
+		return json.Number(strconv.FormatInt(n, 10))
+	case uint64:
+		return json.Number(strconv.FormatUint(n, 10))
+	case float64:
+		return json.Number(strconv.FormatFloat(n, 'g', -1, 64))
+	case float32:
+		return json.Number(strconv.FormatFloat(float64(n), 'g', -1, 32))
+	default:
+		return v
+	}
+}
+
 // Kind reports which shape v holds.
 func (v Value) Kind() Kind {
 	switch v.v.(type) {

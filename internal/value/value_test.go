@@ -96,6 +96,66 @@ func TestIsEmpty(t *testing.T) {
 	}
 }
 
+func TestCanonical(t *testing.T) {
+	tests := []struct {
+		name       string
+		v          any
+		wantString string
+	}{
+		{"given int, when canonicalized, then json.Number text", int(8080), "8080"},
+		{"given float64 with fraction, when canonicalized, then decimal text (why: no float precision artifacts)", float64(1.5), "1.5"},
+		{"given float64 whole number, when canonicalized, then no .0 suffix", float64(3), "3"},
+		{"given string, when canonicalized, then unchanged", "hello", "hello"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Act
+			got := Of(Canonical(test.v))
+
+			// Assert
+			if got.String() != test.wantString {
+				t.Errorf("got %q, want %q", got.String(), test.wantString)
+			}
+		})
+	}
+
+	t.Run("given int, when canonicalized, then Kind is KindNumber", func(t *testing.T) {
+		if got := Of(Canonical(int(8080))).Kind(); got != KindNumber {
+			t.Errorf("got %v, want %v", got, KindNumber)
+		}
+	})
+
+	t.Run("given float64, when canonicalized, then Kind is KindNumber", func(t *testing.T) {
+		if got := Of(Canonical(float64(1.5))).Kind(); got != KindNumber {
+			t.Errorf("got %v, want %v", got, KindNumber)
+		}
+	})
+
+	t.Run("given bool, when canonicalized, then unchanged and stays KindBool", func(t *testing.T) {
+		if got := Of(Canonical(true)).Kind(); got != KindBool {
+			t.Errorf("got %v, want %v", got, KindBool)
+		}
+	})
+
+	t.Run("given nil, when canonicalized, then unchanged and stays KindNil", func(t *testing.T) {
+		if got := Of(Canonical(nil)).Kind(); got != KindNil {
+			t.Errorf("got %v, want %v", got, KindNil)
+		}
+	})
+
+	t.Run("given array, when canonicalized, then unchanged and stays KindArray", func(t *testing.T) {
+		if got := Of(Canonical([]any{"a"})).Kind(); got != KindArray {
+			t.Errorf("got %v, want %v", got, KindArray)
+		}
+	})
+
+	t.Run("given object, when canonicalized, then unchanged and stays KindObject", func(t *testing.T) {
+		if got := Of(Canonical(map[string]any{"a": "b"})).Kind(); got != KindObject {
+			t.Errorf("got %v, want %v", got, KindObject)
+		}
+	})
+}
+
 func TestParse(t *testing.T) {
 	tests := []struct {
 		name       string
