@@ -121,7 +121,7 @@ func envWithScopeOverrides(vars map[string]value.Value) []string {
 // lets loop: iterate it without re-parsing.
 func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string) error {
 	evalLeaf := func(expr string) (value.Value, error) {
-		return eval.EvalRunIntoPipe(expr, stdout, stderr)
+		return eval.EvalRunIntoPipe(expr, stdout, stderr, scope.Vars)
 	}
 	for _, intoEntry := range entries {
 		var val value.Value

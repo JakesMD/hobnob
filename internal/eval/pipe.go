@@ -14,11 +14,12 @@ import (
 // value.Capture — sniffed into an Array or Object only when it decodes
 // cleanly as one, else left a String — and any accessor/filter chain then
 // runs typed from there through evalChainOn (the same evaluator EvalValue
-// uses). Capturing at the source rather than at the end of the chain
-// matters: a chain that ends on a String leaf (stdout.cfg, where cfg's
+// uses), with vars (the caller's scope) available for a dynamic key
+// (stdout[.KEY]). Capturing at the source rather than at the end of the
+// chain matters: a chain that ends on a String leaf (stdout.cfg, where cfg's
 // value is itself a JSON-looking string) must stay a String, not get
 // re-sniffed into structure.
-func EvalRunIntoPipe(expr, stdout, stderr string) (value.Value, error) {
+func EvalRunIntoPipe(expr, stdout, stderr string, vars map[string]value.Value) (value.Value, error) {
 	source, chain, _ := strings.Cut(expr, " | ")
 	name, accessor := SplitSourceAccessor(strings.TrimSpace(source))
 
@@ -35,7 +36,7 @@ func EvalRunIntoPipe(expr, stdout, stderr string) (value.Value, error) {
 		return src, nil
 	}
 
-	result, err := evalChainOn(src, accessor, chain)
+	result, err := evalChainOn(src, accessor, chain, vars)
 	if err != nil {
 		return value.Value{}, fmt.Errorf("run into pipe: %w", err)
 	}

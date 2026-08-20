@@ -43,14 +43,21 @@ func EvalValue(expr string, vars map[string]value.Value) (value.Value, error) {
 // an optional accessor tail peeled off the source token (SplitSourceAccessor)
 // — against a single starting value, through the same typed pipeline
 // evaluator EvalValue uses. One implementation backs both run: into: pipes
-// and set:/get: filter chains.
-func evalChainOn(src value.Value, accessor, chain string) (value.Value, error) {
+// and set:/get: filter chains. vars is the caller's scope, layered under the
+// SRC binding — needed so a dynamic key in the accessor (stdout[.KEY]) can
+// resolve against the caller's vars rather than only ever seeing SRC.
+func evalChainOn(src value.Value, accessor, chain string, vars map[string]value.Value) (value.Value, error) {
+	scoped := make(map[string]value.Value, len(vars)+1)
+	for k, v := range vars {
+		scoped[k] = v
+	}
+	scoped["SRC"] = src
 	expr := "{{ .SRC" + accessor
 	if chain != "" {
 		expr += " | " + chain
 	}
 	expr += " }}"
-	return EvalValue(expr, map[string]value.Value{"SRC": src})
+	return EvalValue(expr, scoped)
 }
 
 // singleActionPipeline returns root's pipeline when the whole template is
