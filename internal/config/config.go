@@ -13,6 +13,20 @@ func ParseConfig(path string) (*ConfigFile, error) {
 	if err != nil {
 		return nil, fmt.Errorf("read taskfile: %w", err)
 	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, fmt.Errorf("resolve taskfile path: %w", err)
+	}
+	return ParseConfigData(data, absPath, filepath.Dir(absPath))
+}
+
+// ParseConfigData parses taskfile bytes that never came from disk — the
+// built-in demo taskfile the CLI falls back to when auto-discovery finds
+// nothing. filePath is used only in error messages and HOBNOB_FILE_DIR's
+// sibling FilePath; dir is what relative dir:/env:/modules: paths resolve
+// against, so a caller with no real file on disk passes the invocation dir.
+func ParseConfigData(data []byte, filePath, dir string) (*ConfigFile, error) {
+	path := filePath
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse taskfile %s: %w", path, err)
@@ -28,14 +42,10 @@ func ParseConfig(path string) (*ConfigFile, error) {
 		return nil, fmt.Errorf("root must be a mapping")
 	}
 
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return nil, fmt.Errorf("resolve taskfile path: %w", err)
-	}
 	cfg := &ConfigFile{
-		FilePath:    absPath,
+		FilePath:    filePath,
 		Tasks:       make(map[string]Task),
-		TaskfileDir: filepath.Dir(absPath),
+		TaskfileDir: dir,
 	}
 
 	var rootContent []*yaml.Node

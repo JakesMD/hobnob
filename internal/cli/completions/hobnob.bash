@@ -15,7 +15,7 @@ _hobnob_completion() {
   fi
 
   if [[ "$cur" == --* ]]; then
-    COMPREPLY=($(compgen -W "--file --list --select --help --no-input --version --upgrade" -- "$cur"))
+    COMPREPLY=($(compgen -W "--file --demo --list --select --help --no-input --version --upgrade" -- "$cur"))
     return
   fi
 

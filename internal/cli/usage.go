@@ -18,12 +18,22 @@ func DisplayVersion(version string) string {
 	return version
 }
 
+// GuideURL points at the guide on main — the fallback whenever there's no
+// version to pin to. GuideURLFor prefers the running version's own copy.
+const GuideURL = "https://github.com/JakesMD/hobnob/blob/main/GUIDE.md"
+
+// GuideURLFor returns the guide URL for a specific released version, so the
+// docs a user is pointed at match the binary they're running.
+func GuideURLFor(version string) string {
+	if version == "" {
+		return GuideURL
+	}
+	return "https://github.com/JakesMD/hobnob/blob/" + version + "/GUIDE.md"
+}
+
 func PrintUsage(out io.Writer, version string) {
 	displayVersion := DisplayVersion(version)
-	docsURL := "https://github.com/JakesMD/hobnob/blob/main/GUIDE.md"
-	if version != "" {
-		docsURL = "https://github.com/JakesMD/hobnob/blob/" + version + "/GUIDE.md"
-	}
+	docsURL := GuideURLFor(version)
 	fmt.Fprintf(out, `hobnob %s
 
 Usage:
@@ -31,11 +41,13 @@ Usage:
   hobnob [--file <path>] --list
   hobnob [--file <path>] --select
   hobnob [--file <path>] --help
+  hobnob --demo
   hobnob --version
   hobnob --upgrade
 
 Flags:
   --file <path>   Hobnob file to use instead of auto-discovery
+  --demo          Run the built-in demo taskfile instead of one of yours
   --list          List all available tasks
   --select        Interactively select a task to run
   --help          Show this help

@@ -1,0 +1,32 @@
+# The taskfile hobnob falls back to when it can't find one of yours, so a
+# fresh install has something to run. See GUIDE.md to write your own.
+
+tasks:
+  tell-joke:
+    info: Tell a joke from a category you pick
+    steps:
+
+      # Returning vars: curl's stdout captured straight into a var
+      - run: curl -s https://official-joke-api.appspot.com/types
+        into:
+          - CATEGORIES: stdout
+
+      # Interactive prompts: options pulled from the step above
+      - get:
+          - CATEGORY:
+              info: Which kind of joke?
+              options: .CATEGORIES
+
+      # Returning vars: whole JSON blob pulled back from an isolated sub-task
+      - call: _fetch-joke
+        into:
+          - JOKE: .RESP
+
+      # JSON handling: dot into the blob, no jq
+      - run: echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
+
+  _fetch-joke:
+    steps:
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.CATEGORY}}/random
+        into:
+          - RESP: stdout

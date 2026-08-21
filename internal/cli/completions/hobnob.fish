@@ -35,6 +35,7 @@ function __fish_hobnob_tasks
     end
 end
 complete -c hobnob -l file -r -d 'Hobnob file to use'
+complete -c hobnob -f -l demo -d 'Run the built-in demo taskfile'
 complete -c hobnob -f -l list -d 'List all available tasks'
 complete -c hobnob -f -l select -d 'Interactively select a task to run'
 complete -c hobnob -f -l help -d 'Show help'

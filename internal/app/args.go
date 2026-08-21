@@ -36,6 +36,21 @@ func resolveTaskfile(fileFlag, invDir string) (string, error) {
 	return findTaskfile(invDir)
 }
 
+// extractDemoFlag scans args for --demo, removes it, and reports whether it
+// was present. --demo names the built-in demo taskfile as the source, in place
+// of --file's path or the upward search for a hobnob.yml.
+func extractDemoFlag(args []string) (bool, []string) {
+	for i, arg := range args {
+		if arg == "--demo" {
+			remaining := make([]string, 0, len(args)-1)
+			remaining = append(remaining, args[:i]...)
+			remaining = append(remaining, args[i+1:]...)
+			return true, remaining
+		}
+	}
+	return false, args
+}
+
 // extractFileFlag scans args for --file <value>, removes both tokens, and
 // returns the value alongside the remaining args. Returns ("", args, nil) if
 // the flag is absent.

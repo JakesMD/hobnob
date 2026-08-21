@@ -28,6 +28,7 @@ hobnob --file ops/tasks.yml build    # target a specific file
 hobnob --list                        # list all public tasks
 hobnob --select                      # interactively select a task to run
 hobnob --help                        # show help and available tasks
+hobnob --demo                        # run the built-in demo taskfile
 hobnob --version                     # print version and exit
 hobnob --upgrade                     # upgrade to the latest release
 ```
@@ -37,6 +38,11 @@ hobnob --upgrade                     # upgrade to the latest release
   default exists.
 - **Auto-discovery** — no `--file`? Hobnob searches up from cwd for
   `hobnob.yml`/`hobnob.yaml` (`.yml` wins if both exist).
+- **Built-in demo** — `--demo` uses a small taskfile embedded in the binary
+  instead of one of yours, so there's something to run before you've written
+  anything. It's an alternative to `--file`, not a fallback: passing both is an
+  error, and hobnob never reaches for it on its own. Combine it with any other
+  flag (`hobnob --demo --list`, `hobnob --demo tell-joke`).
 - **Stopping a run** — CTRL+C sends the running `run:` step a termination signal
   and waits for it to exit; no further steps start. A 2nd CTRL+C force-kills it
   immediately.

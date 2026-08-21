@@ -73,7 +73,7 @@ func ListTasks(cfg *config.ConfigFile, scope *Scope, out io.Writer) error {
 
 	if len(rows) == 0 {
 		fmt.Fprintln(out, "No tasks found. To get started, create tasks in a hobnob.yml file.")
-		fmt.Fprintln(out, "See the guide at: https://github.com/jakesmd/hobnob/blob/main/GUIDE.md")
+		fmt.Fprintln(out, "See the guide at: "+GuideURL)
 		return nil
 	}
 
