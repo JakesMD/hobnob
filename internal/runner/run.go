@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -89,25 +90,41 @@ func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
 	shellCmd.Env = envWithScopeOverrides(scope.Vars)
 
 	err := shellCmd.Start()
-	if err == nil {
-		setRunningPID(shellCmd.Process.Pid)
-		err = shellCmd.Wait()
-		clearRunningPID()
+	if err != nil {
+		// The process never ran — no exit status exists, so there's nothing
+		// for into: exit to capture.
+		return err
 	}
-	if step.Quiet && err != nil {
+	setRunningPID(shellCmd.Process.Pid)
+	waitErr := shellCmd.Wait()
+	clearRunningPID()
+
+	if step.Quiet && waitErr != nil {
 		stdoutLineWriter.Write(stdoutBuf.Bytes())
 		stderrLineWriter.Write(stderrBuf.Bytes())
 	}
 	stdoutLineWriter.Flush()
 	stderrLineWriter.Flush()
-	if err != nil {
-		if execState.ctx.Err() != nil {
-			return fmt.Errorf("%w: %v", ErrInterrupted, err)
-		}
-		return err
+	if waitErr != nil && execState.ctx.Err() != nil {
+		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
 	}
 
-	return captureRunInto(step.IntoEntries, scope, stdoutBuf.String(), stderrBuf.String())
+	captureErr := captureRunInto(step.IntoEntries, scope, stdoutBuf.String(), stderrBuf.String(), exitCodeOf(waitErr))
+	return errors.Join(waitErr, captureErr)
+}
+
+// exitCodeOf reports a finished command's exit code — 0 on success, the
+// child's code on an ordinary non-zero exit, or -1 when it was killed by a
+// signal or otherwise didn't report a code (os/exec's own convention).
+func exitCodeOf(waitErr error) int {
+	if waitErr == nil {
+		return 0
+	}
+	var exitErr *osExec.ExitError
+	if errors.As(waitErr, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return -1
 }
 
 // envWithScopeOverrides strips any os.Environ() var also present in scope
@@ -137,9 +154,9 @@ func envWithScopeOverrides(vars map[string]value.Value) []string {
 // scope — a captured JSON array/object (see value.Capture, called inside
 // EvalRunIntoPipe) lands as a real Array/Object, not text, which is what
 // lets loop: iterate it without re-parsing.
-func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string) error {
+func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string, exitCode int) error {
 	evalLeaf := func(expr string) (value.Value, error) {
-		return eval.EvalRunIntoPipe(expr, stdout, stderr, scope.Vars)
+		return eval.EvalRunIntoPipe(expr, stdout, stderr, exitCode, scope.Vars)
 	}
 	for _, intoEntry := range entries {
 		var val value.Value

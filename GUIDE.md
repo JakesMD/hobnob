@@ -650,7 +650,25 @@ parse it.
 `stdout`/`stderr` accepts a trailing [accessor](#accessors)
 (`stdout[0].name`) and/or a pipe into any [template filter](#template-filters),
 chained the same way as in `{{ }}` templates — `stdout | lines | trim`, and
-so on.
+so on. `into:` also has a third source, `exit`, capturing the command's exit
+code as a typed number:
+
+```yaml
+- run: ./migrate.sh
+  soft: true
+  into:
+    - CODE: exit
+    - LOG: stderr
+- run: ./rollback.sh
+  if: '{{ ne .CODE 0 }}'
+```
+
+`into:` captures happen whether the command succeeds or fails — that's what
+lets a `soft: true` step report what went wrong instead of just continuing
+past it silently. Only a command that never ran at all (the binary itself
+wasn't found) captures nothing, since no exit code exists yet. A step killed
+by a signal reports `-1`, same as any process that didn't exit with an
+ordinary code.
 
 ```yaml
 - run: curl -s https://api.example.com/user

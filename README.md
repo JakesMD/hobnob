@@ -87,6 +87,9 @@ Select a value for CATEGORY.
 - **Working dir inheritance** — set it once, override per-call or per-step.
 - **Quiet steps** — `quiet: true` on a `run:` hides its output behind a
   one-line message, replayed in full if it fails.
+- **Exit codes** — `into: [{CODE: exit}]` captures a `run:` step's exit code as
+  a typed number, so a `soft: true` step can branch on what happened instead
+  of just continuing past it.
 - **Secret masking** — flag any var as secret to mask it in output.
 - **CI mode** — skip prompts, fail fast on missing vars.
 - **Task listing** — see or interactively pick from available tasks.
