@@ -1,16 +1,18 @@
 # hobnob
 
-A yaml task runner built around 3 things others get wrong:
+[![CI](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml/badge.svg)](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jakesmd/hobnob)](https://github.com/jakesmd/hobnob/releases/latest)
+[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
-- **JSON, natively.** Vars hold real structure — a list, an object, a number —
-  not JSON crammed into a string. Parsed once, when captured; dot into it
-  (`.RESP.items[0].name`) at any later step and it's still typed. A `jq`
-  pipeline re-parses text at every hop.
-- **Tasks return values.** Capture a command's output or a sub-task's results,
-  explicitly, back into the caller.
-- **Prompts.** Text input or select menus, dropped anywhere in a task.
+Another YAML task runner, except:
 
----
+- **Tasks return values.** Query an API from any step, use the response for the
+  rest of the run.
+- **A form is just a step.** Text, single or multi select, built from an earlier
+  step's output.
+- **JSON is data, not text.** Dot into it ten steps later, at any depth.
+- **Nothing to memorize.** Bare `hobnob` opens a menu of tasks, and whatever
+  a task needs, it prompts for.
 
 ## 📦 Install
 
@@ -18,97 +20,50 @@ A yaml task runner built around 3 things others get wrong:
 curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
 ```
 
----
+One static Go binary, nothing else to install.
 
-## 👀 Quick look
+## 👀 Try it
+
+```bash
+hobnob --demo tell-joke
+```
+
+![Demo](.github/assets/demo.gif)
+
+That runs this file:
 
 ```yaml
-# hobnob.yml
-
 tasks:
   tell-joke:
-    info: Tell a joke from a category you pick
+    info: Tell a joke from a type you pick.
     steps:
-
-      # Returning vars: curl's stdout captured straight into a var
+      # Query an API. The response is a value now.
       - run: curl -s https://official-joke-api.appspot.com/types
         into:
-          - CATEGORIES: stdout
+          - TYPES: stdout
 
-      # Interactive prompts: options pulled from the step above
+      # The menu is built from what that step returned.
       - get:
-          - CATEGORY:
-              options: .CATEGORIES
+          - TYPE:
+              info: Which kind of joke?
+              options: .TYPES
 
-      # Returning vars: whole JSON blob pulled back from an isolated sub-task
+      # A sub-task, handing back a value.
       - call: _fetch-joke
         into:
-          - JOKE: .RESP
+          - JOKE: .RESPONSE
 
-      # JSON handling: dot into the blob, no jq
+      # Dot straight into the JSON. No parsing step.
       - run: echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
 
   _fetch-joke:
     steps:
-      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.CATEGORY}}/random
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
         into:
-          - RESP: stdout
+          - RESPONSE: stdout
 ```
 
-```shell
-% hobnob tell-joke
-
-run: [tell-joke] curl -s https://official-joke-api.appspot.com/types
-[tell-joke] ["general","knock-knock","programming","dad"]
-
-Select a value for CATEGORY.
-▶ general
-  knock-knock
-  programming
-  dad
-↑↓ move  enter select
-```
-
----
-
-## ✨ Other features
-
-- **Typed argv** — `run:` also accepts a YAML list, executed directly with no
-  shell: no quoting layer, and an Array-typed element splices into multiple
-  arguments (`FLAGS: ["-ldflags", "-s -w"]` arrives as one argument, not two).
-- **Modules** — import tasks from other files, namespaced by prefix.
-- **Dependencies, via `once:`** — mark a task `once: true` and every `call:` to
-  it, from anywhere, shares one memoized run per invocation. Unlike a static
-  `deps:` list, `call:` is a step — so it can sit behind an `if:`, inside a
-  `loop:`, or halfway down a task — and `into:` hands back the _values_ the
-  prerequisite produced, not just a done-flag.
-- **Loops** — over a list, a matrix of arrays, or a map's key/value pairs.
-- **Env files** — load vars from `.env` files or sourced shell scripts.
-- **Working dir inheritance** — set it once, override per-call or per-step.
-- **Quiet steps** — `quiet: true` on a `run:` hides its output behind a
-  one-line message, replayed in full if it fails.
-- **Exit codes** — `into: [{CODE: exit}]` captures a `run:` step's exit code as
-  a typed number, so a `soft: true` step can branch on what happened instead
-  of just continuing past it.
-- **Secret masking** — flag any var as secret to mask it in output.
-- **CI mode** — skip prompts, fail fast on missing vars.
-- **Task listing** — see or interactively pick from available tasks.
-- ...and much more in the [hobnob guide](GUIDE.md).
-
-## 🧭 No parallelism, by design
-
-Steps run sequentially, always. Hobnob targets the workflows you run and watch —
-deploy, release, provision, scaffold, migrate. They're ordered by nature, they
-stop to ask questions, and their output is meant to be read as it streams.
-Concurrency buys little there and costs plenty: garbled prompts, interleaved
-logs, failures surfacing out of order.
-
-Hobnob is not a build system — no dependency graph, no file-staleness checks, no
-`-j`. When a step's work is genuinely parallel, call something that's already
-good at it from a `run:` step (`make -j`, `go build`, `turbo`, `xargs -P`), or
-use shell backgrounding: `go build -o a & go build -o b & wait`.
-
----
+It reads like a book, and runs like one.
 
 ## 📖 Docs
 
@@ -122,8 +77,8 @@ Add hobnob to any workflow:
 ```yaml
 steps:
   - uses: jakesmd/hobnob@v0
-    with: # Pin a specific version (optional)
-      version: v0.2.3
+    with: # Pin any released version, or omit `with:` for the latest
+      version: v0.8.0
 
   - run: hobnob deploy
 ```

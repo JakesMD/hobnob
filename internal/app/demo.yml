@@ -1,32 +1,32 @@
-# The taskfile hobnob falls back to when it can't find one of yours, so a
-# fresh install has something to run. See GUIDE.md to write your own.
+# The taskfile `hobnob --demo` runs, so a fresh install has something to run
+# before you've written one of your own. See GUIDE.md to write yours.
 
 tasks:
   tell-joke:
-    info: Tell a joke from a category you pick
+    info: Tell a joke from a type you pick.
     steps:
 
-      # Returning vars: curl's stdout captured straight into a var
+      # Query an API. The response is a value now.
       - run: curl -s https://official-joke-api.appspot.com/types
         into:
-          - CATEGORIES: stdout
+          - TYPES: stdout
 
-      # Interactive prompts: options pulled from the step above
+      # The menu is built from what that step returned.
       - get:
-          - CATEGORY:
+          - TYPE:
               info: Which kind of joke?
-              options: .CATEGORIES
+              options: .TYPES
 
-      # Returning vars: whole JSON blob pulled back from an isolated sub-task
+      # A sub-task, handing back a value.
       - call: _fetch-joke
         into:
-          - JOKE: .RESP
+          - JOKE: .RESPONSE
 
-      # JSON handling: dot into the blob, no jq
+      # Dot straight into the JSON. No parsing step.
       - run: echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
 
   _fetch-joke:
     steps:
-      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.CATEGORY}}/random
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
         into:
-          - RESP: stdout
+          - RESPONSE: stdout
