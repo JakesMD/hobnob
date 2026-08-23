@@ -29,27 +29,6 @@ func TestListTasks(t *testing.T) {
 			},
 		},
 		{
-			name:    "given tasks with get: params, when listed, then shows required params without parens and optional params with parens",
-			fixture: "testdata/list_params.yml",
-			wantLines: []string{
-				"deploy",
-				"Deploy the service to an environment",
-				"ENV",
-				"Target environment",
-				"(PORT)",
-				"Port to bind",
-				"(RETRIES)",
-				"Retry count",
-				"rollback",
-				"DEPLOY_ID",
-				"ID of deployment to roll back",
-				"CONFIRM",
-				"no_params",
-				"No parameters needed",
-			},
-			wantAbsent: []string{"required", "(default:"},
-		},
-		{
 			name:    "given tasks with underscore-prefixed names, when listed, then internal tasks are absent (why: internal tasks must not be discoverable via CLI)",
 			fixture: "testdata/internal_tasks.yml",
 			wantLines: []string{

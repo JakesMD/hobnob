@@ -44,12 +44,10 @@ func CollectSelectableTasks(cfg *config.ConfigFile, scope *Scope) []tui.TaskItem
 	return tasks
 }
 
-// taskRow is one --list/--help row: a task plus its rendered info line and
-// the get: params it prompts for.
+// taskRow is one --list/--help row: a task plus its rendered info line.
 type taskRow struct {
-	name   string
-	info   string
-	params []config.GetEntry
+	name string
+	info string
 }
 
 // buildTaskRows returns the visible (non-internal, non-hidden) tasks in
@@ -57,10 +55,8 @@ type taskRow struct {
 // align the info column before any rendering happens.
 func buildTaskRows(cfg *config.ConfigFile, scope *Scope) (rows []taskRow, maxNameLen int) {
 	for _, name := range visibleTaskNames(cfg) {
-		task := cfg.Tasks[name]
-		info := listRenderInfo(task.Info, scope.Vars)
-		params := config.CollectGetParams(task.Steps, cfg)
-		rows = append(rows, taskRow{name, info, params})
+		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars)
+		rows = append(rows, taskRow{name, info})
 		if width := lipgloss.Width(name); width > maxNameLen {
 			maxNameLen = width
 		}
@@ -83,36 +79,11 @@ func ListTasks(cfg *config.ConfigFile, scope *Scope, out io.Writer) error {
 
 	identity := func(value string) string { return value }
 	label := func(value string) string { return tui.SLabel.Render(value) }
-	info := func(value string) string { return tui.SInfo.Render(value) }
 	for _, row := range rows {
 		printListRow(out, "• ", 2, row.name, maxTaskLen, row.info, termWidth, label, identity)
-		printTaskParams(out, row.params, scope, termWidth, info)
 	}
 
 	return nil
-}
-
-// printTaskParams renders one task's get: params, indented under its row.
-func printTaskParams(out io.Writer, params []config.GetEntry, scope *Scope, termWidth int, renderInfo func(string) string) {
-	maxParamLen := 0
-	for _, param := range params {
-		width := lipgloss.Width(param.VarName)
-		if param.DefaultTmpl != "" {
-			width += 2 // parens
-		}
-		if width > maxParamLen {
-			maxParamLen = width
-		}
-	}
-
-	for _, param := range params {
-		paramInfo := listRenderInfo(param.Info, scope.Vars)
-		displayName := param.VarName
-		if param.DefaultTmpl != "" {
-			displayName = "(" + param.VarName + ")"
-		}
-		printListRow(out, "    • ", 6, displayName, maxParamLen, paramInfo, termWidth, renderInfo, renderInfo)
-	}
 }
 
 // printListRow writes one "<bullet><label><pad>  <info>" row to out, word-wrapping
