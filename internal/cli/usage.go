@@ -20,20 +20,37 @@ func DisplayVersion(version string) string {
 
 // GuideURL points at the guide on main — the fallback whenever there's no
 // version to pin to. GuideURLFor prefers the running version's own copy.
-const GuideURL = "https://github.com/JakesMD/hobnob/blob/main/GUIDE.md"
+const GuideURL = docsBase + "main/GUIDE.md"
+
+// ReferenceURL is the reference's equivalent of GuideURL. The guide teaches;
+// the reference is what someone reaching for --help mid-task usually wants, so
+// usage names both rather than making them click through.
+const ReferenceURL = docsBase + "main/REFERENCE.md"
+
+const docsBase = "https://github.com/JakesMD/hobnob/blob/"
 
 // GuideURLFor returns the guide URL for a specific released version, so the
 // docs a user is pointed at match the binary they're running.
 func GuideURLFor(version string) string {
+	return docsURLFor(version, "GUIDE.md", GuideURL)
+}
+
+// ReferenceURLFor is GuideURLFor for the reference.
+func ReferenceURLFor(version string) string {
+	return docsURLFor(version, "REFERENCE.md", ReferenceURL)
+}
+
+func docsURLFor(version, file, fallback string) string {
 	if version == "" {
-		return GuideURL
+		return fallback
 	}
-	return "https://github.com/JakesMD/hobnob/blob/" + version + "/GUIDE.md"
+	return docsBase + version + "/" + file
 }
 
 func PrintUsage(out io.Writer, version string) {
 	displayVersion := DisplayVersion(version)
-	docsURL := GuideURLFor(version)
+	guideURL := GuideURLFor(version)
+	referenceURL := ReferenceURLFor(version)
 	fmt.Fprintf(out, `hobnob %s
 
 Usage:
@@ -56,9 +73,10 @@ Flags:
   --upgrade       Upgrade hobnob to the latest release
 
 Docs:
-  %s
+  Guide      %s
+  Reference  %s
 
-`, displayVersion, docsURL)
+`, displayVersion, guideURL, referenceURL)
 }
 
 func PrintHelp(cfg *config.ConfigFile, scope *Scope, out io.Writer, version string) error {

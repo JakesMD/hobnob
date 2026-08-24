@@ -10,7 +10,7 @@ Before calling it done or opening a PR:
 
 - [ ] **Tests written/updated** — new behavior has coverage, focused on user-facing functionality.
 - [ ] **Tests passing** — all project tests pass.
-- [ ] **Docs updated** — if behavior changed, `GUIDE.md` and `README.md` reflect it.
+- [ ] **Docs updated** — if behavior changed, `GUIDE.md`, `REFERENCE.md` and `README.md` reflect it.
 
 ---
 

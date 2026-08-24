@@ -67,8 +67,8 @@ It reads like a book, and runs like one.
 
 ## 📖 Docs
 
-Everything you need to know to write your first file is right here in the
-[hobnob guide](GUIDE.md).
+The [hobnob guide](GUIDE.md) builds a working file from scratch. The
+[reference](REFERENCE.md) has every field, filter and flag.
 
 ## 🤖 GitHub Action
 
