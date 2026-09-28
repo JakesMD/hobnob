@@ -109,6 +109,9 @@ func ParseConfigData(data []byte, filePath, dir string) (*ConfigFile, error) {
 	if err := checkConstNamesNotShadowed(cfg); err != nil {
 		return nil, err
 	}
+	if err := checkEnvPathsDontReferenceVars(cfg); err != nil {
+		return nil, err
+	}
 
 	return cfg, nil
 }

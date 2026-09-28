@@ -497,11 +497,22 @@ env  <  vars:  <  env files  <  CLI args  <  const:  <  timeline (set / get / lo
 - **Above `const:` there is no ranking**, only execution order. A task's own
   steps run after scope is built, each seeing everything before it.
 
+**Upward reads.** A layer's templates can read the *final* value of any name a
+layer above it sets — `vars:` can build a default out of an `env:` file, a CLI
+arg or `const:` — but never the other way round, and never a layer's own name.
+Layers are therefore *resolved* in the reverse of precedence order: `const:`
+first, then CLI args, then `env:` files, then `vars:` last. The OS env is
+readable by every layer except `const:`, which stays a closed world. See
+[ADR-0001](docs/adr/0001-upward-reads-between-scope-layers.md).
+
 ### `const:` and `vars:`
 
-Two top-level blocks of file-scoped variables, evaluated once at load, before
-env files, CLI args and any task. Each entry takes the same shape `set:` does,
-including `{ value:, secret: }` and map/list literals, resolved top to bottom.
+Two top-level blocks of file-scoped variables, evaluated once at load — this
+is the actual resolution order, top-down through the precedence chain, not the
+order they're written in the file: `const:` first, then CLI args, then `env:`
+files, then `vars:` last. Each entry takes the same shape `set:` does,
+including `{ value:, secret: }` and map/list literals, resolved top to bottom
+within its own block.
 
 ```yaml
 const:
@@ -536,6 +547,23 @@ file, the timeline outranking it.
 `- TYPE: '{{ .TYPE | default "general" }}'` is an error; write
 `- TYPE: general`.
 
+**`vars:` reads upward and fills gaps only.** An entry can build its default
+out of `env:` files, CLI args and `const:`, since those are all resolved
+before it:
+
+```yaml
+env:
+  - .env # API_HOST=staging.example.com
+
+vars:
+  - API: "https://{{.API_HOST}}/v1"
+```
+
+An entry whose name a higher layer (`env:` files, a CLI arg, `const:`) already
+set is skipped entirely — not evaluated — so a template that would only make
+sense standing alone never runs just because it lost. A name still only on the
+OS env is fair game for `vars:` to overwrite, same as always.
+
 ### Env files
 
 `env:` lists files to source, resolved relative to the hobnob file:
@@ -550,12 +578,28 @@ env:
 
 - Anything not ending in `.sh` is parsed as `KEY=VALUE` lines, allowing blank
   lines, `#` comments, and an optional `export` prefix.
-- `.sh` files are sourced in a subshell. Only variables the script newly sets or
-  changes are pulled in.
+- `.sh` files are sourced in a subshell, against the OS env only. Only
+  variables the script newly sets or changes are pulled in.
 - A missing file warns and is skipped rather than failing the run.
 - Nothing is masked by default, whatever the filename. Opt in with
   `secret: true`.
 - Later entries override earlier ones; masking follows whichever value won.
+- **A path template can read CLI args, `const:`, the OS env and the
+  built-ins** — all resolved before `env:` files. It **cannot read `vars:`**:
+  that would be a cycle, since `vars:` itself can read `env:` files, so it's a
+  load-time error naming the rule.
+
+  ```yaml
+  vars:
+    - STAGE: dev
+  env:
+    - .env.{{.STAGE}} # error: env: path can't reference a vars: name
+  ```
+
+  > [!WARNING]
+  > This is a breaking change from versions where `vars:` was resolved before
+  > `env:` files. Fix it by passing `STAGE` on the CLI, setting it in the OS
+  > env, or making it a `const:`.
 
 ### Built-in variables
 
@@ -771,3 +815,9 @@ Inside that subtree the two kinds of block differ:
   CLI arg. Nearest declaration wins, like any lexical scope.
 - **`env:`/`vars:` only fill a gap** the caller has not set, acting as the
   module's own lowest layer rather than an override.
+
+A module's own `const:`/`env:`/`vars:` follow the same upward-read model as
+the root chain, scoped to the module's own file: `const:` resolves first, then
+`env:` files (which can read the module's own `const:`, but not its own
+`vars:`, checked at load time the same way), then `vars:` last, which can
+build a default out of the module's own `const:` or `env:` files.

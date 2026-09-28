@@ -114,6 +114,34 @@ func checkVarsNoSelfReference(entries []SetEntry) error {
 	return nil
 }
 
+// checkEnvPathsDontReferenceVars rejects an env: file path template that
+// references a vars: name. Upward reads let vars: read env: files (see
+// docs/adr/0001-upward-reads-between-scope-layers.md), which makes the
+// reverse — an env: path driven by a vars: default — a cycle if it were
+// allowed, so it's a load-time error naming the rule instead of a runtime
+// "path not found" that wouldn't explain why.
+func checkEnvPathsDontReferenceVars(cfg *ConfigFile) error {
+	if len(cfg.VarEntries) == 0 {
+		return nil
+	}
+	varNames := make(map[string]bool, len(cfg.VarEntries))
+	for _, entry := range cfg.VarEntries {
+		varNames[entry.Key] = true
+	}
+	for _, entry := range cfg.EnvFileTmpls {
+		refs, err := eval.ReferencedVars(entry.PathTmpl)
+		if err != nil {
+			return fmt.Errorf("env: %q: %w", entry.PathTmpl, err)
+		}
+		for _, ref := range refs {
+			if varNames[ref] {
+				return fmt.Errorf("env: %q references .%s, declared in vars: — an env: path can only read CLI args, const:, the OS env and the built-in variables\n  hint: select the file with a CLI arg, the OS env, or const: instead", entry.PathTmpl, ref)
+			}
+		}
+	}
+	return nil
+}
+
 // checkConstNamesNotShadowed rejects a set:/get:/into:/loop: target
 // anywhere in cfg's own tasks that collides with one of cfg's own const:
 // names. Without this, const: would only be constant from outside the

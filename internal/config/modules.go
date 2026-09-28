@@ -144,35 +144,54 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 	moduleVars = eval.CloneMap(vars)
 	moduleSecrets = eval.CloneMap(secrets)
 
-	moduleCfg.ModuleLayer = make(map[string]value.Value)
-	moduleCfg.ModuleLayerSecrets = make(map[string]bool)
-
-	// vars: first, then env: files on top (matching the root chain's own
-	// vars: < env files ordering) — both land in the same default-tier
-	// layer, applied at runtime via Scope.SetIfDefault.
-	if err := applyModuleSetEntries(moduleCfg.VarEntries, moduleVars, moduleSecrets, moduleCfg.ModuleLayer, moduleCfg.ModuleLayerSecrets); err != nil {
+	// const: first, into its own hard-override layer — a module's own const:
+	// always wins in its subtree, never just a default (see
+	// ConfigFile.ModuleConstLayer). Evaluated first, same as the root chain
+	// (docs/adr/0001), since it's a closed world: it can only reference
+	// earlier const: entries and the builtins, never env: files or vars:.
+	moduleCfg.ModuleConstLayer = make(map[string]value.Value)
+	moduleCfg.ModuleConstLayerSecrets = make(map[string]bool)
+	if err := applyModuleSetEntries(moduleCfg.ConstEntries, moduleVars, moduleSecrets, moduleCfg.ModuleConstLayer, moduleCfg.ModuleConstLayerSecrets, nil); err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
+
+	// locked tracks every name this module's own const: has claimed —
+	// resolved before env: files and vars:, so its final values are what
+	// both can read (an env: path referencing a vars: name is still a
+	// load-time error, checked by checkEnvPathsDontReferenceVars on this
+	// same moduleCfg since ParseConfig above already ran it).
+	locked := make(map[string]bool, len(moduleCfg.ConstEntries))
+	for _, entry := range moduleCfg.ConstEntries {
+		locked[entry.Key] = true
+	}
+
+	moduleCfg.ModuleLayer = make(map[string]value.Value)
+	moduleCfg.ModuleLayerSecrets = make(map[string]bool)
 
 	envVars, envSecrets, err := LoadEnvFiles(ctx, moduleCfg.EnvFileTmpls, moduleCfg.TaskfileDir, moduleVars)
 	if err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
 	for key, envVal := range envVars {
+		if locked[key] {
+			continue // this module's own const: already claimed it
+		}
 		moduleVars[key] = value.Str(envVal)
 		moduleCfg.ModuleLayer[key] = value.Str(envVal)
+		locked[key] = true
 		if envSecrets[key] {
 			moduleSecrets[key] = true
 			moduleCfg.ModuleLayerSecrets[key] = true
 		}
 	}
 
-	// const: last, into its own hard-override layer — a module's own const:
-	// always wins in its subtree, never just a default (see
-	// ConfigFile.ModuleConstLayer).
-	moduleCfg.ModuleConstLayer = make(map[string]value.Value)
-	moduleCfg.ModuleConstLayerSecrets = make(map[string]bool)
-	if err := applyModuleSetEntries(moduleCfg.ConstEntries, moduleVars, moduleSecrets, moduleCfg.ModuleConstLayer, moduleCfg.ModuleConstLayerSecrets); err != nil {
+	// vars: last, since it's the fallback layer and needs to see everything
+	// above it — this module's own const: and env: files — to build a real
+	// default from. Skipped entirely (not evaluated) for a name locked
+	// already claims; still free to overwrite whatever this module inherited
+	// from its parent scope, same as today (moduleVars carries no ambient
+	// tracking for that inherited layer, unlike the root chain's OS env).
+	if err := applyModuleSetEntries(moduleCfg.VarEntries, moduleVars, moduleSecrets, moduleCfg.ModuleLayer, moduleCfg.ModuleLayerSecrets, locked); err != nil {
 		return nil, nil, nil, "", fmt.Errorf("module %q: %w", module.Prefix, err)
 	}
 
@@ -185,9 +204,18 @@ func resolveModuleFile(ctx context.Context, cfg *ConfigFile, module ModuleEntry,
 // including the parent scope this module inherited — and records every
 // entry into layer/layerSecrets too, so the caller can also apply it, via
 // whichever runtime rule fits that block, to the scope a module task
-// actually executes with (see runner.applyModuleLayer).
-func applyModuleSetEntries(entries []SetEntry, vars map[string]value.Value, secrets map[string]bool, layer map[string]value.Value, layerSecrets map[string]bool) error {
+// actually executes with (see runner.applyModuleLayer). locked, when
+// non-nil, is both a skip check and a write target: an entry whose name
+// locked already claims (this module's own const: or env: files, resolved
+// before vars:) is skipped without being evaluated, rather than
+// unconditionally overwriting it — see resolveModuleFile — and every entry
+// this call does evaluate claims its own name in locked too, so a later
+// call (vars: after const:/env: files) sees it.
+func applyModuleSetEntries(entries []SetEntry, vars map[string]value.Value, secrets map[string]bool, layer map[string]value.Value, layerSecrets map[string]bool, locked map[string]bool) error {
 	for _, entry := range entries {
+		if locked != nil && locked[entry.Key] {
+			continue
+		}
 		val, err := EvalSetEntry(entry, func(tmpl string) (value.Value, error) {
 			return eval.EvalValue(tmpl, vars)
 		})
@@ -196,6 +224,9 @@ func applyModuleSetEntries(entries []SetEntry, vars map[string]value.Value, secr
 		}
 		vars[entry.Key] = val
 		layer[entry.Key] = val
+		if locked != nil {
+			locked[entry.Key] = true
+		}
 		if entry.Secret {
 			secrets[entry.Key] = true
 			layerSecrets[entry.Key] = true

@@ -185,6 +185,49 @@ func TestE2E_Env_LaterEntrySecretOverrideDeterminesStatus(t *testing.T) {
 	res.NotOut(t, "****")
 }
 
+func TestE2E_Env_PathTemplateReadsCLIArg(t *testing.T) {
+	// given an env: path built from a CLI arg, when run, then the path
+	// resolves against it — an env: path can read CLI args (upward read, see
+	// docs/adr/0001)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				env:
+				  - "{{.STAGE}}.env"
+				tasks:
+				  t:
+				    steps:
+				      - run: echo target={{.DEPLOY_TARGET}}
+			`,
+			"prod.env": "DEPLOY_TARGET=prod-cluster\n",
+		},
+		Args: []string{"t", "STAGE=prod"},
+	})
+	res.OK(t)
+	res.Lines(t, "target=prod-cluster")
+}
+
+func TestE2E_Env_PathTemplateReferencingVarsNameFailsAtLoad(t *testing.T) {
+	// given an env: path template referencing a vars: name, when the file
+	// loads, then it errors naming the rule (why: vars: can now read env:
+	// files, so the reverse would be a cycle — this used to work and is
+	// called out as a breaking change)
+	res := Yml(t, `
+		vars:
+		  - STAGE: dev
+
+		env:
+		  - "{{.STAGE}}.env"
+
+		tasks:
+		  t:
+		    steps:
+		      - run: echo hi
+	`, "t")
+	res.Fails(t)
+	res.Err(t, `env: "{{.STAGE}}.env" references .STAGE, declared in vars:`)
+}
+
 func TestE2E_Env_PathTemplateReferencesEarlierEntryVar(t *testing.T) {
 	// given an earlier env: entry sets a var and a later entry's path is a
 	// template referencing it, when run, then the later path resolves

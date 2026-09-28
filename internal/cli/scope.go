@@ -55,14 +55,23 @@ func (scope *Scope) Copy() *Scope {
 	}
 }
 
-// BuildScope constructs the initial variable scope, layering from lowest to
-// highest priority: env vars, system vars (HOBNOB_FILE_DIR,
-// HOBNOB_INVOCATION_DIR), vars: entries, vars sourced from env: files, CLI
-// KEY=VALUE args, then const: entries. CLI args win over env: files so a
-// caller's explicit override always beats a sourced default; const: outranks
-// even CLI args, which is what makes it a constant. Above const:, precedence
-// is no longer a rule but execution order: a task's own set:/get:/loop:/call:
-// steps run after BuildScope and see everything it produced.
+// BuildScope constructs the initial variable scope: env vars < vars: < env:
+// files < CLI KEY=VALUE args < const:, per docs/adr/0001. Per that ADR, a
+// layer's templates read the final values of every layer above it — so
+// layers are *resolved* top-down, the reverse of precedence order: const:
+// first (closed world — only earlier const: entries and the builtins),
+// then CLI args (plain values, no templates), then env: file paths (which
+// may read CLI args, const:, the OS env, and the builtins, but never a
+// vars: name — enforced at load time by config.checkEnvPathsDontReferenceVars
+// since it would otherwise surface as a confusing runtime "path not found"),
+// then vars: last, since it's the fallback layer and so needs to see
+// everything above it to build a real default from. A vars: entry whose
+// name a higher layer (env file, CLI arg, const:) already set is skipped
+// entirely — not evaluated — since it already lost; only a name still on the
+// OS-env base layer (Scope.Ambient) is fair game for it to overwrite.
+// Above const:, precedence is no longer a rule but execution order: a task's
+// own set:/get:/loop:/call: steps run after BuildScope and see everything it
+// produced.
 // Also returns a secrets map for any var sourced from an env: file or const:/
 // vars: entry per its own secret: flag (see config.LoadEnvFiles,
 // config.EvalSetEntry).
@@ -90,8 +99,16 @@ func BuildScope(ctx context.Context, envFileEntries []config.EnvFileEntry, const
 	scope.Vars["HOBNOB_FILE_DIR"] = value.Str(taskfileDir)
 	scope.Vars["HOBNOB_INVOCATION_DIR"] = value.Str(invocationDir)
 
-	if err := evalSetEntriesInto(scope, varEntries, "vars"); err != nil {
+	if err := evalSetEntriesInto(scope, constEntries, "const", nil); err != nil {
 		return nil, err
+	}
+
+	for key, val := range cliVars {
+		if _, present := scope.Vars[key]; present && !scope.Ambient[key] {
+			continue // const: already claimed this name
+		}
+		scope.Vars[key] = value.Str(val)
+		delete(scope.Ambient, key)
 	}
 
 	envFileVars, envFileSecrets, err := config.LoadEnvFiles(ctx, envFileEntries, taskfileDir, scope.Vars)
@@ -99,16 +116,18 @@ func BuildScope(ctx context.Context, envFileEntries []config.EnvFileEntry, const
 		return nil, err
 	}
 	for key, val := range envFileVars {
+		if _, present := scope.Vars[key]; present && !scope.Ambient[key] {
+			continue // const: or a CLI arg already claimed this name
+		}
 		scope.Set(key, value.Str(val), envFileSecrets[key])
 		delete(scope.Ambient, key)
 	}
 
-	for key, val := range cliVars {
-		scope.Vars[key] = value.Str(val)
-		delete(scope.Ambient, key)
+	skipClaimed := func(key string) bool {
+		_, present := scope.Vars[key]
+		return present && !scope.Ambient[key]
 	}
-
-	if err := evalSetEntriesInto(scope, constEntries, "const"); err != nil {
+	if err := evalSetEntriesInto(scope, varEntries, "vars", skipClaimed); err != nil {
 		return nil, err
 	}
 
@@ -118,9 +137,16 @@ func BuildScope(ctx context.Context, envFileEntries []config.EnvFileEntry, const
 // evalSetEntriesInto evaluates entries top-to-bottom into scope, each seeing
 // everything set before it (by an earlier entry in the same block, or by a
 // lower layer already applied) — the same sequential rule set: follows at
-// step scope. label names the block in a wrapped error.
-func evalSetEntriesInto(scope *Scope, entries []config.SetEntry, label string) error {
+// step scope. label names the block in a wrapped error. skip, when non-nil,
+// is checked before evaluating each entry; a true result skips the entry
+// entirely, without evaluating its template — used by vars: to leave a
+// template that'd only make sense standing alone (e.g. it'd error against
+// the scope) unevaluated when a higher layer already claimed its name.
+func evalSetEntriesInto(scope *Scope, entries []config.SetEntry, label string, skip func(key string) bool) error {
 	for _, entry := range entries {
+		if skip != nil && skip(entry.Key) {
+			continue
+		}
 		val, err := config.EvalSetEntry(entry, func(tmpl string) (value.Value, error) {
 			return eval.EvalValue(tmpl, scope.Vars)
 		})

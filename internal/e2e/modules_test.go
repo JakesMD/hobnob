@@ -699,3 +699,99 @@ func TestE2E_Modules_OwnVarsUsedWhenNothingElseSetsIt(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "host=mod-default")
 }
+
+func TestE2E_Modules_OwnVarsReadsOwnEnvFile(t *testing.T) {
+	// given a module's own env: file and its own vars: entry built from it,
+	// when a module task runs, then vars: sees the env: file's value — a
+	// module's own env:/vars: follow the same upward-read model as the root
+	// chain (docs/adr/0001)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				env:
+				  - module.env
+				vars:
+				  - URL: "https://{{.API_HOST}}/v1"
+				tasks:
+				  show:
+				    steps:
+				      - run: echo {{.URL}}
+			`,
+			"module.env": "API_HOST=staging.example.com\n",
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "https://staging.example.com/v1")
+}
+
+func TestE2E_Modules_OwnVarsReadsOwnConst(t *testing.T) {
+	// given a module's own const: entry and its own vars: entry built from
+	// it, when a module task runs, then vars: sees the const: value
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				const:
+				  - REGION: eu
+				vars:
+				  - LABEL: "app-{{.REGION}}"
+				tasks:
+				  show:
+				    steps:
+				      - run: echo {{.LABEL}}
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "app-eu")
+}
+
+func TestE2E_Modules_OwnEnvPathReferencingOwnVarsNameFailsAtLoad(t *testing.T) {
+	// given a module's own env: path template referencing its own vars: name,
+	// when the file loads, then it errors naming the rule — same check as the
+	// root chain, scoped to the module's own file
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				vars:
+				  - STAGE: dev
+
+				env:
+				  - "{{.STAGE}}.env"
+
+				tasks:
+				  show:
+				    steps:
+				      - run: echo hi
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.Fails(t)
+	res.Err(t, `env: "{{.STAGE}}.env" references .STAGE, declared in vars:`)
+}

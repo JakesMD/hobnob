@@ -62,6 +62,68 @@ func TestE2E_Vars_SecretFlagMasksValue(t *testing.T) {
 	res.Masked(t, "hunter2")
 }
 
+func TestE2E_Vars_ReadsValueFromEnvFile(t *testing.T) {
+	// given an env: file setting a var and a vars: entry building a default
+	// from it, when the task runs, then vars: sees the env: file's value
+	// (why: the whole point of this issue — vars: can now read upward)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				env:
+				  - .env
+				vars:
+				  - URL: "https://{{.API_HOST}}/v1"
+				tasks:
+				  t:
+				    steps:
+				      - run: echo {{.URL}}
+			`,
+			".env": "API_HOST=staging.example.com\n",
+		},
+		Args: []string{"t"},
+	})
+	res.OK(t)
+	res.Lines(t, "https://staging.example.com/v1")
+}
+
+func TestE2E_Vars_ReadsCLIArgAndConst(t *testing.T) {
+	// given a vars: entry built from a CLI arg and a const: value, when the
+	// task runs, then vars: sees both — upward reads cover every layer above
+	// it, not just env: files
+	res := Yml(t, `
+		const:
+		  - REGION: eu
+
+		vars:
+		  - LABEL: "{{.STAGE}}-{{.REGION}}"
+
+		tasks:
+		  t:
+		    steps:
+		      - run: echo {{.LABEL}}
+	`, "t", "STAGE=prod")
+	res.OK(t)
+	res.Lines(t, "prod-eu")
+}
+
+func TestE2E_Vars_OverriddenEntryIsNeverEvaluated(t *testing.T) {
+	// given a vars: entry whose template would error, and a CLI arg for the
+	// same name, when the task runs, then it succeeds — an overridden vars:
+	// entry is skipped entirely, not evaluated, so a template that would only
+	// make sense standing alone never runs just because it lost
+	res := Yml(t, `
+		vars:
+		  - HOST: "{{.MISSING.field}}"
+
+		tasks:
+		  t:
+		    steps:
+		      - run: echo host={{.HOST}}
+	`, "t", "HOST=from-cli")
+	res.OK(t)
+	res.Lines(t, "host=from-cli")
+}
+
 func TestE2E_Vars_ListLiteralStaysTyped(t *testing.T) {
 	// given a vars: entry holding a YAML list literal, when looped over,
 	// then it's a real Array — vars: entries stay typed, same as set:

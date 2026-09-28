@@ -225,10 +225,26 @@ The full order is `env < vars: < env files < CLI args < const:`, and a task's
 own steps run after all of it. See
 [Precedence](REFERENCE.md#precedence).
 
+`vars:` can build its default out of anything above it — an `env:` file, a CLI
+arg, or `const:` — since those are all resolved first:
+
+```yaml
+env:
+  - .env # API_HOST=staging.example.com
+
+vars:
+  - API: "https://{{.API_HOST}}/v1"
+```
+
 > [!WARNING]
 > `const:` is a closed world. An entry can only reference earlier `const:`
 > entries, so it cannot quietly read a lower layer and still call itself fixed.
 > A `const:` name is also reserved file-wide: no task may write to it.
+>
+> The read only goes one way: an `env:` file's own path cannot reference a
+> `vars:` name (`.env.{{.STAGE}}` driven by a `vars: [STAGE: dev]` default is a
+> load-time error). Select the file with a CLI arg, the OS env, or `const:`
+> instead. See [Env files](REFERENCE.md#env-files).
 
 ## Splitting across files
 
