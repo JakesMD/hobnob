@@ -97,7 +97,7 @@ func TestE2E_Scope_CLIArgsWinOverEnvFile(t *testing.T) {
 func TestE2E_Scope_SetStepWinsOverEnvFile(t *testing.T) {
 	// given an env: file and a set: step assigning the same var, when the
 	// task runs, then the set: value wins (why: the timeline sits above
-	// every BuildScope-layer source, env: files included)
+	// every scope.Load-layer source, env: files included)
 	res := Run(t, Case{
 		Files: Files{
 			"hobnob.yml": `

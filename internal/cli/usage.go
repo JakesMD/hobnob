@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"hobnob/internal/config"
+	"hobnob/internal/scope"
 )
 
 // DisplayVersion returns version, or "dev" when version is empty (unset by
@@ -79,7 +80,7 @@ Docs:
 `, displayVersion, guideURL, referenceURL)
 }
 
-func PrintHelp(cfg *config.ConfigFile, scope *Scope, out io.Writer, version string) error {
+func PrintHelp(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, version string) error {
 	PrintUsage(out, version)
 	return ListTasks(cfg, scope, out)
 }

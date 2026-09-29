@@ -6,9 +6,9 @@ import (
 	"sort"
 	"strings"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
@@ -24,7 +24,7 @@ type callMemo struct {
 	// site projects what it wants out of that cached scope through its own
 	// into:, so two sites can pull different things from one cached run; a
 	// delta would need to already guess what every future site wants.
-	scopes map[uintptr]*cli.Scope
+	scopes map[uintptr]*scope.Scope
 	// summaries holds a masked "KEY=val KEY2=val2" rendering of what each
 	// once: task's first run actually produced or changed, computed once at
 	// write time (before/after aren't available on a later cache hit) — the
@@ -38,7 +38,7 @@ type callMemo struct {
 
 func newCallMemo() *callMemo {
 	return &callMemo{
-		scopes:    make(map[uintptr]*cli.Scope),
+		scopes:    make(map[uintptr]*scope.Scope),
 		summaries: make(map[uintptr]string),
 		running:   make(map[uintptr]bool),
 	}
@@ -56,7 +56,7 @@ func callCacheID(task config.Task) uintptr {
 	return reflect.ValueOf(task.Steps).Pointer()
 }
 
-func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
+func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("call target template: %w", err)
@@ -109,7 +109,7 @@ func execCall(execState execCtx, step config.Step, scope *cli.Scope) error {
 // summary for the cache-hit log line — otherwise a replayed call: is
 // invisible, the exact complaint the old use: memo drew (see GUIDE.md's
 // former "Sharp edge" note). Sorted by key for a stable line across runs.
-func summarizeCallDelta(before, after *cli.Scope) string {
+func summarizeCallDelta(before, after *scope.Scope) string {
 	var keys []string
 	for key, val := range after.Vars {
 		if prior, existed := before.Vars[key]; !existed || !reflect.DeepEqual(prior, val) {
@@ -133,7 +133,7 @@ func summarizeCallDelta(before, after *cli.Scope) string {
 // with: entirely, because Copy() already brought the parent's secrets across
 // and masking matches on value, so a secret passed down stays masked under its
 // new name without anything to declare at the call site.
-func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, error) {
+func buildCallScope(scope *scope.Scope, callVars []config.SetEntry) (*scope.Scope, error) {
 	childScope := scope.Copy()
 	for _, callVar := range callVars {
 		val, err := config.EvalSetEntry(callVar, func(tmpl string) (value.Value, error) {
@@ -157,7 +157,7 @@ func buildCallScope(scope *cli.Scope, callVars []config.SetEntry) (*cli.Scope, e
 //     accessor ([0].name) and/or " | filter | filter" — read straight out
 //     of childScope, typed, then resolved/filtered if there's an accessor
 //     or chain.
-func captureCallInto(entries []config.IntoEntry, scope, childScope *cli.Scope) error {
+func captureCallInto(entries []config.IntoEntry, scope, childScope *scope.Scope) error {
 	evalLeaf := func(valueTmpl string) (value.Value, error) {
 		if strings.Contains(valueTmpl, "{{") {
 			return eval.EvalValue(valueTmpl, scope.Vars)

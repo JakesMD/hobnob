@@ -9,6 +9,7 @@ import (
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 
@@ -35,7 +36,7 @@ func visibleTaskNames(cfg *config.ConfigFile) []string {
 	return names
 }
 
-func CollectSelectableTasks(cfg *config.ConfigFile, scope *Scope) []tui.TaskItem {
+func CollectSelectableTasks(cfg *config.ConfigFile, scope *scope.Scope) []tui.TaskItem {
 	var tasks []tui.TaskItem
 	for _, name := range visibleTaskNames(cfg) {
 		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars)
@@ -53,7 +54,7 @@ type taskRow struct {
 // buildTaskRows returns the visible (non-internal, non-hidden) tasks in
 // sorted order, alongside the longest task name — callers need that width to
 // align the info column before any rendering happens.
-func buildTaskRows(cfg *config.ConfigFile, scope *Scope) (rows []taskRow, maxNameLen int) {
+func buildTaskRows(cfg *config.ConfigFile, scope *scope.Scope) (rows []taskRow, maxNameLen int) {
 	for _, name := range visibleTaskNames(cfg) {
 		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars)
 		rows = append(rows, taskRow{name, info})
@@ -64,7 +65,7 @@ func buildTaskRows(cfg *config.ConfigFile, scope *Scope) (rows []taskRow, maxNam
 	return rows, maxNameLen
 }
 
-func ListTasks(cfg *config.ConfigFile, scope *Scope, out io.Writer) error {
+func ListTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer) error {
 	rows, maxTaskLen := buildTaskRows(cfg, scope)
 
 	if len(rows) == 0 {

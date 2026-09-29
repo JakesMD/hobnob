@@ -49,8 +49,8 @@ func referencedVarsInJSONNode(n JSONNode) ([]string, error) {
 }
 
 // builtinVars are the only names const: may reference besides earlier
-// const: entries — the two vars BuildScope always sets before any file-level
-// layer runs (see cli.BuildScope).
+// const: entries — the two vars scope.Load always sets before any file-level
+// layer runs.
 var builtinVars = map[string]bool{
 	"HOBNOB_FILE_DIR":       true,
 	"HOBNOB_INVOCATION_DIR": true,

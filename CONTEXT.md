@@ -25,3 +25,7 @@ _Avoid_: sealed, isolated
 **Default**:
 A `vars:` value, used only when no higher layer has set that name.
 _Avoid_: fallback, initial value
+
+**File scope**:
+The variables one taskfile's own `const:`, `env:` files and `vars:` contribute, resolved against its importer's scope (the root file's importer is the OS env plus built-ins, and the root file's own scope also takes the CLI args). A module's file scope reads the importer's resolved values, never a caller's `with:` or `set:`, and is applied only to that module's own tasks. Its `const:` overrides, and its `env:`/`vars:` fill only names nothing higher has set.
+_Avoid_: module layer, layer (a layer is one source, a file scope spans several)

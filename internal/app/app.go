@@ -16,6 +16,7 @@ import (
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/runner"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 
 	cterm "github.com/charmbracelet/x/term"
@@ -45,33 +46,21 @@ func New(version string) *App {
 	}
 }
 
-func loadConfig(ctx context.Context, path string, cliVars map[string]string, invDir string) (*config.ConfigFile, *cli.Scope, error) {
+// loadConfig parses the taskfile at path and loads its scope — the root
+// file's and every module's.
+func loadConfig(ctx context.Context, path string, cliVars map[string]string, invDir string) (*config.ConfigFile, *scope.Scope, scope.FileScopes, error) {
 	cfg, err := config.ParseConfig(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	scope, err := buildScopeFor(ctx, cfg, cliVars, invDir)
+	rootScope, fileScopes, err := scope.Load(ctx, cfg, cliVars, invDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return cfg, scope, nil
+	return cfg, rootScope, fileScopes, nil
 }
 
-// buildScopeFor is loadConfig's half that doesn't care where the config came
-// from — shared with the built-in demo taskfile, which is parsed from
-// embedded bytes rather than read off disk.
-func buildScopeFor(ctx context.Context, cfg *config.ConfigFile, cliVars map[string]string, invDir string) (*cli.Scope, error) {
-	scope, err := cli.BuildScope(ctx, cfg.EnvFileTmpls, cfg.ConstEntries, cfg.VarEntries, cliVars, cfg.TaskfileDir, invDir)
-	if err != nil {
-		return nil, err
-	}
-	if err := config.LoadModules(ctx, cfg, scope.Vars, scope.Secrets); err != nil {
-		return nil, err
-	}
-	return scope, nil
-}
-
-func (a *App) selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
+func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
 	if noPrompts || !a.IsTerminal() {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, a.Version)
@@ -90,11 +79,11 @@ func (a *App) selectAndRun(ctx context.Context, scope *cli.Scope, cfg *config.Co
 	if err != nil {
 		return err
 	}
-	return a.execTask(ctx, selected, scope, cfg, false, cfg.TaskfileDir)
+	return a.execTask(ctx, selected, scope, fileScopes, cfg, false, cfg.TaskfileDir)
 }
 
-func (a *App) execTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if err := runner.ExecuteTask(ctx, taskName, scope, cfg, noPrompts, dir); err != nil {
+func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
+	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir); err != nil {
 		if errors.Is(err, runner.ErrInterrupted) {
 			fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render("interrupted"))
 			return ErrSilent
@@ -149,24 +138,24 @@ func (a *App) Run(ctx context.Context, args []string) error {
 
 	if len(args) < 1 {
 		if useDemo {
-			cfg, scope, err := loadDemoConfig(ctx, nil, invDir)
+			cfg, scope, fileScopes, err := loadDemoConfig(ctx, nil, invDir)
 			if err != nil {
 				return err
 			}
 			announceDemo()
-			return a.selectAndRun(ctx, scope, cfg, a.defaultNoPrompts(), false)
+			return a.selectAndRun(ctx, scope, fileScopes, cfg, a.defaultNoPrompts(), false)
 		}
 		tfPath, _ := resolveTaskfile(fileFlag, invDir) // error = "not found"; tfPath=="" handles it below
 		if tfPath != "" {
-			cfg, scope, err := loadConfig(ctx, tfPath, nil, invDir)
+			cfg, scope, fileScopes, err := loadConfig(ctx, tfPath, nil, invDir)
 			if err != nil {
 				return err
 			}
 			noPrompts := a.defaultNoPrompts()
 			if _, ok := cfg.Tasks["default"]; ok {
-				return a.execTask(ctx, "default", scope, cfg, noPrompts, cfg.TaskfileDir)
+				return a.execTask(ctx, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 			}
-			return a.selectAndRun(ctx, scope, cfg, noPrompts, true)
+			return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, true)
 		}
 		cli.PrintUsage(os.Stdout, a.Version)
 		return nil
@@ -177,15 +166,15 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		if argErr != nil {
 			return fmt.Errorf("invalid argument %w", argErr)
 		}
-		cfg, scope, err := loadDemoConfig(ctx, cliVars, invDir)
+		cfg, scope, fileScopes, err := loadDemoConfig(ctx, cliVars, invDir)
 		if err != nil {
 			return err
 		}
 		announceDemo()
 		if isListingFlag(args[0]) {
-			return a.runListingFlag(ctx, args, scope, cfg)
+			return a.runListingFlag(ctx, args, scope, fileScopes, cfg)
 		}
-		return a.execTask(ctx, args[0], scope, cfg, noPrompts, cfg.TaskfileDir)
+		return a.execTask(ctx, args[0], scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 	}
 
 	taskfilePath, err := resolveTaskfile(fileFlag, invDir)
@@ -194,11 +183,11 @@ func (a *App) Run(ctx context.Context, args []string) error {
 	}
 
 	if isListingFlag(args[0]) {
-		cfg, scope, err := loadConfig(ctx, taskfilePath, nil, invDir)
+		cfg, scope, fileScopes, err := loadConfig(ctx, taskfilePath, nil, invDir)
 		if err != nil {
 			return err
 		}
-		return a.runListingFlag(ctx, args, scope, cfg)
+		return a.runListingFlag(ctx, args, scope, fileScopes, cfg)
 	}
 
 	taskName := args[0]
@@ -207,12 +196,12 @@ func (a *App) Run(ctx context.Context, args []string) error {
 		return fmt.Errorf("invalid argument %w", err)
 	}
 
-	cfg, scope, err := loadConfig(ctx, taskfilePath, cliVars, invDir)
+	cfg, scope, fileScopes, err := loadConfig(ctx, taskfilePath, cliVars, invDir)
 	if err != nil {
 		return err
 	}
 
-	return a.execTask(ctx, taskName, scope, cfg, noPrompts, cfg.TaskfileDir)
+	return a.execTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 }
 
 // isListingFlag reports whether arg is one of the flags that inspect a
@@ -223,13 +212,13 @@ func isListingFlag(arg string) bool {
 
 // runListingFlag dispatches the --list/--help/--select trio against an
 // already-loaded config, so the real and built-in-demo paths can't drift.
-func (a *App) runListingFlag(ctx context.Context, args []string, scope *cli.Scope, cfg *config.ConfigFile) error {
+func (a *App) runListingFlag(ctx context.Context, args []string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
 	switch args[0] {
 	case "--help":
 		return cli.PrintHelp(cfg, scope, os.Stdout, a.Version)
 	case "--select":
 		noPrompts := a.defaultNoPrompts() || hasNoInputFlag(args[1:])
-		return a.selectAndRun(ctx, scope, cfg, noPrompts, false)
+		return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, false)
 	default:
 		return cli.ListTasks(cfg, scope, os.Stdout)
 	}

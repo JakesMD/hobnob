@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
@@ -81,7 +81,7 @@ func displayDirPath(dir, invocationDir string) string {
 // A Bool or short Number secret is skipped: masking "true" or "1" as a
 // substring would blank out unrelated text (every "true" in the command),
 // not just the secret.
-func maskSecrets(text string, scope *cli.Scope) string {
+func maskSecrets(text string, scope *scope.Scope) string {
 	for name := range scope.Secrets {
 		secretVal := scope.Vars[name]
 		if secretVal.Kind() == value.KindBool {
@@ -140,13 +140,16 @@ func jsonEscapedForm(secretVal string) (string, bool) {
 // cfg/task/noPrompts/dir change together as a unit. memo is shared across the
 // whole run (one ExecuteTask call), including through call:'s scope swap —
 // that's what lets a once: true prologue replay into two sibling sandboxes.
+// fileScopes is likewise fixed for the whole run: every module's file scope,
+// looked up by Task.Cfg whenever a module task starts.
 type execCtx struct {
-	ctx       context.Context
-	cfg       *config.ConfigFile
-	task      string
-	noPrompts bool
-	dir       string
-	memo      *callMemo
+	ctx        context.Context
+	cfg        *config.ConfigFile
+	fileScopes scope.FileScopes
+	task       string
+	noPrompts  bool
+	dir        string
+	memo       *callMemo
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
@@ -167,26 +170,26 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // This is the entry point for one whole run: it owns the once: memo cache,
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer.
-func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, "", scope)
+func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, "", scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
 // and every call:. It owns the whole sequence — resolve the task and its
-// owning file, apply that file's module layer, resolve the working directory,
+// owning file, apply that file's file scope, resolve the working directory,
 // evaluate the task's own if:, then run its steps — so no caller can skip a
 // part of it. callDirTmpl is a call: step's own dir: ("" for none), resolved
 // against the caller's taskfile dir; the priority chain is call-site dir:
 // (Priority A) > task dir: (B) > inherited execState.dir (C). It runs within
 // an already-established execCtx, carrying its memo forward, so a once:
 // task's memoized results survive the sandbox swap at a call: boundary.
-func executeTask(execState execCtx, taskName, callDirTmpl string, scope *cli.Scope) error {
+func executeTask(execState execCtx, taskName, callDirTmpl string, scope *scope.Scope) error {
 	task, execCfg, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
 	}
 	if task.Cfg != nil {
-		applyModuleLayer(scope, execCfg)
+		execState.fileScopes.Apply(scope, task.Cfg)
 	}
 	currentDir := execState.dir
 	switch {
@@ -213,31 +216,10 @@ func executeTask(execState execCtx, taskName, callDirTmpl string, scope *cli.Sco
 			return nil
 		}
 	}
-	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
+	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
 }
 
-// applyModuleLayer supplies moduleCfg's own env:/vars:/const: vars (see
-// config.ConfigFile.ModuleLayer/ModuleConstLayer) into scope before a task
-// belonging to that module runs — the fix for a module's own env: block
-// never having reached a module task's runtime scope. The default tier
-// (env:, vars:) is applied via SetIfDefault, so it only fills a key the
-// caller hasn't already set (directly, via with:, or via a higher-priority
-// layer of its own); const: is applied unconditionally after it, since a
-// module's own const: always wins in its subtree — ordinary lexical
-// shadowing, the nearest declaration wins. Re-running this on every nested
-// call into the same module is idempotent: once a default-tier key is
-// applied it's no longer ambient, so a later call is a no-op for it, and
-// const: always writes the same value.
-func applyModuleLayer(scope *cli.Scope, moduleCfg *config.ConfigFile) {
-	for key, val := range moduleCfg.ModuleLayer {
-		scope.SetIfDefault(key, val, moduleCfg.ModuleLayerSecrets[key])
-	}
-	for key, val := range moduleCfg.ModuleConstLayer {
-		scope.Set(key, val, moduleCfg.ModuleConstLayerSecrets[key])
-	}
-}
-
-func executeSteps(execState execCtx, steps []config.Step, scope *cli.Scope) error {
+func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) error {
 	for _, step := range steps {
 		if execState.ctx.Err() != nil {
 			return fmt.Errorf("%w: %v", ErrInterrupted, execState.ctx.Err())

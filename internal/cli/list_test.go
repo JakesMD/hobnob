@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"hobnob/internal/config"
+	"hobnob/internal/scope"
 )
 
 func TestListTasks(t *testing.T) {
@@ -55,7 +56,7 @@ func TestListTasks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
-			scope, err := BuildScope(context.Background(), nil, nil, nil, map[string]string{"ANIMAL": "cat", "DEFAULT_RETRIES": "3"}, "/tmp/taskfile", "/tmp/invocation")
+			scope, _, err := scope.Load(context.Background(), cfg, map[string]string{"ANIMAL": "cat", "DEFAULT_RETRIES": "3"}, "/tmp/invocation")
 			if err != nil {
 				t.Fatalf("scope error: %v", err)
 			}
@@ -116,7 +117,7 @@ func TestCollectSelectableTasks(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parse error: %v", err)
 			}
-			scope, err := BuildScope(context.Background(), nil, nil, nil, map[string]string{"ANIMAL": "cat", "DEFAULT_RETRIES": "3"}, "/tmp/taskfile", "/tmp/invocation")
+			scope, _, err := scope.Load(context.Background(), cfg, map[string]string{"ANIMAL": "cat", "DEFAULT_RETRIES": "3"}, "/tmp/invocation")
 			if err != nil {
 				t.Fatalf("scope error: %v", err)
 			}

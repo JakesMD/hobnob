@@ -37,9 +37,10 @@ interactive prompts and styled output.
 cmd/hobnob/       entry point: signal handling, exit codes
 internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
-internal/cli/     scope construction, --list/--help, completions
+internal/scope/   the runtime scope, and loading the root and module file scopes
+internal/cli/     --list/--help, completions
 internal/tui/     bubbletea prompts, lipgloss styles, output line writers
-internal/config/  YAML into typed structs, module and env-file loading
+internal/config/  YAML into typed structs, load-time rule checks
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
 internal/e2e/     end-to-end CLI suite (test files only, no production code)
@@ -48,9 +49,9 @@ internal/e2e/     end-to-end CLI suite (test files only, no production code)
 Imports run one way, bottom to top:
 
 ```
-value  <- eval  <- config  <- cli  <- runner  <- app  <- cmd/hobnob
-   ^        ^         ^        ^        ^         ^
-   +--------+---------+--------+--------+---------+   (tui: value only)
+value  <- eval  <- config  <- scope  <- cli  <- runner  <- app  <- cmd/hobnob
+   ^        ^         ^         ^        ^        ^         ^
+   +--------+---------+---------+--------+--------+---------+   (tui: value only)
 ```
 
 - `value` sits at the bottom with stdlib imports only.
@@ -59,8 +60,12 @@ value  <- eval  <- config  <- cli  <- runner  <- app  <- cmd/hobnob
 - `tui` imports `value` but not `eval`. `PromptText` takes a validator closure
   instead of evaluating a `check:` expression itself, so the prompt layer never
   learns how a shell condition works.
-- `cli` imports `config`, `eval`, `tui`, `value`. `runner` imports all of those.
-- `app` imports `cli`, `config`, `eval`, `runner`, `tui`. Nothing imports `app`,
+- `scope` imports `config`, `eval`, `value`. It owns the module walk rather
+  than `config`, since a module's path is evaluated against its importer's
+  resolved scope and `config` cannot import `scope` back.
+- `cli` imports `config`, `eval`, `scope`, `tui`, `value`. `runner` imports all
+  of those.
+- `app` imports `cli`, `config`, `eval`, `runner`, `scope`, `tui`. Nothing imports `app`,
   except `internal/e2e`, which is a leaf of `_test.go` files.
 
 ### `internal/value`: the typed scope value
@@ -166,7 +171,7 @@ argument) still evaluate correctly.
 subshell and diffs the result against a baseline `env` snapshot, so ambient
 noise like `SHLVL` is not pulled in.
 
-### `internal/config`: parsing and loading
+### `internal/config`: parsing
 
 `ParseConfig(path)` reads a file; `ParseConfigData(data, filePath, dir)` parses
 bytes that never came from disk, which is how the embedded `--demo` taskfile is
@@ -175,7 +180,7 @@ env-file entries, `const:` and `vars:`. An unrecognized top-level key is a
 load-time error rather than a silent no-op, so `taks:` fails loudly.
 
 Every template-bearing field is stored raw. `const:`/`vars:` are the apparent
-exception but not a real one: their _values_ still defer to `BuildScope`, and
+exception but not a real one: their _values_ still defer to `scope.Load`, and
 only their _reference structure_ is inspected at parse time.
 
 **Parse-time rules** (`constvars.go`, run per file once the whole tree is
@@ -204,19 +209,13 @@ grammar, `call: into:` leaves are a template or a bare child reference) and
 `EvalJSONNode` is agnostic to all of it. `EvalSetEntry` is the scalar-or-literal
 wrapper shared by `set:`, `with:`, `const:` and `vars:`.
 
-**Loading** happens after `BuildScope`, since module and env-file paths can
-themselves be templates:
-
-- `envfiles.go`: `.sh` files are sourced in a subshell, anything else is parsed
-  as `KEY=VALUE` lines with optional `export` prefixes and `#` comments. A
-  missing file warns on stderr and is skipped rather than failing the run. Later
-  entries win.
-- `modules.go`: resolves and merges imported files recursively, namespacing
-  tasks by their module key, applying `show:`/`hide:`/`flatten:`. A module's own
-  `env:`/`vars:`/`const:` is evaluated against a module-local scope and also
-  recorded as a delta on its own `ConfigFile` (`ModuleLayer`/`ModuleConstLayer`,
-  via `applyModuleSetEntries`). Parsing and loading only ever _build_ that
-  delta. Applying it to a live scope is `runner`'s job, described below.
+**Modules.** `modules.go` parses a `modules:` entry into a `ModuleEntry` (raw
+path, `show:`/`hide:`/`flatten:` templates) and exports `RegisterModuleTasks`,
+which applies those filters and registers a module's tasks into its importer
+under their namespaced names. Walking the imports themselves is
+`scope.Load`'s job, since every path is a template evaluated against the
+importing file's resolved scope. `envfiles.go` only parses the `env:` block;
+reading the files is `scope`'s.
 
 File split: `config.go` (root parse, tasks, step sequences), `types.go` (the
 structs), `yaml.go` (node helpers, `normalizeTmpl`), `steps.go` (per-kind
@@ -228,7 +227,7 @@ literals), `get.go`, `constvars.go`, `jsonvalue.go`, `modules.go`,
 braces: `options: .VAR[0].name` is wrapped in `{{ }}` at parse time when
 `eval.IsBareRef` recognizes it.
 
-### `internal/cli`: scope and presentation
+### `internal/scope`: the runtime scope and file scopes
 
 `Scope` is three maps:
 
@@ -241,28 +240,46 @@ type Scope struct {
 ```
 
 `Ambient` marks a key whose value still comes only from the OS-environment base
-layer. It is cleared the moment any higher layer touches that key. This is what
-lets a module's own `env:`/`vars:` block tell a genuinely inherited default from
-something a more specific layer already committed, without being able to see
-which layer produced it.
+layer. It is cleared the moment any higher layer touches that key. A name is
+_claimed_ once it is present and no longer ambient, and that one rule decides
+every default-tier write.
 
-`BuildScope` layers in strict precedence order:
+`Load(ctx, cfg, cliVars, invocationDir)` returns the root `*Scope` and a
+`FileScopes`. It builds a base of the OS env plus the two built-ins, resolves
+the root file's chain on it, then walks the imports: for each module, evaluate
+its path against the importer's scope, parse it, resolve its chain on the
+importer's scope, recurse, then register its tasks.
+
+`resolve` (private) is the one copy of the ADR-0001 order, shared by the root
+and every module. It resolves in the reverse of precedence order so each layer
+reads the final values of every layer above it:
 
 ```
-env  <  system vars  <  vars:  <  env files  <  CLI args  <  const:
+const:  ->  CLI args (root only)  ->  env files  ->  vars:
 ```
 
-Every source except `const:`/`vars:` is wrapped in `value.Str` and never
-sniffed. `const:`/`vars:` route through `config.EvalSetEntry` and stay typed.
-Above `const:` there is no ranking at all, only execution order: a task's own
-`set:`/`get:`/`loop:`/`call:` steps run afterwards and each sees everything
-before it.
+`const:` always writes. Every later layer writes a name only when it is
+unclaimed, and a claimed `vars:` entry is skipped without being evaluated. The
+written precedence `env < vars: < env files < CLI args < const:` falls out of
+that. Every source except `const:`/`vars:` is wrapped in `value.Str` and never
+sniffed; `const:`/`vars:` go through `config.EvalSetEntry` and stay typed.
+Above `const:` there is no ranking at all, only execution order.
+
+A module's chain resolves on its importer's resolved scope, never a caller's
+`with:` or `set:`, so a module `env:` file loses to anything the importer set
+that is not still ambient. What each module file itself wrote is kept as its
+**file scope**, keyed in `FileScopes` on the module's own `ConfigFile` (the
+value its tasks carry as `Task.Cfg`), with a link to its importing module's.
+`FileScopes.Apply(scope, cfg)` replays that chain outermost first when a module
+task starts: `const:` through `Set` (the nearest declaration wins), `env:`/
+`vars:` through `SetIfDefault` (a gap-filler). Re-applying it on a nested call
+into the same module is idempotent.
 
 Three accessors carry the write rules:
 
 - `Set` always overwrites, propagating the secret flag.
-- `SetIfDefault` only fills a key that is absent or still `Ambient`, and the
-  value it writes is not itself ambient.
+- `SetIfDefault` only fills a key that is unclaimed, and the value it writes is
+  not itself ambient.
 - `Copy` deep-copies all three maps, giving every `call:` step an isolated
   sandbox.
 
@@ -273,7 +290,9 @@ different name, which is exactly why `secret:` on a `with:` entry is rejected at
 parse time instead of honored: it would be redundant at best, and would
 over-mask a composed value like `postgres://{{.USER}}:{{.PASS}}@db` at worst.
 
-The rest of the package is output: `--list`/`--help` rendering, task-selector
+### `internal/cli`: presentation
+
+The package is output: `--list`/`--help` rendering, task-selector
 data, the docs-URL helpers that pin links to the running version, and the
 bash/zsh/fish completion scripts embedded from `internal/cli/completions/`.
 
@@ -283,9 +302,9 @@ bash/zsh/fish completion scripts embedded from `internal/cli/completions/`.
 task's `[]Step`, check `if:` before each one, dispatch on `StepKind`, evaluate
 templates against the _current_ scope that earlier steps may have just mutated.
 
-State threaded through the call graph (context, config, task name, prompt flag,
-working dir, and the `once:` memo) is bundled into an `execCtx` struct.
-`*cli.Scope` stays a separate argument, because it is the thing being mutated: a
+State threaded through the call graph (context, config, `FileScopes`, task
+name, prompt flag, working dir, and the `once:` memo) is bundled into an
+`execCtx` struct. `*scope.Scope` stays a separate argument, because it is the thing being mutated: a
 `call:` swaps in a fresh child scope while everything else in `execCtx` carries
 forward.
 
@@ -321,7 +340,7 @@ A `once: true` target is memoized per invocation through a `callMemo` carried in
 `execCtx`, which survives the scope swap so a shared prologue replays into
 sibling sandboxes. Three things about it are load-bearing:
 
-1. **Keyed on `Task.Steps` slice identity, not name.** `registerModuleTasks` can
+1. **Keyed on `Task.Steps` slice identity, not name.** `RegisterModuleTasks` can
    register one task under several names (module prefix, `flatten:` alias, its
    own bare name from inside the module file) that all share one backing array,
    so every route to it collapses to one cache entry.
@@ -349,14 +368,10 @@ recursively. Iterator vars stay typed, and prior values are restored on exit.
 **`set:` (`set.go`).** Evaluates entries top to bottom into scope, each seeing
 the ones before it.
 
-**`applyModuleLayer` (`runner.go`)** is not a step kind. It runs inside
-`executeTask` whenever the resolved task belongs to a module (`Task.Cfg != nil`)
-and writes that module's own layers into the scope the task is about to run
-with: `env:`/`vars:` through `SetIfDefault` (a default for the subtree), then
-`const:` through `Set` (an override, because the nearest declaration wins).
-Re-running it on a nested call into the same module is idempotent. This is the
-step that makes a module's own `env:`/`const:`/ `vars:` reach its tasks at all;
-`config` only ever computes the delta.
+**File scopes.** `executeTask` calls `FileScopes.Apply(scope, task.Cfg)`
+whenever the resolved task belongs to a module (`Task.Cfg != nil`), before its
+`dir:`, its `if:` or any step. That is what makes a module's own
+`env:`/`const:`/`vars:` reach its tasks at all.
 
 **`soft:`** is shared by `run:` and `call:`. `executeSteps` swallows a
 non-interrupt error from either kind when the step sets it, so the timeline
@@ -407,8 +422,8 @@ Order of business in `Run`:
    through `ParseConfigData` as though it sat in the invocation directory), an
    explicit `--file`, or `findTaskfile` walking up from the current directory
    for `hobnob.yml` then `hobnob.yaml`.
-4. `loadConfig` parses, then `buildScopeFor` runs `cli.BuildScope` followed by
-   `config.LoadModules`.
+4. `loadConfig` parses, then calls `scope.Load` for the root scope and every
+   module's file scope.
 5. Route to `--list`/`--help`/`--select` through `runListingFlag`, so the real
    and demo paths cannot drift, or to `execTask`.
 
@@ -435,13 +450,13 @@ hobnob.yml  (or --file, or the embedded demo)
    |  ParseConfig / ParseConfigData    all templates stored raw
    v
 ConfigFile
-   |  BuildScope (cli/scope.go)        env -> sysvars -> vars: -> env files
-   |                                        -> CLI args -> const:
-   |  LoadModules (config/modules.go)  needs scope: module paths are templates
+   |  scope.Load (scope/load.go)      root: const: -> CLI args -> env files
+   |                                    -> vars:, then each module's chain on
+   |                                    its importer's scope, recursively
    v
-Scope{Vars, Secrets, Ambient}
+Scope{Vars, Secrets, Ambient} + FileScopes
    |  ExecuteTask -> executeSteps (runner/runner.go)
-   |    applyModuleLayer on entering a module task
+   |    FileScopes.Apply on entering a module task
    |    per step: if: check, then dispatch on StepKind
    |    each step evaluates against the *current* scope and may mutate it
    v

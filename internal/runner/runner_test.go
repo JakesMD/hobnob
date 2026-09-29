@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"hobnob/internal/cli"
+	"hobnob/internal/scope"
 	"hobnob/internal/value"
 )
 
@@ -20,8 +20,8 @@ func copyVars(src map[string]value.Value) map[string]value.Value {
 	return out
 }
 
-func makeScope(vars map[string]value.Value) *cli.Scope {
-	return &cli.Scope{Vars: vars, Secrets: make(map[string]bool)}
+func makeScope(vars map[string]value.Value) *scope.Scope {
+	return &scope.Scope{Vars: vars, Secrets: make(map[string]bool)}
 }
 
 // sv wraps a plain string map as typed scope vars — most fixtures in this
@@ -111,7 +111,7 @@ func TestMaskSecrets(t *testing.T) {
 			// Arrange (test fields are the arrangement)
 
 			// Act
-			got := maskSecrets(test.input, &cli.Scope{Vars: test.vars, Secrets: test.secrets})
+			got := maskSecrets(test.input, &scope.Scope{Vars: test.vars, Secrets: test.secrets})
 
 			// Assert
 			if got != test.want {
@@ -187,7 +187,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

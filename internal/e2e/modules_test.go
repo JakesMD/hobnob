@@ -516,7 +516,7 @@ func TestE2E_Modules_OwnEnvFileDoesNotOverrideExplicitWithVar(t *testing.T) {
 	// explicitly via with:, when the module task runs, then the caller's
 	// with: value wins (why: a module's env: block is a default for its
 	// subtree, not an override — matching how a root file's own env: block is
-	// itself just the lowest layer BuildScope applies)
+	// itself just the lowest layer scope.Load applies)
 	res := Run(t, Case{
 		Files: Files{
 			"hobnob.yml": `
@@ -794,4 +794,79 @@ func TestE2E_Modules_OwnEnvPathReferencingOwnVarsNameFailsAtLoad(t *testing.T) {
 	})
 	res.Fails(t)
 	res.Err(t, `env: "{{.STAGE}}.env" references .STAGE, declared in vars:`)
+}
+
+func TestE2E_Modules_OwnVarsBuildFromTheValueThatWins(t *testing.T) {
+	// given a module whose env: file sets STAGE=dev and whose vars: builds
+	// LABEL from STAGE, when run with a STAGE=prod CLI arg, then LABEL is
+	// built from prod (why: a module's chain reads its importer's resolved
+	// scope, so its env: file loses to the CLI arg before vars: reads it)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - call: m:show
+			`,
+			"mod.yml": `
+				env:
+				  - .env
+				vars:
+				  - LABEL: "built-from-{{.STAGE}}"
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "STAGE={{.STAGE}} LABEL={{.LABEL}}"
+			`,
+			".env": "STAGE=dev\n",
+		},
+		Args: []string{"a", "STAGE=prod"},
+	})
+	res.OK(t)
+	res.Lines(t, "STAGE=prod LABEL=built-from-prod")
+}
+
+func TestE2E_Modules_NestedModuleTaskSeesParentModuleFileScope(t *testing.T) {
+	// given a parent module whose env: file sets REGION and a sub-module
+	// whose vars: builds from it, when the root calls the sub-module's task
+	// directly, then both REGION and the built value reach it (why: a
+	// module's file scope applies to its whole subtree, so the value the
+	// sub-module read at load is the value its task sees at run time)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - p: ./parent.yml
+				tasks:
+				  a:
+				    steps:
+				      - call: p:c:show
+			`,
+			"parent.yml": `
+				env:
+				  - parent.env
+				modules:
+				  - c: ./child.yml
+				tasks: {}
+			`,
+			"parent.env": "REGION=eu\n",
+			"child.yml": `
+				env:
+				  - child.env
+				vars:
+				  - HOST: "{{.REGION}}.example.com"
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "REGION={{.REGION}} HOST={{.HOST}}"
+			`,
+			"child.env": "REGION=us\n",
+		},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "REGION=eu HOST=eu.example.com")
 }

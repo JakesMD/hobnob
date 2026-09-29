@@ -9,14 +9,14 @@ import (
 	osExec "os/exec"
 	"strings"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
 
-func execRun(execState execCtx, step config.Step, scope *cli.Scope) error {
+func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var shellCmd *osExec.Cmd
 	var displayCmd string
 	if len(step.Argv) > 0 {
@@ -154,7 +154,7 @@ func envWithScopeOverrides(vars map[string]value.Value) []string {
 // scope — a captured JSON array/object (see value.Capture, called inside
 // EvalRunIntoPipe) lands as a real Array/Object, not text, which is what
 // lets loop: iterate it without re-parsing.
-func captureRunInto(entries []config.IntoEntry, scope *cli.Scope, stdout, stderr string, exitCode int) error {
+func captureRunInto(entries []config.IntoEntry, scope *scope.Scope, stdout, stderr string, exitCode int) error {
 	evalLeaf := func(expr string) (value.Value, error) {
 		return eval.EvalRunIntoPipe(expr, stdout, stderr, exitCode, scope.Vars)
 	}

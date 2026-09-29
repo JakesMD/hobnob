@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"sort"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/value"
 )
 
@@ -21,7 +21,7 @@ func scopeSaveRestore(vars map[string]value.Value, name string) func() {
 	}
 }
 
-func execFor(execState execCtx, step config.Step, scope *cli.Scope) error {
+func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if len(step.ForMatrix) > 0 {
 		return execForMatrix(execState, step.ForMatrix, step.ForSteps, scope)
 	}
@@ -48,7 +48,7 @@ func execFor(execState execCtx, step config.Step, scope *cli.Scope) error {
 	return execForList(execState, items, step.ForSteps, scope)
 }
 
-func execForList(execState execCtx, items []value.Value, steps []config.Step, scope *cli.Scope) error {
+func execForList(execState execCtx, items []value.Value, steps []config.Step, scope *scope.Scope) error {
 	defer scopeSaveRestore(scope.Vars, "ITEM")()
 	for _, item := range items {
 		scope.Vars["ITEM"] = item
@@ -59,7 +59,7 @@ func execForList(execState execCtx, items []value.Value, steps []config.Step, sc
 	return nil
 }
 
-func execForMap(execState execCtx, obj value.Value, steps []config.Step, scope *cli.Scope) error {
+func execForMap(execState execCtx, obj value.Value, steps []config.Step, scope *scope.Scope) error {
 	object := obj.Any().(map[string]any)
 	keys := make([]string, 0, len(object))
 	for key := range object {
@@ -79,7 +79,7 @@ func execForMap(execState execCtx, obj value.Value, steps []config.Step, scope *
 	return nil
 }
 
-func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []config.Step, scope *cli.Scope) error {
+func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []config.Step, scope *scope.Scope) error {
 	varNames := make([]string, len(matrix))
 	itemLists := make([][]value.Value, len(matrix))
 	for i, entry := range matrix {
@@ -93,7 +93,7 @@ func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []co
 	return execCartesian(execState, varNames, itemLists, 0, steps, scope)
 }
 
-func execCartesian(execState execCtx, varNames []string, itemLists [][]value.Value, idx int, steps []config.Step, scope *cli.Scope) error {
+func execCartesian(execState execCtx, varNames []string, itemLists [][]value.Value, idx int, steps []config.Step, scope *scope.Scope) error {
 	if idx == len(varNames) {
 		return executeSteps(execState, steps, scope)
 	}

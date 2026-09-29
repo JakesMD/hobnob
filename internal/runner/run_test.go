@@ -40,7 +40,7 @@ func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -59,7 +59,7 @@ func TestExecRun_OrdinaryFailure_NotWrappedAsInterrupted(t *testing.T) {
 	cfg := makeRunCfg("exit 3", nil)
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if err == nil {
@@ -85,7 +85,7 @@ func TestExecRun_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, dir)
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -114,7 +114,7 @@ func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
+		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, dir)
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 
@@ -149,7 +149,7 @@ func TestExecRun_Argv_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -174,7 +174,7 @@ func TestKillRunningStep_Argv_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), cfg, true, dir)
+		done <- ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, dir)
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 

@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
@@ -17,7 +17,7 @@ import (
 var promptTextFn TextPromptFunc = tui.PromptText
 var promptSelectFn SelectPromptFunc = tui.PromptSelect
 
-func execGet(execState execCtx, step config.Step, scope *cli.Scope) error {
+func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 	for _, getEntry := range step.GetEntries {
 		if err := execGetEntry(execState, getEntry, scope); err != nil {
 			return err
@@ -26,7 +26,7 @@ func execGet(execState execCtx, step config.Step, scope *cli.Scope) error {
 	return nil
 }
 
-func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *cli.Scope) error {
+func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if existing, exists := scope.Vars[getEntry.VarName]; exists {
 		if getEntry.Secret {
 			scope.Secrets[getEntry.VarName] = true
@@ -42,7 +42,7 @@ func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *cli.Scope)
 	return getInteractive(execState, getEntry, scope)
 }
 
-func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *cli.Scope) error {
+func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if getEntry.Optional {
 		if getEntry.Multi {
 			scope.Set(getEntry.VarName, value.Of([]any{}), getEntry.Secret)
@@ -62,7 +62,7 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *cli.Sc
 	return validateGetValue(execState, getEntry, scope.Vars)
 }
 
-func getInteractive(execState execCtx, getEntry config.GetEntry, scope *cli.Scope) error {
+func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars)
 	if err != nil {
 		return fmt.Errorf("get %s info: %w", getEntry.VarName, err)

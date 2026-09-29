@@ -3,13 +3,13 @@ package runner
 import (
 	"fmt"
 
-	"hobnob/internal/cli"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/scope"
 	"hobnob/internal/value"
 )
 
-func execSet(step config.Step, scope *cli.Scope) error {
+func execSet(step config.Step, scope *scope.Scope) error {
 	for _, setEntry := range step.SetEntries {
 		val, err := config.EvalSetEntry(setEntry, func(tmpl string) (value.Value, error) {
 			return eval.EvalValue(tmpl, scope.Vars)

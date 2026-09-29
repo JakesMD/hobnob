@@ -1,7 +1,5 @@
 package config
 
-import "hobnob/internal/value"
-
 type Task struct {
 	Info   string
 	Dir    string // task-level working directory template
@@ -29,33 +27,11 @@ type ConfigFile struct {
 	TaskNames    []string
 	TaskfileDir  string
 	Modules      []ModuleEntry
-
-	// ModuleLayer/ModuleLayerSecrets hold the default-tier vars this file
-	// contributes to its own subtree when reached as a module — its env:
-	// block plus its vars: block, computed once in resolveModuleFile relative
-	// to the parent scope it was loaded with. Applied at runtime via
-	// Scope.SetIfDefault (see runner.applyModuleLayer): a default for the
-	// subtree, never an override of something the caller (or a higher scope
-	// layer) already supplied — matching how a root file's own env:/vars:
-	// blocks are themselves just low layers BuildScope applies.
-	//
-	// ModuleConstLayer/ModuleConstLayerSecrets hold this file's own const:
-	// block instead — unconditionally overwritten into the subtree's scope
-	// (Scope.Set), since a module's own const: is a hard fact about that
-	// module, not a default: ordinary lexical shadowing, the nearest
-	// declaration wins.
-	//
-	// All four are nil for a root ConfigFile (never applied at runtime; see
-	// runner.executeTask, gated on Task.Cfg != nil).
-	ModuleLayer             map[string]value.Value
-	ModuleLayerSecrets      map[string]bool
-	ModuleConstLayer        map[string]value.Value
-	ModuleConstLayerSecrets map[string]bool
 }
 
 // EnvFileEntry is one env: block entry. SecretOverride is nil unless the
 // entry explicitly sets secret: true/false; nil means "use the default,
-// secret: false" (see config.LoadEnvFiles).
+// secret: false" (see scope.loadEnvFiles).
 type EnvFileEntry struct {
 	PathTmpl       string
 	SecretOverride *bool

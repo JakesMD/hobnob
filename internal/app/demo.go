@@ -9,6 +9,7 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 )
 
@@ -28,16 +29,16 @@ const demoFileName = "<built-in demo>"
 // loadDemoConfig parses the embedded demo taskfile as though it had been
 // discovered in invDir, so relative paths and HOBNOB_FILE_DIR behave the way
 // they would for a real file sitting in the directory the user ran from.
-func loadDemoConfig(ctx context.Context, cliVars map[string]string, invDir string) (*config.ConfigFile, *cli.Scope, error) {
+func loadDemoConfig(ctx context.Context, cliVars map[string]string, invDir string) (*config.ConfigFile, *scope.Scope, scope.FileScopes, error) {
 	cfg, err := config.ParseConfigData(demoTaskfile, filepath.Join(invDir, demoFileName), invDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	scope, err := buildScopeFor(ctx, cfg, cliVars, invDir)
+	rootScope, fileScopes, err := scope.Load(ctx, cfg, cliVars, invDir)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return cfg, scope, nil
+	return cfg, rootScope, fileScopes, nil
 }
 
 // announceDemo marks the output as the built-in demo's rather than anything

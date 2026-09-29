@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"hobnob/internal/config"
+	"hobnob/internal/scope"
 )
 
 func TestPrintUsage(t *testing.T) {
@@ -69,7 +70,7 @@ func TestPrintHelp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
-	scope, err := BuildScope(context.Background(), nil, nil, nil, map[string]string{"ANIMAL": "cat"}, "/tmp/taskfile", "/tmp/invocation")
+	scope, _, err := scope.Load(context.Background(), cfg, map[string]string{"ANIMAL": "cat"}, "/tmp/invocation")
 	if err != nil {
 		t.Fatalf("scope error: %v", err)
 	}

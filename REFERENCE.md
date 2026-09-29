@@ -821,3 +821,8 @@ the root chain, scoped to the module's own file: `const:` resolves first, then
 `env:` files (which can read the module's own `const:`, but not its own
 `vars:`, checked at load time the same way), then `vars:` last, which can
 build a default out of the module's own `const:` or `env:` files.
+
+That chain reads its importer's final values, never a caller's `with:` or
+`set:`: run with `STAGE=prod`, a module whose own `.env` sets `STAGE=dev` still
+builds its `vars:` from `prod`, because the CLI arg already claimed `STAGE`
+before the module's `env:` file was read.

@@ -247,7 +247,7 @@ func Run(t *testing.T, c Case) *Result {
 
 // isolateEnv clears the process environment down to PATH/HOME/TMPDIR plus
 // exactly what env specifies, and returns a func restoring the original
-// environment. cli.BuildScope reads os.Environ() wholesale, so anything left
+// environment. scope.Load reads os.Environ() wholesale, so anything left
 // over from the host (CI, USER, a stray VERSION) would otherwise leak into
 // scope and silently change a test's result — the existing subprocess-based
 // tests each hand-scrubbed CI= slightly differently, which this replaces.
