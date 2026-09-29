@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
@@ -314,4 +315,86 @@ func TestE2E_Call_SoftSwallowsOrdinaryChildFailure(t *testing.T) {
 	`, "t")
 	res.OK(t)
 	res.Lines(t, "after")
+}
+
+func TestE2E_Call_DirIfModuleMatrix(t *testing.T) {
+	// given every combination of call-site dir:, the target task's own if:,
+	// and whether the target lives in a module, when the call runs, then the
+	// target's if: always gates it and a module task always sees its own
+	// const: (why: a call-site dir: is just one input to the one task
+	// invocation path, not a shortcut around the task's own rules)
+	for _, callDir := range []bool{false, true} {
+		for _, gateOpen := range []bool{false, true} {
+			for _, inModule := range []bool{false, true} {
+				name := fmt.Sprintf("callDir=%v/if=%v/module=%v", callDir, gateOpen, inModule)
+				t.Run(name, func(t *testing.T) {
+					// Arrange
+					cond := "false"
+					if gateOpen {
+						cond = "true"
+					}
+					target := matrixTargetYml(cond, inModule)
+					callStep := "- call: target"
+					if inModule {
+						callStep = "- call: m:target"
+					}
+					if callDir {
+						callStep += "\n        dir: call-dir"
+					}
+					root := "modules:\n  - m: mod.yml\ntasks:\n  parent:\n    steps:\n      " + callStep + "\n"
+					if !inModule {
+						root += target
+					}
+					files := Files{
+						"hobnob.yml":     root,
+						"call-dir/.keep": "",
+						"task-dir/.keep": "",
+					}
+					if inModule {
+						files["mod.yml"] = "const:\n  - GREETING: from-module-const\ntasks:\n" + target
+					} else {
+						files["mod.yml"] = "tasks: {}\n"
+					}
+
+					// Act
+					res := Run(t, Case{Files: files, Args: []string{"parent"}})
+
+					// Assert
+					res.OK(t)
+					if !gateOpen {
+						res.Lines(t)
+						res.Out(t, "skipped")
+						return
+					}
+					wantDir := filepath.Join(res.Dir, "task-dir")
+					if callDir {
+						wantDir = filepath.Join(res.Dir, "call-dir")
+					}
+					want := "pwd=" + wantDir
+					if inModule {
+						want += " greeting=from-module-const"
+					}
+					res.Lines(t, wantDir, want)
+				})
+			}
+		}
+	}
+}
+
+// matrixTargetYml renders the matrix's target task at tasks: indentation: a
+// task-level dir: and if: gate, and a body that reports its cwd (plus the
+// module const:, when it's a module task).
+func matrixTargetYml(cond string, inModule bool) string {
+	echo := "echo pwd={{._PWD}}"
+	if inModule {
+		echo += " greeting={{.GREETING}}"
+	}
+	return "  target:\n" +
+		"    dir: task-dir\n" +
+		"    if: \"" + cond + "\"\n" +
+		"    steps:\n" +
+		"      - run: pwd\n" +
+		"        into:\n" +
+		"          - _PWD: stdout | trim\n" +
+		"      - run: " + echo + "\n"
 }

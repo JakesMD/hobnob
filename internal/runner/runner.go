@@ -163,19 +163,24 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
-// For CLI invocations pass invocationDir; execCall passes the resolved child dir.
+// For CLI invocations pass invocationDir; call: goes through executeTask.
 // This is the entry point for one whole run: it owns the once: memo cache,
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer.
 func ExecuteTask(ctx context.Context, taskName string, scope *cli.Scope, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, "", scope)
 }
 
-// executeTask resolves and runs taskName within an already-established
-// execCtx, carrying its memo forward. call: uses this (rather than the public
-// ExecuteTask) so a used task's memoized results survive the sandbox swap at
-// a call: boundary.
-func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
+// executeTask is the one task-invocation path, shared by the CLI entry point
+// and every call:. It owns the whole sequence — resolve the task and its
+// owning file, apply that file's module layer, resolve the working directory,
+// evaluate the task's own if:, then run its steps — so no caller can skip a
+// part of it. callDirTmpl is a call: step's own dir: ("" for none), resolved
+// against the caller's taskfile dir; the priority chain is call-site dir:
+// (Priority A) > task dir: (B) > inherited execState.dir (C). It runs within
+// an already-established execCtx, carrying its memo forward, so a once:
+// task's memoized results survive the sandbox swap at a call: boundary.
+func executeTask(execState execCtx, taskName, callDirTmpl string, scope *cli.Scope) error {
 	task, execCfg, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
@@ -183,9 +188,15 @@ func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
 	if task.Cfg != nil {
 		applyModuleLayer(scope, execCfg)
 	}
-	noPrompts := execState.noPrompts
 	currentDir := execState.dir
-	if task.Dir != "" {
+	switch {
+	case callDirTmpl != "":
+		resolved, err := eval.EvalTemplate(callDirTmpl, scope.Vars)
+		if err != nil {
+			return fmt.Errorf("dir template: %w", err)
+		}
+		currentDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
+	case task.Dir != "":
 		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
 		if err != nil {
 			return fmt.Errorf("task %q dir: %w", taskName, err)
@@ -202,7 +213,7 @@ func executeTask(execState execCtx, taskName string, scope *cli.Scope) error {
 			return nil
 		}
 	}
-	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
+	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
 }
 
 // applyModuleLayer supplies moduleCfg's own env:/vars:/const: vars (see
