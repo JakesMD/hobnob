@@ -549,14 +549,3 @@ func isUpperHeadTerm(head string) bool {
 	consumed, _, err := scanTerm(head, 0)
 	return err == nil && consumed == len(head)
 }
-
-// SplitSourceAccessor splits a run: into: pipe source token into its bare
-// name and any trailing accessor: "stdout[0].name" -> ("stdout",
-// "[0].name"); "stdout" -> ("stdout", "").
-func SplitSourceAccessor(src string) (name, accessor string) {
-	i := 0
-	for i < len(src) && src[i] != '.' && src[i] != '[' {
-		i++
-	}
-	return src[:i], src[i:]
-}

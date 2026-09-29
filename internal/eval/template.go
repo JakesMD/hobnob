@@ -14,9 +14,9 @@ import (
 // templateFuncs is computed once and reused across EvalTemplate calls —
 // EvalTemplate is the hottest path in the codebase (called per var/condition/
 // dir template), and rebuilding this map on every call showed up as overhead
-// under loop-heavy tasks. EvalRunIntoPipe (pipe.go) reuses this same map via
+// under loop-heavy tasks. EvalIntoLeaf (into.go) reuses this same map via
 // EvalTemplate rather than maintaining a second filter switch, so every
-// filter here works in both {{ }} templates and run: into: pipes.
+// filter here works in both {{ }} templates and into: leaves.
 //
 // Every filter is defined once, in value.Filters — this adapts each into
 // text/template's FuncMap so ordinary {{ }} execution and EvalValue's

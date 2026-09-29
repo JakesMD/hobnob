@@ -174,18 +174,19 @@ func TestE2E_Once_TasksOwnIfFalseSkipsAndCaches(t *testing.T) {
 	// given a once: task whose own if: is false, when call:ed twice, then
 	// both calls are silent no-ops (why: a skip is authored and
 	// deterministic — the first attempt gives the later caller what it got,
-	// not a re-evaluated condition)
+	// not a re-evaluated condition; into: needs | default, since a skipped
+	// task set nothing to pull)
 	res := Yml(t, `
 		tasks:
 		  t:
 		    steps:
 		      - call: setup
 		        into:
-		          - RAN: .RAN
+		          - RAN: .RAN | default "no"
 		      - call: setup
 		        into:
-		          - RAN2: .RAN
-		      - run: echo ran={{.RAN | default "no"}} ran2={{.RAN2 | default "no"}}
+		          - RAN2: .RAN | default "no"
+		      - run: echo ran={{.RAN}} ran2={{.RAN2}}
 		  setup:
 		    once: true
 		    if: '[ 1 -eq 2 ]'

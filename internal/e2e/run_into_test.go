@@ -128,6 +128,7 @@ func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
 	`, "t")
 	res.Fails(t)
 	res.Err(t, "run into")
+	res.Err(t, "must be stdout, stderr or exit")
 }
 
 func TestE2E_RunInto_NestedObjectAssemblesTypedFields(t *testing.T) {
@@ -243,4 +244,81 @@ func TestE2E_Run_SoftSwallowsFailure(t *testing.T) {
 	`, "t")
 	res.OK(t)
 	res.Lines(t, "after")
+}
+
+func TestE2E_RunInto_DynamicKeyReadsCallerScope(t *testing.T) {
+	// given a run: into: accessor with a dynamic key, when executed, then the
+	// key resolves against the caller's scope, even when nested inside one of
+	// the caller's objects (why: the captured stream is the leaf's source,
+	// not the whole scope the leaf's expressions see)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - KEY: name
+		          - JIRA: { field: customfield_1 }
+		      - run: printf '{"name":"Ada","customfield_1":"Fix login"}'
+		        into:
+		          - NAME: stdout[.KEY]
+		          - TITLE: stdout[.JIRA.field]
+		      - run: echo "{{.NAME}} / {{.TITLE}}"
+	`, "t")
+	res.OK(t)
+	res.Lines(t, `{"name":"Ada","customfield_1":"Fix login"}`, "Ada / Fix login")
+}
+
+func TestE2E_RunInto_UnspacedPipeAppliesFilter(t *testing.T) {
+	// given a run: into: leaf with a filter chain written without spaces
+	// around the pipe, when executed, then the filter applies exactly as it
+	// does with spaces (why: same leaf grammar as call: into:)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf '  padded  '
+		        into:
+		          - OUT: stdout|trim
+		      - run: echo "out=[{{.OUT}}]"
+	`, "t")
+	res.OK(t)
+	res.Lines(t, "  padded  ", "out=[padded]")
+}
+
+func TestE2E_RunInto_TemplateLeafReadsCallerScope(t *testing.T) {
+	// given a run: into: entry written as a {{ }} template, when executed,
+	// then it renders against the caller's scope, including an entry mapped
+	// just above it (why: one into: grammar for run: and call:, where a
+	// template leaf builds on earlier entries)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf 'app.log'
+		        into:
+		          - LOG: stdout
+		          - ARCHIVE: "/var/{{.LOG}}.old"
+		      - run: echo "{{.ARCHIVE}}"
+	`, "t")
+	res.OK(t)
+	res.Lines(t, "app.log", "/var/app.log.old")
+}
+
+func TestE2E_RunInto_DynamicKeyNamedSRCReadsCallerScope(t *testing.T) {
+	// given a caller var named SRC used as a dynamic key in a run: into:
+	// leaf, when executed, then the key is the caller's value (why: no user
+	// var name may collide with how the leaf binds its source internally)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - SRC: a
+		      - run: printf '{"a":"from-caller-key"}'
+		        into:
+		          - OUT: stdout[.SRC]
+		      - run: echo "out={{.OUT}}"
+	`, "t")
+	res.OK(t)
+	res.Lines(t, `{"a":"from-caller-key"}`, "out=from-caller-key")
 }

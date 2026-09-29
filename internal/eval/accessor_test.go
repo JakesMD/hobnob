@@ -183,18 +183,3 @@ func TestIsBareRef(t *testing.T) {
 		}
 	}
 }
-
-func TestSplitSourceAccessor(t *testing.T) {
-	tests := map[string][2]string{
-		"stdout":          {"stdout", ""},
-		"stdout[0].name":  {"stdout", "[0].name"},
-		"stdout.name":     {"stdout", ".name"},
-		"stderr":          {"stderr", ""},
-	}
-	for in, want := range tests {
-		name, accessor := SplitSourceAccessor(in)
-		if name != want[0] || accessor != want[1] {
-			t.Errorf("SplitSourceAccessor(%q) = (%q, %q), want (%q, %q)", in, name, accessor, want[0], want[1])
-		}
-	}
-}

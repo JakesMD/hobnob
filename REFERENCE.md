@@ -170,7 +170,14 @@ tasks:
 ```
 
 Exit 0 proceeds, non-zero skips. A skipped `call:` target is not an error;
-execution simply continues in the caller.
+execution simply continues in the caller. It sets nothing, though, so an
+`into:` entry pulling from it fails unless it ends in `| default`:
+
+```yaml
+- call: explain-joke
+  into:
+    - EXPLAINED: .EXPLAINED | default "no"
+```
 
 ### `dir:`
 
@@ -231,7 +238,8 @@ tasks:
 - **The memo is the whole scope** the first run produced, not a "done" flag, so
   it replays across `call:`'s sandboxing. Two sibling calls reaching the same
   task both get its results.
-- **A task skipped by its own `if:`** caches as having produced nothing. A
+- **A task skipped by its own `if:`** caches as having produced nothing, so
+  each call site's `into:` needs `| default` for what it would have set. A
   failure under `soft: true` is not cached, and is retried by the next call.
 - **Replay overwrites.** If a caller sets `TYPE` between two calls, the second
   call's `into:` restores the cached value. `once:` asserts a task's results
@@ -291,6 +299,17 @@ trailing [accessor](#accessors) and any [filter](#filters) chain:
     - JOKES: stdout # the whole array
     - FIRST: stdout[0].setup # one field out of it
     - SETUPS: stdout[*].setup # every setup, as an array
+```
+
+A dynamic key reads the caller's scope, not the output (`stdout[.KEY]`). An
+entry written as a `{{ }}` template reads the caller's scope too, including
+entries mapped above it:
+
+```yaml
+- run: git rev-parse --short HEAD
+  into:
+    - SHA: stdout | trim
+    - TAG: "build-{{.SHA}}"
 ```
 
 Captures happen whether the command succeeded or failed, which lets a `soft:`
@@ -425,6 +444,19 @@ the caller except through `into:`.
     - PUNCHLINE: .RESPONSE[0].punchline
 ```
 
+Each entry names one of the child's variables, with or without the leading
+`.`, then any accessor and filter chain: the same grammar as `stdout` on
+`run:`. A name the child never set is an error, like any missing path, and
+`| default` catches it:
+
+```yaml
+- call: _fetch-joke
+  into:
+    - AUTHOR: .AUTHOR | default "anonymous"
+```
+
+Dynamic keys and `{{ }}` entries read the caller's scope, as on `run:`.
+
 An `into:` entry can be a map or list literal, built from several of the child's
 values in one shot:
 
@@ -443,8 +475,8 @@ matches on value, so a secret stays masked once passed down even under a new
 name. Mark it secret where it is defined.
 
 The same holds on the way back up: a secret the child defined stays masked in
-the caller when `into:` pulls it out, even as a leaf of a literal or through an
-accessor.
+the caller when `into:` pulls it out, whatever the entry's shape: a bare name,
+an accessor, a filter chain or a leaf of a literal.
 
 ### `loop`: iteration
 

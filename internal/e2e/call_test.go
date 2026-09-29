@@ -477,3 +477,145 @@ func matrixTargetYml(cond string, inModule bool) string {
 		"          - _PWD: stdout | trim\n" +
 		"      - run: " + echo + "\n"
 }
+
+func TestE2E_Call_IntoUnspacedPipeAppliesFilter(t *testing.T) {
+	// given a call: into: leaf with a filter chain written without spaces
+	// around the pipe, when the call completes, then the filter applies
+	// exactly as it does with spaces (why: into: has one leaf grammar, parsed
+	// as a template pipeline rather than split on a literal " | ")
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - OUT: NAME|trim
+		      - run: echo "out=[{{.OUT}}]"
+		  child:
+		    steps:
+		      - set:
+		          - NAME: "  padded  "
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "out=[padded]")
+}
+
+func TestE2E_Call_IntoMissingKeyErrors(t *testing.T) {
+	// given a call: into: leaf naming a var the child never set, when the
+	// call completes, then the run fails with "not found" rather than
+	// mapping an empty value (why: a typo in into: must not pass silently,
+	// the same strictness every accessor has)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - OUT: NAEM
+		      - run: echo "out=[{{.OUT}}]"
+		  child:
+		    steps:
+		      - set:
+		          - NAME: bob
+	`, "parent")
+	res.Fails(t)
+	res.Err(t, `"NAEM" not found`)
+}
+
+func TestE2E_Call_IntoMissingKeyWithAccessorErrorsNotFound(t *testing.T) {
+	// given a call: into: leaf whose missing head is followed by an
+	// accessor, when the call completes, then the error says "not found",
+	// not a wrong-kind "cannot index" (why: absence and wrong kind are
+	// different errors, and only absence is the data's fault)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - OUT: NAEM.x
+		  child:
+		    steps:
+		      - set:
+		          - NAME: bob
+	`, "parent")
+	res.Fails(t)
+	res.Err(t, `"NAEM" not found`)
+}
+
+func TestE2E_Call_IntoMissingKeyCaughtByDefault(t *testing.T) {
+	// given a call: into: leaf naming a var the child may not set, piped
+	// through default, when the child didn't set it, then the default is
+	// mapped (why: default is the one escape hatch for absence)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - OUT: MAYBE.x | default "none"
+		      - run: echo "out={{.OUT}}"
+		  child:
+		    steps:
+		      - set:
+		          - NAME: bob
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "out=none")
+}
+
+func TestE2E_Call_IntoDynamicKeyReadsCallerScope(t *testing.T) {
+	// given a call: into: accessor with a dynamic key, when the child has a
+	// var of the same name, then the key still resolves against the
+	// caller's scope (why: the child scope is only the leaf's source, same
+	// as the captured streams are for run: into:)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - set:
+		          - KEY: b
+		      - call: child
+		        into:
+		          - OUT: RESULT[.KEY]
+		      - run: echo "out={{.OUT}}"
+		  child:
+		    steps:
+		      - set:
+		          - KEY: a
+		          - RESULT: { a: from-child-key, b: from-caller-key }
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "out=from-caller-key")
+}
+
+func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) {
+	// given a once: task that pulls a child-only secret through an accessor
+	// leaf, when a second call hits the cache, then the cache-hit summary
+	// masks that var (why: the var is flagged secret because its value holds
+	// one, whatever the leaf's shape, not only for a bare key)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: _session
+		      - call: _session
+		  _session:
+		    once: true
+		    steps:
+		      - call: _login
+		        into:
+		          - T: .CREDS.token
+		  _login:
+		    steps:
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		          - CREDS:
+		              token: "{{.TOKEN}}"
+	`, "parent")
+	res.OK(t)
+	res.Out(t, "cached")
+	res.Masked(t, "hunter2")
+}

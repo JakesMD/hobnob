@@ -41,10 +41,12 @@
 // 26. drop the marker scan in eval.EvalTemplate                      -> accessor_test.go (bare {{ .A.b }} render)
 // 27. keep no-match elements under [*] instead of dropping them      -> accessor_test.go (WildcardMapsAndDropsNoMatchElements)
 // 28. stop skipping string literals in rewriteAccessors              -> accessor_test.go (StringLiteralBracketsSurviveUnchanged)
-// 29. drop the accessor peel in eval.EvalRunIntoPipe                 -> accessor_test.go (IntoSourceWithAccessorAndFilterChain)
+// 29. drop the head/tail split in eval.EvalIntoLeaf                  -> accessor_test.go (IntoSourceWithAccessorAndFilterChain)
 // 30. narrow eval.IsBareRef back to ^\.[A-Z][A-Z0-9_]*$               -> accessor_test.go (BraceFreeOptionsForm, BraceFreeDirForm)
 //
 // 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
+// 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
+// 33. return an empty value for an unset name in runner.callSource   -> call_test.go (IntoMissingKeyErrors)
 package e2e
 
 import (

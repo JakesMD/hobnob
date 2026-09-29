@@ -15,8 +15,7 @@ type Filter func(args []Value) (Value, error)
 // Filters is the single registry every template filter is defined in.
 // internal/eval adapts these into text/template's FuncMap; EvalValue calls
 // them directly for the type-preserving evaluation path. Reachable from
-// run: into: pipe expressions too, via EvalRunIntoPipe — one registry, two
-// callers.
+// into: leaves too, via EvalIntoLeaf — one registry, two callers.
 var Filters = map[string]Filter{
 	"default":    filterDefault,
 	"trim":       filterTrim,

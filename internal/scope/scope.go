@@ -81,8 +81,7 @@ func (scope *Scope) MarkSecret(key string) {
 	scope.secrets[key] = true
 }
 
-// IsSecret reports whether key is flagged as a secret — what a call:'s
-// plain-key into: carries across to the caller's name for it.
+// IsSecret reports whether key is flagged as a secret.
 func (scope *Scope) IsSecret(key string) bool {
 	return scope.secrets[key]
 }
@@ -147,14 +146,18 @@ func (scope *Scope) Mask(text string) string {
 
 // Adopt carries across every secret of from whose value appears in val, so
 // a value a call:'s into: pulls out of a child scope stays masked in scope
-// even when scope never had the child's name for the secret inside it.
-func (scope *Scope) Adopt(from *Scope, val value.Value) {
+// even when scope never had the child's name for the secret inside it. It
+// reports whether val held any.
+func (scope *Scope) Adopt(from *Scope, val value.Value) bool {
 	text := val.String()
+	adopted := false
 	for _, secretVal := range from.secretValues() {
 		if maskValue(text, secretVal) != text {
 			scope.carried[secretVal.String()] = secretVal
+			adopted = true
 		}
 	}
+	return adopted
 }
 
 // secretValues lists every value Mask redacts: each named secret's, then

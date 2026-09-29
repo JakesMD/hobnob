@@ -38,26 +38,23 @@ func EvalValue(expr string, vars map[string]value.Value) (value.Value, error) {
 	return value.Str(rendered), nil
 }
 
-// evalChainOn evaluates an accessor and/or filter chain — the text written
-// after "| " in a run: into: pipe expression, e.g. `trim` or `upper`, plus
-// an optional accessor tail peeled off the source token (SplitSourceAccessor)
-// — against a single starting value, through the same typed pipeline
-// evaluator EvalValue uses. One implementation backs both run: into: pipes
-// and set:/get: filter chains. vars is the caller's scope, layered under the
-// SRC binding — needed so a dynamic key in the accessor (stdout[.KEY]) can
-// resolve against the caller's vars rather than only ever seeing SRC.
-func evalChainOn(src value.Value, accessor, chain string, vars map[string]value.Value) (value.Value, error) {
+// evalChainOn evaluates tail — an into: leaf's accessor and/or filter
+// chain, everything after its head name, e.g. "[0].name | trim" — against a
+// single starting value, through the same typed pipeline evaluator EvalValue
+// uses. vars is the caller's scope, with src bound alongside it under a name
+// vars doesn't already hold, so a dynamic key in the accessor (stdout[.KEY])
+// resolves against the caller's vars, whatever they're called.
+func evalChainOn(src value.Value, tail string, vars map[string]value.Value) (value.Value, error) {
+	name := "SRC"
+	for _, taken := vars[name]; taken; _, taken = vars[name] {
+		name += "_"
+	}
 	scoped := make(map[string]value.Value, len(vars)+1)
 	for k, v := range vars {
 		scoped[k] = v
 	}
-	scoped["SRC"] = src
-	expr := "{{ .SRC" + accessor
-	if chain != "" {
-		expr += " | " + chain
-	}
-	expr += " }}"
-	return EvalValue(expr, scoped)
+	scoped[name] = src
+	return EvalValue("{{ ."+name+tail+" }}", scoped)
 }
 
 // singleActionPipeline returns root's pipeline when the whole template is

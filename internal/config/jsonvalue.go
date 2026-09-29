@@ -9,10 +9,9 @@ import "hobnob/internal/value"
 // templates); JSONObject/JSONArray recurse.
 //
 // evalLeaf's grammar varies by caller: set:/with:/vars: leaves are Go
-// templates (eval.EvalValue), run: into: leaves are stdout|filter
-// expressions (eval.EvalRunIntoPipe), call: into: leaves are a template or a
-// bare .KEY reference into the child scope. EvalJSONNode is agnostic to all
-// of that — it only assembles the shape.
+// templates (eval.EvalValue), into: leaves are a head name plus accessor and
+// filter chain (eval.EvalIntoLeaf). EvalJSONNode is agnostic to all of that —
+// it only assembles the shape.
 func EvalJSONNode(n JSONNode, evalLeaf func(string) (value.Value, error)) (value.Value, error) {
 	tree, err := evalJSONNodeTree(n, evalLeaf)
 	if err != nil {

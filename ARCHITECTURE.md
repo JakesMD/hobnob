@@ -132,13 +132,17 @@ Everything renders through Go's `text/template` against
   cancellation kills the shell outright, so a condition cannot hang past a
   CTRL+C. `EvalCheckWithOverride` is the re-prompt variant, evaluating a
   candidate answer without committing it to scope.
-- **`EvalRunIntoPipe(expr, stdout, stderr, exit, vars)`** backs `run: into:`. It
-  resolves one of three sources (`stdout`/`stderr` through `value.Capture`,
-  `exit` as a typed number), then runs any accessor and filter chain from there
-  through the same typed evaluator `EvalValue` uses. The caller's own vars are
-  layered underneath, so a dynamic key (`stdout[.KEY]`) resolves against scope.
-  Capturing at the source rather than at the end of the chain is deliberate: a
-  chain landing on a string leaf whose text looks like JSON must stay a string.
+- **`EvalIntoLeaf(leaf, source, vars)`** is the one `into:` leaf grammar, for
+  `run:` and `call:` alike. A `{{ }}` leaf is a template over the caller's
+  evolving scope. Anything else is a head name resolved through an
+  `IntoSource` (`stdout`/`stderr`/`exit` for `run:`, the child's vars for
+  `call:`), then the rest of the leaf, accessor and filter chain, evaluated as
+  template syntax on it through the same typed evaluator `EvalValue` uses. The
+  caller's own vars are layered underneath, so a dynamic key (`stdout[.KEY]`)
+  resolves against scope. A head the source lacks is a deferred `Missing`, so
+  `| default` catches it. Capturing at the source rather than at the end of the
+  chain is deliberate: a chain landing on a string leaf whose text looks like
+  JSON must stay a string.
 - **`ResolveArgv(tmpls, vars)`** assembles the `run:` list form. An array
   element splices into one argument per item (an empty array splices to
   nothing); an object is an error naming the accessor fix; an empty element is
@@ -151,7 +155,7 @@ Everything renders through Go's `text/template` against
   rule: `ResolvePath` (relative paths resolve against the taskfile dir),
   `SplitKV` (the `KEY=VALUE` rule shared by CLI args, `os.Environ()` and env
   files), `CloneMap`, `ResolveItems`/`ItemsFromValue` (`loop:` and `options:`),
-  `IsBareRef` and `SplitSourceAccessor`.
+  and `IsBareRef`.
 
 **The accessor rewriter (`accessor.go`) is the one piece of real machinery.**
 text/template has no bracket-subscript grammar, and hobnob does not fork it.
@@ -204,8 +208,8 @@ literal parses into a `JSONNode` tree whose string leaves are unevaluated text.
 assembles a real Go tree wrapped in a `Value`. It never marshals to JSON text
 and back, which is what stops an evaluated leaf containing a quote or backslash
 from corrupting the structure around it. The leaf grammar varies by caller
-(`set:` leaves are Go templates, `into:` leaves are the `stdout | filter`
-grammar, `call: into:` leaves are a template or a bare child reference) and
+(`set:` leaves are Go templates, `into:` leaves are `EvalIntoLeaf`'s head name
+plus chain) and
 `EvalJSONNode` is agnostic to all of it. `EvalSetEntry` is the scalar-or-literal
 wrapper shared by `set:`, `with:`, `const:` and `vars:`.
 
@@ -320,7 +324,7 @@ interrupt handling.
   the command's own output. Any non-nil error from `Wait`, an ordinary failure
   or an interrupt, replays both buffers through the line writers before
   returning, so a hidden step is never silently invisible on failure.
-- `captureRunInto` runs after `Wait` regardless of outcome, so a `soft: true`
+- `into:` capture runs after `Wait` regardless of outcome, so a `soft: true`
   step can still capture `exit`, `stdout` and `stderr` from a failing command.
   Only a `Start` failure (no process ever ran, so there is no exit status) or an
   interrupt (already mid-shutdown) skips capture.
@@ -329,12 +333,17 @@ interrupt handling.
   scope must win.
 
 **`call:` (`call.go`).** Deep-copies scope, evaluates `with:` into the child,
-runs the target task, then pulls results back through `into:`. An `into:` leaf
-is either an explicit `{{ }}` template evaluated against the _caller's_ evolving
-scope, so later entries can reference earlier ones, or a bare child key with an
-optional accessor and filter chain read straight out of the child scope, typed.
-Only a plain bare key propagates its secret flag; every other shape loses the
-annotation, the same way passing a value through a filter does.
+runs the target task, then pulls results back through `into:`.
+
+**`into:` (`capture.go`).** `captureInto` is the one assignment path for both
+step kinds; only the source differs. `runSource` builds `stdout`/`stderr`
+through `value.Capture` only when a leaf names them, and rejects any other
+name. `callSource` reads the child's final vars, an unset name a deferred
+`Missing`. For `call:`, every result is `Adopt`ed from the child scope, and the
+target name is flagged secret whenever its value carries a child secret, so
+the outcome never depends on the leaf's shape. The name flag matters beyond
+masking commands: `Display`, which the `once:` cache-hit line uses, reads only
+it.
 
 A `once: true` target is memoized per invocation through a `callMemo` carried in
 `execCtx`, which survives the scope swap so a shared prologue replays into

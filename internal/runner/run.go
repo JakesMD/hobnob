@@ -109,7 +109,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
 	}
 
-	captureErr := captureRunInto(step.IntoEntries, scope, stdoutBuf.String(), stderrBuf.String(), exitCodeOf(waitErr))
+	captureErr := captureInto("run", step.IntoEntries, runSource(stdoutBuf.String(), stderrBuf.String(), exitCodeOf(waitErr)), scope, nil)
 	return errors.Join(waitErr, captureErr)
 }
 
@@ -148,28 +148,4 @@ func envWithScopeOverrides(vars map[string]value.Value) []string {
 		filtered = append(filtered, varName+"="+varValue.String())
 	}
 	return filtered
-}
-
-// captureRunInto stores each into: result as a typed Value straight into
-// scope — a captured JSON array/object (see value.Capture, called inside
-// EvalRunIntoPipe) lands as a real Array/Object, not text, which is what
-// lets loop: iterate it without re-parsing.
-func captureRunInto(entries []config.IntoEntry, scope *scope.Scope, stdout, stderr string, exitCode int) error {
-	evalLeaf := func(expr string) (value.Value, error) {
-		return eval.EvalRunIntoPipe(expr, stdout, stderr, exitCode, scope.Vars())
-	}
-	for _, intoEntry := range entries {
-		var val value.Value
-		var err error
-		if intoEntry.ValNode != nil {
-			val, err = config.EvalJSONNode(*intoEntry.ValNode, evalLeaf)
-		} else {
-			val, err = evalLeaf(intoEntry.ValueTmpl)
-		}
-		if err != nil {
-			return fmt.Errorf("run into %q: %w", intoEntry.ParentKey, err)
-		}
-		scope.Set(intoEntry.ParentKey, val, false)
-	}
-	return nil
 }
