@@ -1,7 +1,7 @@
 # hobnob guide
 
-A tour of what hobnob can do, one topic at a time. Start anywhere. For the
-exhaustive syntax, see the [reference](REFERENCE.md).
+A tour of hobnob, one topic at a time. Start anywhere. For exhaustive syntax,
+see the [reference](REFERENCE.md).
 
 ## Install
 
@@ -12,19 +12,19 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 One static binary into `~/.local/bin`, plus completion for bash, zsh and fish.
 
 Nothing written yet? `hobnob --demo tell-joke` runs a taskfile baked into the
-binary, so you have something to run before you have written anything.
+binary.
 
 ## Running tasks
 
-Hobnob looks for `hobnob.yml` in the current directory, then walks up through
-the parents until it finds one. Run a task by name:
+Hobnob finds the nearest `hobnob.yml` in the current directory or its
+parents. Run a task by name:
 
 ```bash
 hobnob tell-joke
 ```
 
-Run bare `hobnob` and it runs the task named `default`. If you have not written
-one, it opens a picker instead, so there is nothing to memorize:
+Bare `hobnob` runs the task named `default`, or opens a picker if there is
+none:
 
 ```bash
 hobnob            # default task, or the picker
@@ -46,12 +46,12 @@ tasks:
       - run: curl -s https://official-joke-api.appspot.com/random_joke
 ```
 
-`info:` is what `--list` and the picker show. That is the whole minimum: no
-targets, no dependency graph, no phony declarations.
+`info:` is what `--list` and the picker show. No targets, no dependency
+graph, no phony declarations.
 
 ## Asking for input
 
-A task should be able to ask for what it needs. `get:` prompts for a variable:
+`get:` prompts for a variable:
 
 ```yaml
 - get:
@@ -61,21 +61,19 @@ A task should be able to ask for what it needs. `get:` prompts for a variable:
 - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
 ```
 
-The part that makes this pleasant: **`get:` is skipped when the variable is
-already set.** The same task is interactive or not depending on how you call
-it:
+**`get:` is skipped when the variable is already set**, so the same task is
+interactive or not depending on how you call it:
 
 ```bash
 hobnob tell-joke              # prompts
 hobnob tell-joke TYPE=dad     # no prompt
 ```
 
-Nothing special about CLI arguments there. Anything that put `TYPE` in scope
-counts, including a `vars:` default or an earlier step.
+Anything that put `TYPE` in scope counts: a CLI argument, a `vars:` default,
+an earlier step.
 
 > [!TIP]
-> Put `get:` steps early. A prompt buried after a slow command makes the user
-> wait before they can answer it.
+> Put `get:` steps early, so nobody waits on a slow command before answering.
 
 ## Using what a command printed
 
@@ -102,9 +100,8 @@ Captured output that parses as JSON becomes real data, not text. Dot into it:
 - run: echo "{{ .JOKE.setup }} ... {{ .JOKE.punchline }}"
 ```
 
-No parse step and no `jq`. Ten steps later it is still structured, and
-`.JOKE.id` is still a number, so `{{ gt .JOKE.id 400 }}` compares numerically
-rather than as text.
+No parse step, no `jq`. Ten steps later `.JOKE.id` is still a number, so
+`{{ gt .JOKE.id 400 }}` compares numerically.
 
 Arrays, indexes, slices and wildcards all work:
 
@@ -117,15 +114,14 @@ Arrays, indexes, slices and wildcards all work:
 ```
 
 > [!NOTE]
-> Only captured output and YAML literals become structured. A CLI argument or
-> env var is always text, however JSON-shaped it looks. Pipe it through
-> `| json` to parse it on purpose. See
+> Only captured output and YAML literals become structured. CLI arguments and
+> env vars stay text; pipe them through `| json` to parse them. See
 > [Types](REFERENCE.md#types).
 
 ## Building a prompt from live data
 
-Because a captured array is a real list, it can be the menu. The API's `/types`
-endpoint returns the valid joke types, so let it populate the prompt:
+A captured array is a real list, so it can be the menu. Let the API's `/types`
+endpoint populate the prompt:
 
 ```yaml
 - run: curl -s https://official-joke-api.appspot.com/types
@@ -137,16 +133,16 @@ endpoint returns the valid joke types, so let it populate the prompt:
         options: .TYPES
 ```
 
-Now the prompt cannot offer a type the API does not have. This is the thing a
-plain task runner cannot do: a form built out of a previous step's answer.
+The prompt can only offer types the API has: a form built from a previous
+step's output.
 
-Note `options: .TYPES` with no `{{ }}`. A field whose whole value is one
-variable reference can drop the braces, which also keeps the value's type.
+`options: .TYPES` has no `{{ }}`. A field that is one variable reference can
+drop the braces, which also keeps the value's type.
 
 ## Calling other tasks
 
-`call:` runs another task. The child gets a copy of scope, so nothing it does
-leaks back unless you name it in `into:`:
+`call:` runs another task in a copy of scope. Nothing leaks back unless you
+name it in `into:`:
 
 ```yaml
 - call: _fetch-joke
@@ -161,8 +157,8 @@ cannot be named on the command line.
 
 ## Doing something only once
 
-Mark a task `once: true` and it runs at most once per invocation, however many
-tasks call it. Later calls replay the first run's result:
+A `once: true` task runs at most once per invocation, however many tasks call
+it. Later calls replay the first run's result:
 
 ```yaml
 tasks:
@@ -183,9 +179,8 @@ tasks:
       - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
 ```
 
-Any other task calling `_types` gets the same answer without a second prompt or
-a second request. Hobnob prints `(cached — TYPE=dad …)` when that happens, so a
-memoized call is never invisible.
+Any other task calling `_types` gets the same answer, with no second prompt or
+request. Hobnob prints `(cached — TYPE=dad …)` when it replays.
 
 ## Looping over values
 
@@ -210,8 +205,8 @@ combination:
 
 ## Shared values and defaults
 
-Two top-level blocks hold file-wide variables. `const:` is fixed, and outranks
-even a CLI argument. `vars:` is a default anyone can override:
+Two top-level blocks hold file-wide variables. `const:` is fixed, even against
+a CLI argument. `vars:` is a default anyone can override:
 
 ```yaml
 const:
@@ -222,11 +217,10 @@ vars:
 ```
 
 The full order is `env < vars: < env files < CLI args < const:`, and a task's
-own steps run after all of it. See
-[Precedence](REFERENCE.md#precedence).
+steps run after all of it. See [Precedence](REFERENCE.md#precedence).
 
-`vars:` can build its default out of anything above it — an `env:` file, a CLI
-arg, or `const:` — since those are all resolved first:
+`vars:` can build a default from anything above it: an `env:` file, a CLI arg,
+or `const:`:
 
 ```yaml
 env:
@@ -237,19 +231,15 @@ vars:
 ```
 
 > [!WARNING]
-> `const:` is a closed world. An entry can only reference earlier `const:`
-> entries, so it cannot quietly read a lower layer and still call itself fixed.
-> A `const:` name is also reserved file-wide: no task may write to it.
->
-> The read only goes one way: an `env:` file's own path cannot reference a
-> `vars:` name (`.env.{{.STAGE}}` driven by a `vars: [STAGE: dev]` default is a
-> load-time error). Select the file with a CLI arg, the OS env, or `const:`
-> instead. See [Env files](REFERENCE.md#env-files).
+> `const:` entries can reference only earlier `const:` entries, and no task may
+> write to a `const:` name. An `env:` path cannot reference a `vars:` name;
+> select the file with a CLI arg, the OS env or `const:` instead. See
+> [Env files](REFERENCE.md#env-files).
 
 ## Splitting across files
 
-`modules:` imports another taskfile. It is the natural home for a wrapper,
-since the module keeps the details to itself:
+`modules:` imports another taskfile. A module keeps its details to itself,
+which makes it the natural home for a wrapper:
 
 ```yaml
 # jokes.yml
@@ -273,9 +263,8 @@ tasks:
       - call: jokes:random
 ```
 
-Imported tasks are namespaced by their module key. `API` belongs to
-`jokes.yml`, reaches every task in it, and is invisible to the parent, which
-never learns the URL.
+Imported tasks are namespaced by module key. `API` reaches every task in
+`jokes.yml` and stays invisible to the parent.
 
 ## Passing variables safely
 
@@ -286,18 +275,17 @@ Write `run:` as a list and it executes directly, with no shell in between:
 ```
 
 Each element is one argument, so a value holding spaces, quotes or a semicolon
-still arrives intact. The string form cannot promise that, because its rendered
-value is spliced into a command string the shell then parses.
+arrives intact. The string form splices values into text the shell re-parses.
 
 > [!TIP]
 > Use the list form whenever an argument contains a variable. Keep the string
-> form for pipes, redirects and globs, and reach for the
-> [`quote`](REFERENCE.md#filters) filter when you interpolate into one.
+> form for pipes, redirects and globs, escaping values with
+> [`quote`](REFERENCE.md#filters).
 
 ## When a command fails
 
 A non-zero exit stops the run. `soft: true` continues past it, and `into:`
-still captures, so the next step can react:
+still captures so the next step can react:
 
 ```yaml
 - run: curl -sf {{.API}}/jokes/999999
@@ -324,14 +312,13 @@ still captures, so the next step can react:
 ```
 
 Output is hidden only on success. A failing quiet step replays everything it
-suppressed before the error propagates, so nothing fails silently.
+suppressed, so nothing fails silently.
 
 ## Non-interactive runs
 
 Prompts are skipped when stdin is not a terminal, when `CI` is set, or with
-`--no-input`. A `get:` with a `default:` uses it; one without aborts the run.
-
-That is what makes the same taskfile work for a person and for a script:
+`--no-input`. A `get:` then uses its `default:`, or aborts without one. The
+same taskfile works for a person and a script:
 
 ```bash
 hobnob tell-joke                          # asks

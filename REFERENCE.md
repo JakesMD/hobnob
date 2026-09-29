@@ -1,7 +1,7 @@
 # hobnob reference
 
 Every YAML field, template filter and CLI flag. New to hobnob? Start with the
-[guide](GUIDE.md), which builds a working taskfile from scratch.
+[guide](GUIDE.md).
 
 ---
 
@@ -16,32 +16,30 @@ hobnob (--version | --upgrade | completion <shell>)
 ### `<task>`
 
 The task to run, always the first argument. Without one, hobnob runs the task
-named `default`; with no `default` task, it opens the picker.
+named `default`, or opens the picker if there is none.
 
 ```bash
 hobnob tell-joke
 ```
 
-A task whose name starts with `_` is internal and cannot be named here, only
-reached by `call:` from another task.
+A `_`-prefixed task is internal: only `call:` can reach it.
 
 ### `KEY=VALUE`
 
-Sets a variable for the run, above `vars:` and env files but below `const:`
-(see [Precedence](#precedence)). Repeatable, and it satisfies a `get:` prompt
-for the same name, which is what makes an interactive task scriptable.
+Sets a variable for the run, above `vars:` and env files, below `const:` (see
+[Precedence](#precedence)). Repeatable. It also answers a `get:` for the same
+name, which is what makes an interactive task scriptable. Values are always
+text; see [Types](#types).
 
 ```bash
 hobnob tell-joke TYPE=programming COUNT=3
 ```
 
-Values are always text, however JSON-shaped they look; see [Types](#types).
-
 ### `--no-input`
 
-Skips every prompt. A `get:` with a `default:` uses it; one without aborts the
-run. Implied by a `CI` env var or by stdin not being a terminal, so AI agents
-and scripts get it without asking.
+Skips every prompt: a `get:` uses its `default:`, or aborts the run without
+one. Implied when `CI` is set or stdin is not a terminal, so scripts and AI
+agents get it for free.
 
 ```bash
 hobnob tell-joke --no-input
@@ -49,67 +47,53 @@ hobnob tell-joke --no-input
 
 ### `--file <path>`
 
-Uses a specific taskfile instead of searching for one.
+Uses a specific taskfile.
 
 ```bash
 hobnob --file ops/jokes.yml tell-joke
 ```
 
-Without it, hobnob searches upward from the current directory for `hobnob.yml`
-or `hobnob.yaml`, taking the first hit (`.yml` wins when both sit in the same
-directory). Relative paths inside the file resolve against the file's own
-directory, not where you ran from.
+Without it, hobnob searches upward from the current directory for
+`hobnob.yml`, then `hobnob.yaml`. Relative paths inside a file resolve against
+that file's directory, not where you ran from.
 
 ### `--demo`
 
-Runs a small built-in taskfile instead of one of yours.
+Runs a small built-in taskfile. It replaces `--file` (passing both is an
+error) and combines with every other flag.
 
 ```bash
 hobnob --demo tell-joke
 hobnob --demo --list
 ```
 
-It is an alternative to `--file`, not a fallback: passing both is an error, and
-hobnob never reaches for it on its own. It combines with every other flag.
-
 ### `--list`
 
-Prints every public task with its `info:`. Tasks prefixed with `_`, and tasks
-from `_`-prefixed modules, are omitted.
-
-```bash
-hobnob --list
-```
+Prints every public task with its `info:`. Internal tasks and modules are
+omitted.
 
 ### `--select`
 
-Opens the interactive picker even when a `default` task exists.
-
-```bash
-hobnob --select
-```
-
-With no terminal, under CI, or with `--no-input`, there is nothing to pick
-with, so it prints the task list instead.
+Opens the picker even when a `default` task exists. With no terminal, under
+CI, or with `--no-input`, it prints the task list instead.
 
 ### `--help`
 
-Prints usage, the docs links, and the task list for the current taskfile.
+Prints usage, the docs links, and the task list.
 
 ### `--version`
 
-Prints the version and exits. Answered before any taskfile is looked for, so it
-works from anywhere.
+Prints the version. Works outside any taskfile.
 
 ### `--upgrade`
 
-Replaces the running binary with the latest release. Also answered before any
-taskfile is looked for.
+Replaces the running binary with the latest release. Works outside any
+taskfile.
 
 ### `completion <shell>`
 
 Prints the completion script for `bash`, `zsh` or `fish`. The installer wires
-this up for you; run it by hand only to re-generate one.
+it up; run it yourself only to regenerate.
 
 ```bash
 hobnob completion zsh > ~/.zsh/completions/_hobnob
@@ -143,8 +127,7 @@ tasks:
       - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
 ```
 
-An unrecognized top-level key is a load error, not a silent no-op, so `taks:`
-fails loudly instead of running with no tasks.
+Any other top-level key is a load error, so a typo like `taks:` fails loudly.
 
 ## Tasks
 
@@ -156,8 +139,8 @@ fails loudly instead of running with no tasks.
 | `dir:`   | Working directory for the task's `run:` steps.          |
 | `once:`  | Memoize: run at most once per invocation.               |
 
-A `_` prefix on a task name (`_fetch-joke`) makes it internal: it runs, but is
-hidden from `--list` and the picker.
+A `_` prefix (`_fetch-joke`) makes a task internal: it runs, but is hidden
+from `--list`, the picker and the command line.
 
 ### `if:`
 
@@ -169,9 +152,8 @@ tasks:
       - run: echo "it is funny because it is true"
 ```
 
-Exit 0 proceeds, non-zero skips. A skipped `call:` target is not an error;
-execution simply continues in the caller. It sets nothing, though, so an
-`into:` entry pulling from it fails unless it ends in `| default`:
+Exit 0 proceeds, non-zero skips. A skipped `call:` target is not an error, but
+it sets nothing, so an `into:` entry pulling from it needs `| default`:
 
 ```yaml
 - call: explain-joke
@@ -181,8 +163,8 @@ execution simply continues in the caller. It sets nothing, though, so an
 
 ### `dir:`
 
-All relative paths resolve against the hobnob file's directory. With no `dir:`
-set anywhere, steps run there.
+Relative paths resolve against the hobnob file's directory, and steps run
+there by default.
 
 ```yaml
 tasks:
@@ -197,15 +179,14 @@ tasks:
         dir: ./archive # overrides _index's own dir:
 ```
 
-Precedence: call-step `dir:` > task `dir:` > inherited parent `dir:`. A run
-step's `dir:` applies to that step alone. An `if:` always evaluates in the
-inherited task `dir:`, even on a step that overrides it.
+Call-step `dir:` beats task `dir:`, which beats the inherited one. A `run:`
+step's `dir:` applies to that step alone. `if:` always evaluates in the task's
+`dir:`, even on a step that overrides it.
 
 ### `once:` (memoized tasks)
 
-`once: true` makes a task run at most once per `hobnob` invocation. Every later
-`call:` replays the first run's result, and each call site still pulls what it
-wants through its own `into:`.
+`once: true` runs a task at most once per invocation. Later `call:`s replay
+the first run's result, each pulling what it wants through its own `into:`.
 
 ```yaml
 tasks:
@@ -233,19 +214,16 @@ tasks:
       - run: echo "{{ .TYPES | len }} types, you picked {{.TYPE}}"
 ```
 
-- **A hit is announced**, never silent:
-  `call: [count-jokes] _types (cached — TYPE=dad …)`.
-- **The memo is the whole scope** the first run produced, not a "done" flag, so
-  it replays across `call:`'s sandboxing. Two sibling calls reaching the same
-  task both get its results.
-- **A task skipped by its own `if:`** caches as having produced nothing, so
-  each call site's `into:` needs `| default` for what it would have set. A
-  failure under `soft: true` is not cached, and is retried by the next call.
-- **Replay overwrites.** If a caller sets `TYPE` between two calls, the second
-  call's `into:` restores the cached value. `once:` asserts a task's results
-  are in scope; it is not "maybe run something". Only names that call site's
-  `into:` asks for are touched.
-- **`once:` is a property of the task**, not something a call site opts into.
+- **A hit is announced:** `call: [count-jokes] _types (cached — TYPE=dad …)`.
+- **The memo is the whole scope** the first run produced, so sibling calls in
+  separate sandboxes all get its results.
+- **A task skipped by its own `if:`** caches as producing nothing; use
+  `| default` in `into:`. A failure under `soft: true` is not cached, so the
+  next call retries.
+- **Replay overwrites.** If a caller changes `TYPE` between calls, the second
+  call's `into:` restores the cached value. Only names that `into:` asks for
+  are touched.
+- **`once:` belongs to the task**, not the call site.
 
 ## Steps
 
@@ -290,8 +268,8 @@ or array (see [Types](#types)).
 | `if:`    | Skip this step.                                               |
 
 **`into:` sources.** `stdout` and `stderr` capture text, parsed as a value when
-it is valid JSON; `exit` captures the exit code as a number. Each takes a
-trailing [accessor](#accessors) and any [filter](#filters) chain:
+it is valid JSON; `exit` captures the exit code as a number. Each takes an
+[accessor](#accessors) and [filter](#filters) chain:
 
 ```yaml
 - run: curl -s {{.API}}/jokes/random/5
@@ -301,9 +279,8 @@ trailing [accessor](#accessors) and any [filter](#filters) chain:
     - SETUPS: stdout[*].setup # every setup, as an array
 ```
 
-A dynamic key reads the caller's scope, not the output (`stdout[.KEY]`). An
-entry written as a `{{ }}` template reads the caller's scope too, including
-entries mapped above it:
+A dynamic key (`stdout[.KEY]`) and a `{{ }}` entry read the caller's scope,
+including entries above it:
 
 ```yaml
 - run: git rev-parse --short HEAD
@@ -312,8 +289,7 @@ entries mapped above it:
     - TAG: "build-{{.SHA}}"
 ```
 
-Captures happen whether the command succeeded or failed, which lets a `soft:`
-step report what went wrong:
+Captures happen on failure too, so a `soft:` step can report what went wrong:
 
 ```yaml
 - run: curl -sf {{.API}}/jokes/999999
@@ -325,10 +301,10 @@ step report what went wrong:
   if: "{{ ne .CODE 0 }}"
 ```
 
-Only a command that never started (binary not found) captures nothing; a step
-killed by a signal reports exit `-1`.
+Only a command that never started (binary not found) captures nothing. A
+signal kill reports exit `-1`.
 
-An `into:` entry can assemble a literal from several pieces at once:
+An entry can assemble a literal from several pieces:
 
 ```yaml
 - run: curl -s {{.API}}/random_joke
@@ -339,7 +315,7 @@ An `into:` entry can assemble a literal from several pieces at once:
     # CARD = {"text":"What do you call…","id":451}, id still a real number
 ```
 
-**`quiet:`** replaces a command's output with a one-line message:
+**`quiet:`** (`run:` only) replaces the output with a one-line message:
 
 ```yaml
 - run: curl -o jokes.json {{.API}}/jokes/ten
@@ -353,22 +329,18 @@ An `into:` entry can assemble a literal from several pieces at once:
 ```
 
 Output is hidden only on success: a failing quiet step replays its full stdout
-and stderr before the error propagates. `into:` still captures either way.
-`quiet:` is valid on `run:` only.
+and stderr first. `into:` captures either way.
 
 #### Argv list form
 
-A YAML sequence executes directly, one element per argument, with no shell:
+A YAML sequence executes directly, one element per argument, with no shell, so
+no value is ever re-split. Use it whenever an argument holds a variable:
 
 ```yaml
 - run: [curl, -s, "{{.API}}/jokes/{{.TYPE}}/random"]
 ```
 
-Each element is one argument whatever it contains, so no value is ever re-split
-by a shell. Use the list form whenever an argument holds a variable.
-
-An element is a whole field value: a bare `.VAR` or a filter chain works, and
-one resolving to an array splices into several arguments:
+Each element is a whole field value, so a bare `.VAR` or a filter chain works:
 
 ```yaml
 - set:
@@ -377,31 +349,28 @@ one resolving to an array splices into several arguments:
 # argv: curl -s --max-time 10 https://official-joke-api.appspot.com/random_joke
 ```
 
-How elements resolve:
-
 - **Array** splices into several arguments; an empty one splices to nothing.
-- **`""`** stays an empty argument. Dropping it would shift later positions.
+- **`""`** stays an empty argument, so later positions never shift.
 - **Object** is an error. Use an accessor to pick the field you meant.
 
-The list form gives up pipes, redirects, globs, `&&` and shell builtins. `cd`
-in particular is gone, which is what `dir:` is for. The string form stays for
-all of it, and neither is deprecated.
+The list form gives up pipes, redirects, globs, `&&` and builtins like `cd`
+(use `dir:`). The string form keeps all of them; neither is deprecated.
 
-In the string form, escape interpolated values with [`quote`](#filters). A YAML
-block scalar drops YAML's own quoting layer, so nested `"` need no escaping:
+In the string form, escape interpolated values with [`quote`](#filters). A
+YAML block scalar spares you YAML's own quoting:
 
 ```yaml
 - run: |
     echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
 ```
 
-> **Unbuffered Python.** Scripts buffer stdout when not attached to a terminal,
-> so output can appear late or all at once. Fix with
+> **Unbuffered Python.** Python buffers stdout when not on a terminal, so
+> output can arrive late or all at once. Fix with
 > `- set: [{PYTHONUNBUFFERED: 1}]`, or `python -u` per script.
 
 ### `get`: interactive prompts
 
-Prompts for a variable, and is skipped when that variable is already in scope.
+Prompts for a variable, skipped when it is already in scope.
 
 ```yaml
 - get: [TYPE] # bare form
@@ -425,12 +394,12 @@ Prompts for a variable, and is skipped when that variable is already in scope.
 | `secret:`   | Mask in terminal output.                                          |
 | `optional:` | Skip silently if unanswered, leaving the variable empty.          |
 
-With `--no-input`, a `CI` env var, or non-terminal stdin (AI agents, scripts),
-prompts are skipped. A missing variable with no `default:` aborts the run.
+When prompts are off (see [`--no-input`](#--no-input)), a missing variable
+with no `default:` aborts the run.
 
 ### `call`: sub-tasks
 
-Runs another task in a deep copy of scope. Nothing mutated in the child reaches
+Runs another task in a deep copy of scope. Nothing the child changes reaches
 the caller except through `into:`.
 
 ```yaml
@@ -444,10 +413,10 @@ the caller except through `into:`.
     - PUNCHLINE: .RESPONSE[0].punchline
 ```
 
-Each entry names one of the child's variables, with or without the leading
-`.`, then any accessor and filter chain: the same grammar as `stdout` on
-`run:`. A name the child never set is an error, like any missing path, and
-`| default` catches it:
+An `into:` entry names one of the child's variables (leading `.` optional),
+then any accessor and filter chain, exactly like `stdout` on `run:`. Dynamic
+keys and `{{ }}` entries read the caller's scope. A name the child never set
+is an error that `| default` catches:
 
 ```yaml
 - call: _fetch-joke
@@ -455,10 +424,7 @@ Each entry names one of the child's variables, with or without the leading
     - AUTHOR: .AUTHOR | default "anonymous"
 ```
 
-Dynamic keys and `{{ }}` entries read the caller's scope, as on `run:`.
-
-An `into:` entry can be a map or list literal, built from several of the child's
-values in one shot:
+An entry can also be a literal built from several child values:
 
 ```yaml
 - call: _fetch-joke
@@ -468,15 +434,12 @@ values in one shot:
         punchline: .RESPONSE[0].punchline
 ```
 
-`soft: true` continues past a failed call, same as on `run:`.
+`soft: true` continues past a failed call, as on `run:`.
 
-`with:` entries take no `secret:` flag; it is rejected at parse time. Masking
-matches on value, so a secret stays masked once passed down even under a new
-name. Mark it secret where it is defined.
-
-The same holds on the way back up: a secret the child defined stays masked in
-the caller when `into:` pulls it out, whatever the entry's shape: a bare name,
-an accessor, a filter chain or a leaf of a literal.
+**Secrets cross calls both ways.** Masking matches on value, so a secret stays
+masked when `with:` passes it down under a new name, and when `into:` pulls a
+child's secret back up in any shape. Mark it `secret:` where it is defined;
+`with:` rejects the flag.
 
 ### `loop`: iteration
 
@@ -491,11 +454,11 @@ an accessor, a filter chain or a leaf of a literal.
     - run: curl -s {{.API}}/jokes/{{.ITEM}}/random
 ```
 
-A plain string source runs the body once with `ITEM` set to the whole string. It
-is not split or parsed; see [Types](#types).
+A plain string runs the body once, with `ITEM` as the whole string, unsplit
+(see [Types](#types)).
 
-**Map form.** When the variable is an object, iterates its entries in sorted-key
-order as `{{.KEY}}` and `{{.VALUE}}`:
+**Map form.** An object iterates in sorted-key order as `{{.KEY}}` and
+`{{.VALUE}}`:
 
 ```yaml
 - set:
@@ -517,7 +480,7 @@ order as `{{.KEY}}` and `{{.VALUE}}`:
 
 ## Variables
 
-Variables are evaluated at runtime with Go templates (`{{ .VAR }}`), never at
+Variables are Go templates (`{{ .VAR }}`), evaluated at runtime, never at
 parse time.
 
 ### Precedence
@@ -526,29 +489,23 @@ parse time.
 env  <  vars:  <  env files  <  CLI args  <  const:  <  timeline (set / get / loop / call)
 ```
 
-- **Env is lowest**, so ambient shell state cannot silently change behavior
-  between machines.
-- **`const:` outranks even CLI args.** That is what makes it a constant rather
-  than a default.
-- **Above `const:` there is no ranking**, only execution order. A task's own
-  steps run after scope is built, each seeing everything before it.
+- **Env is lowest**, so ambient shell state cannot change behaviour between
+  machines.
+- **`const:` beats even CLI args.** That is what makes it a constant.
+- **Above `const:`, only execution order counts.** Each step sees everything
+  before it.
 
-**Upward reads.** A layer's templates can read the *final* value of any name a
-layer above it sets — `vars:` can build a default out of an `env:` file, a CLI
-arg or `const:` — but never the other way round, and never a layer's own name.
-Layers are therefore *resolved* in the reverse of precedence order: `const:`
-first, then CLI args, then `env:` files, then `vars:` last. The OS env is
-readable by every layer except `const:`, which stays a closed world. See
+**Upward reads.** A layer's templates can read the _final_ value of any name
+set by a layer above it, never below it and never its own. So layers resolve
+in reverse: `const:`, CLI args, `env:` files, then `vars:`. Every layer but
+`const:` can also read the OS env. See
 [ADR-0001](docs/adr/0001-upward-reads-between-scope-layers.md).
 
 ### `const:` and `vars:`
 
-Two top-level blocks of file-scoped variables, evaluated once at load — this
-is the actual resolution order, top-down through the precedence chain, not the
-order they're written in the file: `const:` first, then CLI args, then `env:`
-files, then `vars:` last. Each entry takes the same shape `set:` does,
-including `{ value:, secret: }` and map/list literals, resolved top to bottom
-within its own block.
+File-scoped variables, resolved once at load. Entries take the same shape as
+`set:` (including `{ value:, secret: }` and literals) and resolve top to
+bottom within their block.
 
 ```yaml
 const:
@@ -562,11 +519,11 @@ vars:
       secret: true
 ```
 
-Two load-time rules keep them honest:
+Load-time rules:
 
 **`const:` is a closed world.** An entry may reference only earlier `const:`
-entries and the two [built-ins](#built-in-variables). Otherwise a constant could
-quietly read a lower-priority layer and still call itself fixed.
+entries and the [built-ins](#built-in-variables), so it cannot read a lower
+layer and still call itself fixed.
 
 ```yaml
 const:
@@ -575,17 +532,15 @@ const:
   - TYPE: '{{ .TYPE | default "dad" }}' # error, not a file constant
 ```
 
-**A `const:` name is reserved file-wide.** No task's `set:`/`get:`/`into:`/
-`loop:` may write to it, or `const:` would only be constant from outside the
-file, the timeline outranking it.
+**A `const:` name is reserved file-wide.** No `set:`/`get:`/`into:`/`loop:`
+may write to it.
 
-**`vars:` may not reference its own key.** It already is the fallback layer, so
+**`vars:` may not reference its own key.** It is already the fallback, so
 `- TYPE: '{{ .TYPE | default "general" }}'` is an error; write
 `- TYPE: general`.
 
-**`vars:` reads upward and fills gaps only.** An entry can build its default
-out of `env:` files, CLI args and `const:`, since those are all resolved
-before it:
+**`vars:` fills gaps only.** An entry can build its default from `env:` files,
+CLI args and `const:`:
 
 ```yaml
 env:
@@ -595,14 +550,12 @@ vars:
   - API: "https://{{.API_HOST}}/v1"
 ```
 
-An entry whose name a higher layer (`env:` files, a CLI arg, `const:`) already
-set is skipped entirely — not evaluated — so a template that would only make
-sense standing alone never runs just because it lost. A name still only on the
-OS env is fair game for `vars:` to overwrite, same as always.
+If a higher layer already set the name, the entry is skipped without being
+evaluated. A name set only by the OS env is still a gap.
 
 ### Env files
 
-`env:` lists files to source, resolved relative to the hobnob file:
+`env:` lists files to source, relative to the hobnob file:
 
 ```yaml
 env:
@@ -612,18 +565,16 @@ env:
   - defaults.txt
 ```
 
-- Anything not ending in `.sh` is parsed as `KEY=VALUE` lines, allowing blank
-  lines, `#` comments, and an optional `export` prefix.
-- `.sh` files are sourced in a subshell, against the OS env only. Only
-  variables the script newly sets or changes are pulled in.
-- A missing file warns and is skipped rather than failing the run.
-- Nothing is masked by default, whatever the filename. Opt in with
-  `secret: true`.
-- Later entries override earlier ones; masking follows whichever value won.
-- **A path template can read CLI args, `const:`, the OS env and the
-  built-ins** — all resolved before `env:` files. It **cannot read `vars:`**:
-  that would be a cycle, since `vars:` itself can read `env:` files, so it's a
-  load-time error naming the rule.
+- Anything not ending in `.sh` is `KEY=VALUE` lines, with blank lines, `#`
+  comments and an optional `export` prefix allowed.
+- `.sh` files are sourced in a subshell against the OS env; only variables
+  the script sets or changes come in.
+- A missing file warns and is skipped.
+- Nothing is masked unless the entry sets `secret: true`.
+- Later entries override earlier ones; masking follows the winning value.
+- **A path can read CLI args, `const:`, the OS env and the built-ins, but not
+  `vars:`**, which reads `env:` files itself. Referencing a `vars:` name is a
+  load error:
 
   ```yaml
   vars:
@@ -632,10 +583,8 @@ env:
     - .env.{{.STAGE}} # error: env: path can't reference a vars: name
   ```
 
-  > [!WARNING]
-  > This is a breaking change from versions where `vars:` was resolved before
-  > `env:` files. Fix it by passing `STAGE` on the CLI, setting it in the OS
-  > env, or making it a `const:`.
+  Pass `STAGE` on the CLI, set it in the OS env, or make it a `const:`.
+  (Older versions resolved `vars:` first and allowed this.)
 
 ### Built-in variables
 
@@ -644,17 +593,16 @@ env:
 
 ## Types
 
-A variable holds a string, number, bool, array or object. Structure enters
-scope from exactly three places:
+A variable holds a string, number, bool, array or object. Structure comes from
+exactly three places:
 
 1. a `set:`/`with:`/`into:`/`const:`/`vars:` map or list literal
-2. `run:` output captured via `into:`, when it decodes cleanly as a JSON array
-   or object
-3. the explicit `json` filter
+2. `run:` output captured via `into:` that decodes cleanly as a JSON array or
+   object
+3. the `json` filter
 
-Everything else is text, however JSON-shaped it looks. Environment variables,
-CLI `KEY=VALUE` args and env file values are never sniffed; parse them
-explicitly:
+Everything else is text, however JSON-shaped: env vars, CLI args and env file
+values included. Parse them explicitly:
 
 ```bash
 hobnob report TYPES='["dad","programming"]'
@@ -664,13 +612,13 @@ hobnob report TYPES='["dad","programming"]'
 - loop: .TYPES | json
 ```
 
-Structure is sniffed once, at capture, and never re-attempted downstream. A
-string is never silently re-read as an array by a later accessor or filter,
-which is why `keys` and accessors error on a string instead of parsing it.
+Structure is detected once, at capture. A later accessor or filter never
+re-reads a string as an array, which is why `keys` and accessors error on a
+string.
 
-**Keeping a type.** A field that is exactly one variable reference keeps that
-variable's type: a bare `.VAR`, an accessor chain, or a single `{{ }}` action,
-optionally through a filter chain. Any surrounding text renders it to a string:
+**Keeping a type.** A field that is exactly one variable reference (a bare
+`.VAR`, an accessor chain, or a single `{{ }}` action, with optional filters)
+keeps its type. Any surrounding text makes it a string:
 
 ```yaml
 - set:
@@ -684,7 +632,7 @@ work.
 
 ## Accessors
 
-Query a real array or object with the syntax the value itself resembles:
+Query an array or object with the syntax the value resembles:
 
 ```yaml
 - run: curl -s {{.API}}/random_joke
@@ -706,12 +654,11 @@ Query a real array or object with the syntax the value itself resembles:
 | `.A[.KEY][0].name`      | any combination, any depth                                      |
 | `(.TYPES \| json)[0]`   | a pipeline result as the head                                   |
 
-Dynamic keys are what a quoted path string cannot do. `{{ .LABELS[.TYPE] }}` is
-a plain reference, not string concatenation, so a key containing `.` or `[`
-(`knock-knock.v2`) is looked up literally rather than mis-parsed as a path.
+`{{ .LABELS[.TYPE] }}` is a lookup, not string concatenation, so a key holding
+`.` or `[` (`knock-knock.v2`) is matched literally.
 
-**Multiplicity.** A slice or `[*]` yields many nodes, and a step after one maps
-over them, producing an array:
+**Multiplicity.** After a slice or `[*]`, later steps map over every node,
+producing an array:
 
 ```yaml
 - run: curl -s {{.API}}/jokes/random/5
@@ -722,27 +669,25 @@ over them, producing an array:
     - FIRST_TWO: .JOKES[0:2].id # [99, 32]
 ```
 
-- Elements with no match, or of the wrong kind, are **dropped**, not kept as
-  nil and not an error. Same convention as `lines` and `split`.
-- A slice or `[*]` matching nothing yields an **empty array**. Multiplicity is
-  not absence.
-- `[*]` on an object yields values in **sorted-key order**, the order `keys`
-  uses.
+- Nodes with no match, or of the wrong kind, are **dropped**, as with `lines`
+  and `split`.
+- Matching nothing yields an **empty array**, not absence.
+- `[*]` on an object yields values in **sorted-key order**, matching `keys`.
 
 **Absence is an error, caught by `default`.** A missing key, an out-of-range
-index, or a value that is not an array or object errors:
+index, or indexing into something that is not an array or object errors:
 
 ```yaml
 {{ .JOKE.author }}                      # error: path not found
 {{ .JOKE.author | default "anonymous" }}  # "anonymous"
 ```
 
-`default` catches absence only. A wrong-kind access, indexing a string or
-slicing an object, is never caught by it, even with `| default` right after:
-that is a taskfile bug with one fix (`| json`), not a fact about the data.
+`default` catches absence only. A wrong-kind access (indexing a string,
+slicing an object) is a taskfile bug fixed with `| json`, and `default` never
+catches it.
 
-Strictness applies everywhere a chain lands, argv elements included, so
-`- run: [curl, -s, .JOKE.pucnhline]` aborts on the typo instead of passing an
+This strictness applies wherever a chain lands, argv included:
+`- run: [curl, -s, .JOKE.pucnhline]` aborts on the typo rather than pass an
 empty argument.
 
 ## Filters
@@ -772,17 +717,16 @@ Usable anywhere templates are, and in `into:` pipes. Chain with `|`.
 - run: echo {{ .JOKE.punchline | quote }}
 ```
 
-- **`json`** is identity on something already structured, so it is always safe
-  to add defensively before an accessor or `keys`.
-- **`keys`** errors on anything that is not a real object, naming `| json`. For
-  values instead of keys, use `[*]`. On one joke object, `.JOKE | keys` gives
+- **`json`** leaves structured values alone, so it is always safe before an
+  accessor or `keys`.
+- **`keys`** errors on anything but an object, naming `| json`. For values,
+  use `[*]`: on one joke, `.JOKE | keys` gives
   `["id","punchline","setup","type"]` and `.JOKE[*]` gives
-  `[1,"Dam.","What did the fish say…","general"]`, the same order.
-- **`quote`** is the escape hatch for the string `run:` form, which the
-  [argv list form](#argv-list-form) mostly removes the need for.
+  `[1,"Dam.","What did the fish say…","general"]`, same order.
+- **`quote`** escapes for the string `run:` form; the
+  [argv list form](#argv-list-form) usually removes the need.
 
-For more than one filter, name the intermediate value instead of stacking pipes
-inline:
+Name intermediate values rather than stacking many pipes inline:
 
 ```yaml
 - set:
@@ -792,8 +736,8 @@ inline:
 
 ### Comparisons
 
-`eq` / `ne` / `lt` / `le` / `gt` / `ge` compare typed values. Handy in `if:`,
-which runs its rendered `true`/`false` as a shell condition:
+`eq` / `ne` / `lt` / `le` / `gt` / `ge` compare typed values. `if:` runs the
+rendered `true`/`false` as a shell condition:
 
 ```yaml
 - run: echo "nerd humour incoming"
@@ -802,18 +746,17 @@ which runs its rendered `true`/`false` as a shell condition:
   if: "{{ gt (.JOKES | len) 5 }}"
 ```
 
-- **JSON number text on both sides** (`-3`, `1.5`, `1e9`), whatever kind
-  carries it, compares numerically and exactly, never through a lossy float.
-  So `{{ lt .A .B }}` with CLI args `A=9` and `B=10` is `true`, not what a
-  lexical `"10" < "9"` would give.
-- **Text that only looks numeric to a human** (`Inf`, `NaN`, `0x10`, `007`,
-  `+3`) compares as text.
+- **JSON number text on both sides** (`-3`, `1.5`, `1e9`), whatever its kind,
+  compares numerically and exactly. So with CLI args `A=9 B=10`,
+  `{{ lt .A .B }}` is `true`.
+- **Text that only looks numeric** (`Inf`, `NaN`, `0x10`, `007`, `+3`)
+  compares as text.
 - **A missing variable** equals `""`.
-- **Anything else** is exact text equality and lexical ordering.
+- **Anything else** compares as text, exactly and lexically.
 
-Bools support `eq`/`ne` only; arrays and objects are not comparable at all, so
-access the field you meant. `eq` takes several right-hand arguments and is true
-if any match: `eq .TYPE "dad" "knock-knock"`.
+Bools support only `eq`/`ne`; arrays and objects are not comparable, so access
+the field you meant. `eq` is true if any right-hand argument matches:
+`eq .TYPE "dad" "knock-knock"`.
 
 ## Modules
 
@@ -829,38 +772,31 @@ modules:
       flatten: true
 ```
 
-| Key        | Meaning                                              |
-| ---------- | ---------------------------------------------------- |
-| `path:`    | File to import, relative to the importing taskfile.  |
-| `show:`    | Whitelist. Only these task names are imported.       |
-| `hide:`    | Blacklist. Everything else is imported.              |
-| `flatten:` | Also register tasks under their bare name.           |
+| Key        | Meaning                                             |
+| ---------- | --------------------------------------------------- |
+| `path:`    | File to import, relative to the importing taskfile. |
+| `show:`    | Whitelist. Only these task names are imported.      |
+| `hide:`    | Blacklist. Everything else is imported.             |
+| `flatten:` | Also register tasks under their bare name.          |
 
-- **Namespaces.** Imported tasks are prefixed with their module key, so
-  `report:daily`. A `_` prefix on the key makes the module internal: hidden
-  from `--list` and from parent files.
-- **Flattening.** With `flatten: true`, `call: daily` reaches it too. Native
-  tasks win conflicts.
-- **Scoping.** A module's `env:`/`const:`/`vars:` apply to its own subtree and
-  never leak to the parent. Its tasks are checked against its own `const:`, not
-  the parent's.
+- **Namespaces.** Imported tasks are prefixed with the module key:
+  `report:daily`. A `_` key makes the module internal, hidden from `--list`
+  and parent files.
+- **Flattening.** With `flatten: true`, `call: daily` works too. Native tasks
+  win conflicts.
+- **Scoping.** A module's `env:`/`const:`/`vars:` apply only to its own tasks,
+  never the parent's, and its load-time rules check its own blocks.
 
-Inside that subtree the two kinds of block differ:
+Inside a module:
 
-- **`const:` always wins**, even over a parent `const:` of the same name or a
-  CLI arg. Nearest declaration wins, like any lexical scope.
-- **`env:`/`vars:` only fill a gap** the caller has not set, acting as the
-  module's own lowest layer rather than an override. A name only the OS env
-  set is still a gap, until a `set:`, `with:`, `into:` or `loop:` writes it,
-  or a `get:` accepts it as its answer.
+- **`const:` always wins**, even over a parent `const:` or a CLI arg of the
+  same name. The nearest declaration wins.
+- **`env:`/`vars:` only fill gaps**, as the module's lowest layer. A name only
+  the OS env set is still a gap until a `set:`, `with:`, `into:`, `loop:` or
+  answered `get:` writes it.
 
-A module's own `const:`/`env:`/`vars:` follow the same upward-read model as
-the root chain, scoped to the module's own file: `const:` resolves first, then
-`env:` files (which can read the module's own `const:`, but not its own
-`vars:`, checked at load time the same way), then `vars:` last, which can
-build a default out of the module's own `const:` or `env:` files.
-
-That chain reads its importer's final values, never a caller's `with:` or
-`set:`: run with `STAGE=prod`, a module whose own `.env` sets `STAGE=dev` still
-builds its `vars:` from `prod`, because the CLI arg already claimed `STAGE`
-before the module's `env:` file was read.
+A module resolves its own blocks with the same [upward reads](#precedence) as
+the root file, starting from its importer's final values, never a caller's
+`with:` or `set:`. So with `STAGE=prod` on the CLI, a module whose `.env` sets
+`STAGE=dev` still builds its `vars:` from `prod`: the CLI arg claimed `STAGE`
+first.

@@ -11,7 +11,7 @@
 //  1. reverse matrix nesting order in internal/runner/loop.go        -> loop_test.go (.Lines)
 //  2. drop the raw-value ReplaceAll in Scope.Mask                    -> secrets_test.go (.Masked)
 //  3. drop the JSON-escaped ReplaceAll in Scope.Mask                 -> secrets_test.go (into: leaf)
-//  4. apply cliVars after globals in internal/cli/scope.go           -> scope_test.go precedence
+//  4. write cliVars with Set, not SetIfDefault, in scope.resolve     -> scope_test.go (ConstWinsOverCLIArgs)
 //  5. remove the "_" guard in internal/app/app.go Run                -> cli_test.go
 //  6. make Task.Hidden not suppress from --list                      -> cli_test.go (.NotOut)
 //  7. make module flatten override a native task                    -> modules_test.go
@@ -23,13 +23,13 @@
 // 12. make value.Capture always return a String                     -> values_test.go
 // 13. swallow the check: re-prompt loop in get.go                    -> get_test.go
 // 14. make step-level dir: lose to task-level                        -> dir_test.go
-// 15. drop the missing-env-file warning in envfiles.go               -> env_test.go stderr
+// 15. drop the missing-env-file warning in scope/envfiles.go         -> env_test.go stderr
 //
 // 16. make asNumber assert Any().(string) instead of String()        -> compare_test.go (YAML int literal)
 //
-// 17. key the use: memo on task name instead of Steps identity       -> use_test.go (module identity)
-// 18. skip writing the use: delta snapshot after a successful run    -> use_test.go (rerun/loop, sandbox replay)
-// 19. drop the with:/into: parse-time rejection on use: steps        -> use_test.go (rejected at parse time)
+// 17. key the once: memo on task name instead of Steps identity      -> once_test.go (ModuleTaskIdentitySharesMemo...)
+// 18. skip storing the child scope in callMemo after a first run     -> once_test.go (MemoizedSecondCallSkipsRerun, ReplaysAcrossCallSandboxes)
+// 19. drop the use:/rerun: parse-time rejection in config/steps.go   -> once_test.go (UseRejectedAtParseTime, RerunRejectedAtParseTime)
 //
 // 20. make run:'s Array-splice loop stringify the whole Array        -> run_test.go (ArrayElementSplices)
 // 21. drop the empty-argument-preserved rule in eval.ResolveArgv     -> run_test.go (EmptyElementPreserved)
