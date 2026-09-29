@@ -20,14 +20,14 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var shellCmd *osExec.Cmd
 	var displayCmd string
 	if len(step.Argv) > 0 {
-		argv, err := eval.ResolveArgv(step.Argv, scope.Vars)
+		argv, err := eval.ResolveArgv(step.Argv, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run argv: %w", err)
 		}
 		shellCmd = osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
 		displayCmd = displayArgv(argv)
 	} else {
-		cmd, err := eval.EvalTemplate(step.Command, scope.Vars)
+		cmd, err := eval.EvalTemplate(step.Command, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run template: %w", err)
 		}
@@ -38,24 +38,24 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	runDir := execState.dir
 	displayDir := ""
 	if step.DirTmpl != "" {
-		resolved, err := eval.EvalTemplate(step.DirTmpl, scope.Vars)
+		resolved, err := eval.EvalTemplate(step.DirTmpl, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run dir template: %w", err)
 		}
 		runDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
-		displayDir = displayDirPath(runDir, scope.Vars["HOBNOB_INVOCATION_DIR"].String())
+		displayDir = displayDirPath(runDir, scope.Vars()["HOBNOB_INVOCATION_DIR"].String())
 	}
 
-	displayCmd = maskSecrets(displayCmd, scope)
+	displayCmd = scope.Mask(displayCmd)
 	for _, displayLine := range tui.RunDisplayLines(displayCmd, execState.task, displayDir) {
 		fmt.Println(displayLine)
 	}
 	if step.Quiet {
-		quietMsg, err := eval.EvalTemplate(step.QuietMsg, scope.Vars)
+		quietMsg, err := eval.EvalTemplate(step.QuietMsg, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("quiet template: %w", err)
 		}
-		fmt.Println(tui.RunQuietLine(execState.task, maskSecrets(quietMsg, scope)))
+		fmt.Println(tui.RunQuietLine(execState.task, scope.Mask(quietMsg)))
 	}
 	prefix := tui.TaskPrefix(execState.task)
 	stdoutLineWriter := tui.NewLineWriter(os.Stdout, prefix)
@@ -87,7 +87,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		shellCmd.Stdout = stdoutLineWriter
 		shellCmd.Stderr = stderrLineWriter
 	}
-	shellCmd.Env = envWithScopeOverrides(scope.Vars)
+	shellCmd.Env = envWithScopeOverrides(scope.Vars())
 
 	err := shellCmd.Start()
 	if err != nil {
@@ -156,7 +156,7 @@ func envWithScopeOverrides(vars map[string]value.Value) []string {
 // lets loop: iterate it without re-parsing.
 func captureRunInto(entries []config.IntoEntry, scope *scope.Scope, stdout, stderr string, exitCode int) error {
 	evalLeaf := func(expr string) (value.Value, error) {
-		return eval.EvalRunIntoPipe(expr, stdout, stderr, exitCode, scope.Vars)
+		return eval.EvalRunIntoPipe(expr, stdout, stderr, exitCode, scope.Vars())
 	}
 	for _, intoEntry := range entries {
 		var val value.Value
@@ -169,7 +169,7 @@ func captureRunInto(entries []config.IntoEntry, scope *scope.Scope, stdout, stde
 		if err != nil {
 			return fmt.Errorf("run into %q: %w", intoEntry.ParentKey, err)
 		}
-		scope.Vars[intoEntry.ParentKey] = val
+		scope.Set(intoEntry.ParentKey, val, false)
 	}
 	return nil
 }

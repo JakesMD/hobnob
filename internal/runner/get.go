@@ -27,14 +27,14 @@ func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 }
 
 func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
-	if existing, exists := scope.Vars[getEntry.VarName]; exists {
-		if getEntry.Secret {
-			scope.Secrets[getEntry.VarName] = true
-		}
+	if existing, exists := scope.Vars()[getEntry.VarName]; exists {
+		// Accepting the value in scope as the answer claims it, so a later
+		// module vars: default can't swap it out from under the task.
+		scope.Set(getEntry.VarName, existing, getEntry.Secret)
 		if getEntry.Optional && existing.IsEmpty() {
 			return nil
 		}
-		return validateGetValue(execState, getEntry, scope.Vars)
+		return validateGetValue(execState, getEntry, scope.Vars())
 	}
 	if execState.noPrompts {
 		return getFromNoPrompts(execState, getEntry, scope)
@@ -54,41 +54,41 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 	if getEntry.DefaultTmpl == "" {
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
 	}
-	val, err := eval.EvalValue(getEntry.DefaultTmpl, scope.Vars)
+	val, err := eval.EvalValue(getEntry.DefaultTmpl, scope.Vars())
 	if err != nil {
 		return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 	}
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
-	return validateGetValue(execState, getEntry, scope.Vars)
+	return validateGetValue(execState, getEntry, scope.Vars())
 }
 
 func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
-	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars)
+	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars())
 	if err != nil {
 		return fmt.Errorf("get %s info: %w", getEntry.VarName, err)
 	}
 
 	defaultVal := ""
 	if getEntry.DefaultTmpl != "" {
-		defaultVal, err = eval.EvalTemplate(getEntry.DefaultTmpl, scope.Vars)
+		defaultVal, err = eval.EvalTemplate(getEntry.DefaultTmpl, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 		}
 	}
 
-	fromItems, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl, scope.Vars, "get "+getEntry.VarName)
+	fromItems, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl, scope.Vars(), "get "+getEntry.VarName)
 	if err != nil {
 		return err
 	}
 
 	var val value.Value
 	if len(fromItems) > 0 {
-		val, err = promptSelectUntilValid(execState, getEntry, fromItems, info, defaultVal, scope.Vars)
+		val, err = promptSelectUntilValid(execState, getEntry, fromItems, info, defaultVal, scope.Vars())
 		if err != nil {
 			return err
 		}
 	} else {
-		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars)
+		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars())
 		text, err := promptTextFn(execState.ctx, info, getEntry.VarName, checkValidate, getEntry.Check, defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
 		if err != nil {
 			return wrapPromptErr(getEntry.VarName, err)

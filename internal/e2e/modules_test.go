@@ -870,3 +870,175 @@ func TestE2E_Modules_NestedModuleTaskSeesParentModuleFileScope(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "REGION=eu HOST=eu.example.com")
 }
+
+func TestE2E_Modules_SetStepOnOSEnvNameBeatsModuleVarsDefault(t *testing.T) {
+	// given EDITOR only in the OS env and a module whose vars: defaults it,
+	// when a root task's set: step overwrites EDITOR and then calls the
+	// module's task, then the set: value reaches it (why: a timeline write
+	// claims the name, so the module's vars: may only fill a gap, not
+	// clobber what a step just wrote)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - set:
+				          - EDITOR: from-set-step
+				      - call: m:show
+			`,
+			"mod.yml": `
+				vars:
+				  - EDITOR: from-module-vars
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "EDITOR={{.EDITOR}}"
+			`,
+		},
+		Env:  map[string]string{"EDITOR": "vim"},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "EDITOR=from-set-step")
+}
+
+func TestE2E_Modules_CallWithOnOSEnvNameBeatsModuleVarsDefault(t *testing.T) {
+	// given EDITOR only in the OS env and a module whose vars: defaults it,
+	// when a root task calls the module's task passing EDITOR via with:,
+	// then the with: value reaches it (why: with: is a timeline write too,
+	// so it claims the name just as set: does)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - call: m:show
+				        with:
+				          - EDITOR: from-with
+			`,
+			"mod.yml": `
+				vars:
+				  - EDITOR: from-module-vars
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "EDITOR={{.EDITOR}}"
+			`,
+		},
+		Env:  map[string]string{"EDITOR": "vim"},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "EDITOR=from-with")
+}
+
+func TestE2E_Modules_CallIntoOnOSEnvNameBeatsModuleVarsDefault(t *testing.T) {
+	// given EDITOR only in the OS env and a module whose vars: defaults it,
+	// when a root task pulls EDITOR back from a call: via into: and then
+	// calls the module's task, then the into: value reaches it (why: into:
+	// is a timeline write too, so it claims the name just as set: does)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - call: _pick
+				        into:
+				          - EDITOR: .PICKED
+				      - call: m:show
+				  _pick:
+				    steps:
+				      - set:
+				          - PICKED: from-into
+			`,
+			"mod.yml": `
+				vars:
+				  - EDITOR: from-module-vars
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "EDITOR={{.EDITOR}}"
+			`,
+		},
+		Env:  map[string]string{"EDITOR": "vim"},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "EDITOR=from-into")
+}
+
+func TestE2E_Modules_LoopVarOnOSEnvNameBeatsModuleVarsDefault(t *testing.T) {
+	// given ITEM only in the OS env and a module whose vars: defaults it,
+	// when a root task loops and calls the module's task from the loop body,
+	// then each iteration's ITEM reaches it (why: a loop: binding is a
+	// timeline write for the iteration, so it claims the name just as set:
+	// does)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - loop: [one, two]
+				        steps:
+				          - call: m:show
+			`,
+			"mod.yml": `
+				vars:
+				  - ITEM: from-module-vars
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "ITEM={{.ITEM}}"
+			`,
+		},
+		Env:  map[string]string{"ITEM": "from-env"},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "ITEM=one", "ITEM=two")
+}
+
+func TestE2E_Modules_GetAnsweredByOSEnvBeatsModuleVarsDefault(t *testing.T) {
+	// given EDITOR only in the OS env and a module whose vars: defaults it,
+	// when a root task's get: accepts the OS env value as its answer and
+	// then calls the module's task, then the accepted answer reaches it
+	// (why: a get: answered from scope claims the name, so a later default
+	// can't quietly swap out what the task already took as its answer)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - m: ./mod.yml
+				tasks:
+				  a:
+				    steps:
+				      - get: [EDITOR]
+				      - call: m:show
+			`,
+			"mod.yml": `
+				vars:
+				  - EDITOR: from-module-vars
+				tasks:
+				  show:
+				    steps:
+				      - run: echo "EDITOR={{.EDITOR}}"
+			`,
+		},
+		Env:  map[string]string{"EDITOR": "vim"},
+		Args: []string{"a"},
+	})
+	res.OK(t)
+	res.Lines(t, "EDITOR=vim")
+}

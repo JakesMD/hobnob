@@ -226,17 +226,17 @@ func TestLoadAndApply(t *testing.T) {
 				t.Fatalf("Load error: %v", err)
 			}
 			for key, want := range test.want {
-				if val, ok := got.Vars[key]; !ok || val.String() != want {
+				if val, ok := got.Vars()[key]; !ok || val.String() != want {
 					t.Errorf("%s = %q (present %v), want %q", key, val.String(), ok, want)
 				}
 			}
 			for _, key := range test.wantAbsent {
-				if val, ok := got.Vars[key]; ok {
+				if val, ok := got.Vars()[key]; ok {
 					t.Errorf("%s = %q, want absent", key, val.String())
 				}
 			}
 			for _, key := range test.wantSecrets {
-				if !got.Secrets[key] {
+				if !got.IsSecret(key) {
 					t.Errorf("%s not flagged secret", key)
 				}
 			}

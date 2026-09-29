@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -71,37 +70,6 @@ func displayDirPath(dir, invocationDir string) string {
 	return "./" + rel
 }
 
-// maskSecrets replaces each secret variable's value in text with
-// tui.SecretMask. It matches both the raw value and its JSON-escaped form
-// (quotes/backslashes/newlines escaped the way json.Marshal would render
-// them) — a secret embedded as a leaf of a set:/into: JSON literal is
-// marshaled, so its escaped form can differ from the raw value and would
-// otherwise slip past a raw-only match.
-//
-// A Bool or short Number secret is skipped: masking "true" or "1" as a
-// substring would blank out unrelated text (every "true" in the command),
-// not just the secret.
-func maskSecrets(text string, scope *scope.Scope) string {
-	for name := range scope.Secrets {
-		secretVal := scope.Vars[name]
-		if secretVal.Kind() == value.KindBool {
-			continue
-		}
-		if secretVal.Kind() == value.KindNumber && len(secretVal.String()) < 4 {
-			continue
-		}
-		raw := secretVal.String()
-		if raw == "" {
-			continue
-		}
-		if escaped, ok := jsonEscapedForm(raw); ok && escaped != raw {
-			text = strings.ReplaceAll(text, escaped, tui.SecretMask)
-		}
-		text = strings.ReplaceAll(text, raw, tui.SecretMask)
-	}
-	return text
-}
-
 // shellMetachars is the set of characters that would need shell quoting if
 // argv were ever pasted back into a shell — displayArgv quotes an element
 // only when it contains one of these (or is empty/whitespace), so the common
@@ -122,17 +90,6 @@ func displayArgv(argv []string) string {
 		}
 	}
 	return strings.Join(parts, " ")
-}
-
-// jsonEscapedForm returns secretVal as it would appear inside a
-// json.Marshal-ed string (unquoted) — the form a secret takes once it's a
-// leaf of a set:/into: JSON literal.
-func jsonEscapedForm(secretVal string) (string, bool) {
-	jsonBytes, err := json.Marshal(secretVal)
-	if err != nil || len(jsonBytes) < 2 {
-		return "", false
-	}
-	return string(jsonBytes[1 : len(jsonBytes)-1]), true
 }
 
 // execCtx bundles the state threaded through every step-execution function.
@@ -194,20 +151,20 @@ func executeTask(execState execCtx, taskName, callDirTmpl string, scope *scope.S
 	currentDir := execState.dir
 	switch {
 	case callDirTmpl != "":
-		resolved, err := eval.EvalTemplate(callDirTmpl, scope.Vars)
+		resolved, err := eval.EvalTemplate(callDirTmpl, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("dir template: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
 	case task.Dir != "":
-		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars)
+		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("task %q dir: %w", taskName, err)
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
 	if task.IfExpr != "" {
-		ok, err := eval.EvalCondition(execState.ctx, task.IfExpr, scope.Vars, currentDir)
+		ok, err := eval.EvalCondition(execState.ctx, task.IfExpr, scope.Vars(), currentDir)
 		if err != nil {
 			return fmt.Errorf("task %q if: %w", taskName, err)
 		}
@@ -225,7 +182,7 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			return fmt.Errorf("%w: %v", ErrInterrupted, execState.ctx.Err())
 		}
 		if step.IfExpr != "" {
-			ok, err := eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars, execState.dir)
+			ok, err := eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars(), execState.dir)
 			if err != nil {
 				return fmt.Errorf("if condition: %w", err)
 			}

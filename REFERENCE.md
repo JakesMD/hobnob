@@ -442,6 +442,10 @@ values in one shot:
 matches on value, so a secret stays masked once passed down even under a new
 name. Mark it secret where it is defined.
 
+The same holds on the way back up: a secret the child defined stays masked in
+the caller when `into:` pulls it out, even as a leaf of a literal or through an
+accessor.
+
 ### `loop`: iteration
 
 **List form.** Iterates an array, current element as `{{.ITEM}}`:
@@ -814,7 +818,9 @@ Inside that subtree the two kinds of block differ:
 - **`const:` always wins**, even over a parent `const:` of the same name or a
   CLI arg. Nearest declaration wins, like any lexical scope.
 - **`env:`/`vars:` only fill a gap** the caller has not set, acting as the
-  module's own lowest layer rather than an override.
+  module's own lowest layer rather than an override. A name only the OS env
+  set is still a gap, until a `set:`, `with:`, `into:` or `loop:` writes it,
+  or a `get:` accepts it as its answer.
 
 A module's own `const:`/`env:`/`vars:` follow the same upward-read model as
 the root chain, scoped to the module's own file: `const:` resolves first, then

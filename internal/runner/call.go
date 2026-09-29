@@ -57,7 +57,7 @@ func callCacheID(task config.Task) uintptr {
 }
 
 func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
-	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars)
+	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars())
 	if err != nil {
 		return fmt.Errorf("call target template: %w", err)
 	}
@@ -111,19 +111,16 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 // former "Sharp edge" note). Sorted by key for a stable line across runs.
 func summarizeCallDelta(before, after *scope.Scope) string {
 	var keys []string
-	for key, val := range after.Vars {
-		if prior, existed := before.Vars[key]; !existed || !reflect.DeepEqual(prior, val) {
+	beforeVars := before.Vars()
+	for key, val := range after.Vars() {
+		if prior, existed := beforeVars[key]; !existed || !reflect.DeepEqual(prior, val) {
 			keys = append(keys, key)
 		}
 	}
 	sort.Strings(keys)
 	parts := make([]string, len(keys))
 	for i, key := range keys {
-		display := after.Vars[key].String()
-		if after.Secrets[key] {
-			display = tui.SecretMask
-		}
-		parts[i] = key + "=" + display
+		parts[i] = key + "=" + after.Display(key)
 	}
 	return strings.Join(parts, " ")
 }
@@ -137,12 +134,12 @@ func buildCallScope(scope *scope.Scope, callVars []config.SetEntry) (*scope.Scop
 	childScope := scope.Copy()
 	for _, callVar := range callVars {
 		val, err := config.EvalSetEntry(callVar, func(tmpl string) (value.Value, error) {
-			return eval.EvalValue(tmpl, childScope.Vars)
+			return eval.EvalValue(tmpl, childScope.Vars())
 		})
 		if err != nil {
 			return nil, fmt.Errorf("call var %q: %w", callVar.Key, err)
 		}
-		childScope.Vars[callVar.Key] = val
+		childScope.Set(callVar.Key, val, false)
 	}
 	return childScope, nil
 }
@@ -160,9 +157,9 @@ func buildCallScope(scope *scope.Scope, callVars []config.SetEntry) (*scope.Scop
 func captureCallInto(entries []config.IntoEntry, scope, childScope *scope.Scope) error {
 	evalLeaf := func(valueTmpl string) (value.Value, error) {
 		if strings.Contains(valueTmpl, "{{") {
-			return eval.EvalValue(valueTmpl, scope.Vars)
+			return eval.EvalValue(valueTmpl, scope.Vars())
 		}
-		val, _, err := resolveChildRef(valueTmpl, childScope.Vars)
+		val, _, err := resolveChildRef(valueTmpl, childScope.Vars())
 		return val, err
 	}
 	for _, intoEntry := range entries {
@@ -173,7 +170,8 @@ func captureCallInto(entries []config.IntoEntry, scope, childScope *scope.Scope)
 			if err != nil {
 				return fmt.Errorf("into value %q: %w", parentKey, err)
 			}
-			scope.Vars[parentKey] = val
+			scope.Adopt(childScope, val)
+			scope.Set(parentKey, val, false)
 			continue
 		}
 
@@ -182,19 +180,16 @@ func captureCallInto(entries []config.IntoEntry, scope, childScope *scope.Scope)
 			if err != nil {
 				return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
 			}
-			scope.Vars[parentKey] = val
+			scope.Set(parentKey, val, false)
 			continue
 		}
 
-		val, plainKey, err := resolveChildRef(intoEntry.ValueTmpl, childScope.Vars)
+		val, plainKey, err := resolveChildRef(intoEntry.ValueTmpl, childScope.Vars())
 		if err != nil {
 			return fmt.Errorf("into value %q: %w", intoEntry.ValueTmpl, err)
 		}
-		if plainKey != "" {
-			scope.Set(parentKey, val, childScope.Secrets[plainKey])
-			continue
-		}
-		scope.Vars[parentKey] = val
+		scope.Adopt(childScope, val)
+		scope.Set(parentKey, val, plainKey != "" && childScope.IsSecret(plainKey))
 	}
 	return nil
 }

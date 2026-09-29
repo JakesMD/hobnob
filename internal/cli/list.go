@@ -39,7 +39,7 @@ func visibleTaskNames(cfg *config.ConfigFile) []string {
 func CollectSelectableTasks(cfg *config.ConfigFile, scope *scope.Scope) []tui.TaskItem {
 	var tasks []tui.TaskItem
 	for _, name := range visibleTaskNames(cfg) {
-		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars)
+		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars())
 		tasks = append(tasks, tui.TaskItem{Name: name, Info: info})
 	}
 	return tasks
@@ -56,7 +56,7 @@ type taskRow struct {
 // align the info column before any rendering happens.
 func buildTaskRows(cfg *config.ConfigFile, scope *scope.Scope) (rows []taskRow, maxNameLen int) {
 	for _, name := range visibleTaskNames(cfg) {
-		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars)
+		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars())
 		rows = append(rows, taskRow{name, info})
 		if width := lipgloss.Width(name); width > maxNameLen {
 			maxNameLen = width

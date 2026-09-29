@@ -245,6 +245,85 @@ func TestE2E_Call_ComposedSecretThroughWithMasksOnlySecretComponent(t *testing.T
 	res.NotOut(t, "hunter2")
 }
 
+func TestE2E_Call_ChildOnlySecretIntoLiteralLeafStaysMasked(t *testing.T) {
+	// given a secret that exists only in the child, when the caller's into:
+	// assembles it as a leaf of a map literal and a later run: references
+	// that leaf, then it's masked (why: the caller never had the child's name
+	// for the secret, so its value must travel across with it)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: _login
+		        into:
+		          - CARD:
+		              token: .TOKEN
+		      - run: ": {{.CARD.token}}"
+		  _login:
+		    steps:
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+	`, "parent")
+	res.OK(t)
+	res.Masked(t, "hunter2")
+}
+
+func TestE2E_Call_ChildOnlySecretIntoAccessorLeafStaysMasked(t *testing.T) {
+	// given a child object that embeds a secret the caller never had, when
+	// the caller's into: reaches into it with an accessor and a later run:
+	// references the result, then it's masked (why: the object itself isn't
+	// secret, but the value pulled out of it is one)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: _login
+		        into:
+		          - T: .CREDS.token
+		      - run: ": {{.T}}"
+		  _login:
+		    steps:
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		          - CREDS:
+		              token: "{{.TOKEN}}"
+	`, "parent")
+	res.OK(t)
+	res.Masked(t, "hunter2")
+}
+
+func TestE2E_Call_ChildOnlySecretStaysMaskedInALaterCall(t *testing.T) {
+	// given a child-only secret the caller pulled in through an into:
+	// literal, when the caller then calls another task that displays it,
+	// then it's masked there too (why: a carried secret must survive the
+	// next call:'s scope copy, like a named one does)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: _login
+		        into:
+		          - CARD:
+		              token: .TOKEN
+		      - call: _show
+		  _login:
+		    steps:
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		  _show:
+		    steps:
+		      - run: ": {{.CARD.token}}"
+	`, "parent")
+	res.OK(t)
+	res.Masked(t, "hunter2")
+}
+
 func TestE2E_Call_SecretInWithRejectedAtParseTime(t *testing.T) {
 	// given a with: entry marked secret: true, when parsed, then it's
 	// rejected rather than silently ignored (why: with: doesn't need its own

@@ -10,17 +10,6 @@ import (
 	"hobnob/internal/value"
 )
 
-func scopeSaveRestore(vars map[string]value.Value, name string) func() {
-	prev, had := vars[name]
-	return func() {
-		if had {
-			vars[name] = prev
-		} else {
-			delete(vars, name)
-		}
-	}
-}
-
 func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if len(step.ForMatrix) > 0 {
 		return execForMatrix(execState, step.ForMatrix, step.ForSteps, scope)
@@ -29,7 +18,7 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to an
 	// Object — a literal YAML sequence in loop: can never be a map.
 	if len(step.ForList) == 0 && step.ForTarget != "" {
-		rendered, err := eval.EvalValue(step.ForTarget, scope.Vars)
+		rendered, err := eval.EvalValue(step.ForTarget, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("loop from template: %w", err)
 		}
@@ -39,7 +28,7 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return execForList(execState, eval.ItemsFromValue(rendered), step.ForSteps, scope)
 	}
 
-	items, err := eval.ResolveItems(step.ForList, step.ForTarget, scope.Vars, "loop")
+	items, err := eval.ResolveItems(step.ForList, step.ForTarget, scope.Vars(), "loop")
 	if err != nil {
 		return err
 	}
@@ -49,10 +38,11 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 }
 
 func execForList(execState execCtx, items []value.Value, steps []config.Step, scope *scope.Scope) error {
-	defer scopeSaveRestore(scope.Vars, "ITEM")()
 	for _, item := range items {
-		scope.Vars["ITEM"] = item
-		if err := executeSteps(execState, steps, scope); err != nil {
+		restore := scope.Bind("ITEM", item)
+		err := executeSteps(execState, steps, scope)
+		restore()
+		if err != nil {
 			return err
 		}
 	}
@@ -67,12 +57,13 @@ func execForMap(execState execCtx, obj value.Value, steps []config.Step, scope *
 	}
 	sort.Strings(keys)
 
-	defer scopeSaveRestore(scope.Vars, "KEY")()
-	defer scopeSaveRestore(scope.Vars, "VALUE")()
 	for _, key := range keys {
-		scope.Vars["KEY"] = value.Str(key)
-		scope.Vars["VALUE"] = value.Of(object[key])
-		if err := executeSteps(execState, steps, scope); err != nil {
+		restoreKey := scope.Bind("KEY", value.Str(key))
+		restoreValue := scope.Bind("VALUE", value.Of(object[key]))
+		err := executeSteps(execState, steps, scope)
+		restoreValue()
+		restoreKey()
+		if err != nil {
 			return err
 		}
 	}
@@ -83,7 +74,7 @@ func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []co
 	varNames := make([]string, len(matrix))
 	itemLists := make([][]value.Value, len(matrix))
 	for i, entry := range matrix {
-		items, err := eval.ResolveItems(entry.List, entry.ListTmpl, scope.Vars, "loop")
+		items, err := eval.ResolveItems(entry.List, entry.ListTmpl, scope.Vars(), "loop")
 		if err != nil {
 			return err
 		}
@@ -98,10 +89,11 @@ func execCartesian(execState execCtx, varNames []string, itemLists [][]value.Val
 		return executeSteps(execState, steps, scope)
 	}
 	name := varNames[idx]
-	defer scopeSaveRestore(scope.Vars, name)()
 	for _, item := range itemLists[idx] {
-		scope.Vars[name] = item
-		if err := execCartesian(execState, varNames, itemLists, idx+1, steps, scope); err != nil {
+		restore := scope.Bind(name, item)
+		err := execCartesian(execState, varNames, itemLists, idx+1, steps, scope)
+		restore()
+		if err != nil {
 			return err
 		}
 	}

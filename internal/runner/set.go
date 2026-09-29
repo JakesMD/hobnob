@@ -12,7 +12,7 @@ import (
 func execSet(step config.Step, scope *scope.Scope) error {
 	for _, setEntry := range step.SetEntries {
 		val, err := config.EvalSetEntry(setEntry, func(tmpl string) (value.Value, error) {
-			return eval.EvalValue(tmpl, scope.Vars)
+			return eval.EvalValue(tmpl, scope.Vars())
 		})
 		if err != nil {
 			return fmt.Errorf("set value for %q: %w", setEntry.Key, err)

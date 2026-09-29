@@ -70,19 +70,15 @@ func (fileScopes FileScopes) Apply(scope *Scope, cfg *config.ConfigFile) {
 // set:, which don't exist yet at load — and so is every load-time template
 // on the import itself (path:, show:, hide:, flatten:).
 func Load(ctx context.Context, cfg *config.ConfigFile, cliVars map[string]string, invocationDir string) (*Scope, FileScopes, error) {
-	base := &Scope{
-		Vars:    make(map[string]value.Value),
-		Secrets: make(map[string]bool),
-		Ambient: make(map[string]bool),
-	}
+	base := New()
 	for _, envEntry := range os.Environ() {
 		if key, val, ok := eval.SplitKV(envEntry); ok {
-			base.Vars[key] = value.Str(val)
-			base.Ambient[key] = true
+			base.vars[key] = value.Str(val)
+			base.ambient[key] = true
 		}
 	}
-	base.Vars["HOBNOB_FILE_DIR"] = value.Str(cfg.TaskfileDir)
-	base.Vars["HOBNOB_INVOCATION_DIR"] = value.Str(invocationDir)
+	base.Set("HOBNOB_FILE_DIR", value.Str(cfg.TaskfileDir), false)
+	base.Set("HOBNOB_INVOCATION_DIR", value.Str(invocationDir), false)
 
 	root, _, err := resolve(ctx, cfg, base, cliVars, nil)
 	if err != nil {
@@ -105,7 +101,7 @@ func Load(ctx context.Context, cfg *config.ConfigFile, cliVars map[string]string
 // then register its tasks into cfg.
 func loadModules(ctx context.Context, cfg *config.ConfigFile, importer *Scope, importerFS *fileScope, ancestors map[string]bool, fileScopes FileScopes) error {
 	for _, module := range cfg.Modules {
-		filePath, err := eval.EvalTemplate(module.FileTmpl, importer.Vars)
+		filePath, err := eval.EvalTemplate(module.FileTmpl, importer.Vars())
 		if err != nil {
 			return fmt.Errorf("module %q file path: %w", module.Prefix, err)
 		}
@@ -134,7 +130,7 @@ func loadModules(ctx context.Context, cfg *config.ConfigFile, importer *Scope, i
 			return fmt.Errorf("module %q: %w", module.Prefix, err)
 		}
 
-		if err := config.RegisterModuleTasks(cfg, module, moduleCfg, importer.Vars); err != nil {
+		if err := config.RegisterModuleTasks(cfg, module, moduleCfg, importer.Vars()); err != nil {
 			return err
 		}
 	}
@@ -166,7 +162,6 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 			return nil, nil, fmt.Errorf("const: %s: %w", entry.Key, err)
 		}
 		scope.Set(entry.Key, val, entry.Secret)
-		delete(scope.Ambient, entry.Key)
 		own.consts[entry.Key] = val
 		own.constSecrets[entry.Key] = entry.Secret
 	}
@@ -175,7 +170,7 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 		scope.SetIfDefault(key, value.Str(val), false)
 	}
 
-	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.Vars)
+	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.vars)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -206,6 +201,6 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 
 func evalSetEntry(scope *Scope, entry config.SetEntry) (value.Value, error) {
 	return config.EvalSetEntry(entry, func(tmpl string) (value.Value, error) {
-		return eval.EvalValue(tmpl, scope.Vars)
+		return eval.EvalValue(tmpl, scope.vars)
 	})
 }

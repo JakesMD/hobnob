@@ -20,20 +20,6 @@ func copyVars(src map[string]value.Value) map[string]value.Value {
 	return out
 }
 
-func makeScope(vars map[string]value.Value) *scope.Scope {
-	return &scope.Scope{Vars: vars, Secrets: make(map[string]bool)}
-}
-
-// sv wraps a plain string map as typed scope vars — most fixtures in this
-// package only care about plain strings; the type distinction is incidental.
-func sv(m map[string]string) map[string]value.Value {
-	out := make(map[string]value.Value, len(m))
-	for k, v := range m {
-		out[k] = value.Str(v)
-	}
-	return out
-}
-
 func captureStdout(t *testing.T, f func()) string {
 	t.Helper()
 	r, w, err := os.Pipe()
@@ -52,73 +38,6 @@ func captureStdout(t *testing.T, f func()) string {
 		t.Fatalf("io.Copy: %v", err)
 	}
 	return buf.String()
-}
-
-func TestMaskSecrets(t *testing.T) {
-	tests := []struct {
-		name    string
-		input   string
-		vars    map[string]value.Value
-		secrets map[string]bool
-		want    string
-	}{
-		{
-			name:    "given no secrets, when masking, then string unchanged (why: nothing to mask)",
-			input:   "deploy --user=alice --pass=hunter2",
-			vars:    sv(map[string]string{"PASS": "hunter2"}),
-			secrets: map[string]bool{},
-			want:    "deploy --user=alice --pass=hunter2",
-		},
-		{
-			name:    "given secret var in command, when masking, then value replaced with **** (why: secret must not appear in logs)",
-			input:   "deploy --user=alice --pass=hunter2",
-			vars:    sv(map[string]string{"PASS": "hunter2"}),
-			secrets: map[string]bool{"PASS": true},
-			want:    "deploy --user=alice --pass=****",
-		},
-		{
-			name:    "given secret value appears multiple times, when masking, then all replaced (why: full redaction required)",
-			input:   "echo hunter2 && login --pass=hunter2",
-			vars:    sv(map[string]string{"PASS": "hunter2"}),
-			secrets: map[string]bool{"PASS": true},
-			want:    "echo **** && login --pass=****",
-		},
-		{
-			name:    "given secret var with empty value, when masking, then string unchanged (why: empty string replacement would corrupt output)",
-			input:   "deploy --pass=",
-			vars:    sv(map[string]string{"PASS": ""}),
-			secrets: map[string]bool{"PASS": true},
-			want:    "deploy --pass=",
-		},
-		{
-			name:    "given multiple secret vars, when masking, then all replaced (why: each secret must be redacted)",
-			input:   "connect --user=root --pass=s3cr3t --token=abc123",
-			vars:    sv(map[string]string{"PASS": "s3cr3t", "TOKEN": "abc123"}),
-			secrets: map[string]bool{"PASS": true, "TOKEN": true},
-			want:    "connect --user=root --pass=**** --token=****",
-		},
-		{
-			name:    `given secret containing a quote embedded in a JSON literal (json.Marshal-escaped), when masking, then the escaped form is also replaced (why: a set:/into: JSON literal leaf marshals its value, so the escaped form can differ from the raw secret and must be matched too)`,
-			input:   `echo 'literal={"token":"ab\"cd"} raw=ab"cd'`,
-			vars:    sv(map[string]string{"TOK": `ab"cd`}),
-			secrets: map[string]bool{"TOK": true},
-			want:    `echo 'literal={"token":"****"} raw=****'`,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Arrange (test fields are the arrangement)
-
-			// Act
-			got := maskSecrets(test.input, &scope.Scope{Vars: test.vars, Secrets: test.secrets})
-
-			// Assert
-			if got != test.want {
-				t.Errorf("got %q, want %q", got, test.want)
-			}
-		})
-	}
 }
 
 func TestDisplayDirPath(t *testing.T) {
@@ -187,7 +106,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

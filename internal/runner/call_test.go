@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"hobnob/internal/config"
-	"hobnob/internal/value"
+	"hobnob/internal/scope"
 )
 
 func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
@@ -31,7 +31,7 @@ func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", makeScope(map[string]value.Value{}), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

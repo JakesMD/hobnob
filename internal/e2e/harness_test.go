@@ -9,8 +9,8 @@
 // a coverage percentage because it tests the assertions, not just execution.
 //
 //  1. reverse matrix nesting order in internal/runner/loop.go        -> loop_test.go (.Lines)
-//  2. drop the raw-value ReplaceAll in maskSecrets                   -> secrets_test.go (.Masked)
-//  3. drop the JSON-escaped ReplaceAll in maskSecrets                -> secrets_test.go (into: leaf)
+//  2. drop the raw-value ReplaceAll in Scope.Mask                    -> secrets_test.go (.Masked)
+//  3. drop the JSON-escaped ReplaceAll in Scope.Mask                 -> secrets_test.go (into: leaf)
 //  4. apply cliVars after globals in internal/cli/scope.go           -> scope_test.go precedence
 //  5. remove the "_" guard in internal/app/app.go Run                -> cli_test.go
 //  6. make Task.Hidden not suppress from --list                      -> cli_test.go (.NotOut)
@@ -43,6 +43,8 @@
 // 28. stop skipping string literals in rewriteAccessors              -> accessor_test.go (StringLiteralBracketsSurviveUnchanged)
 // 29. drop the accessor peel in eval.EvalRunIntoPipe                 -> accessor_test.go (IntoSourceWithAccessorAndFilterChain)
 // 30. narrow eval.IsBareRef back to ^\.[A-Z][A-Z0-9_]*$               -> accessor_test.go (BraceFreeOptionsForm, BraceFreeDirForm)
+//
+// 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
 package e2e
 
 import (
