@@ -25,8 +25,9 @@ Every change must preserve these. Each is explained in the section named.
   `checkConstNamesNotShadowed`, `checkVarsNoSelfReference` and
   `checkEnvPathsDontReferenceVars` check each file against its own blocks.
   ([config](#internalconfig-parsing))
-- **One resolution chain.** The ADR-0001 order exists only in `scope.resolve`,
-  for root and modules alike. A module's file scope never leaks to its parent;
+- **One resolution chain.** The ADR-0001 order exists only in `scope.resolve`
+  and `Scope.envFileRef` beside it (the same order for `$NAME` inside a
+  dotenv file), for root and modules alike. A module's file scope never leaks to its parent;
   `FileScopes.Apply` lands its `const:` with `Set` and its `env:`/`vars:` with
   `SetIfDefault`. Every `Set` claims its name. ([scope](#internalscope-the-runtime-scope-and-file-scopes))
 - **Private scope maps.** Writes go through `Set`/`SetIfDefault`/`MarkSecret`/
@@ -286,7 +287,10 @@ flowchart LR
 ```
 
 Precedence (`env < vars: < env files < CLI args < const:`) falls out of this
-order plus the claimed rule. `const:`/`vars:` go through
+order plus the claimed rule. `resolve` hands `envFileRef` to the env file
+loader, so a `$NAME` inside a dotenv file (`dotenv.go`) follows it too: a
+claimed name reads its final value, then the latest env file value, then the
+ambient OS env. `const:`/`vars:` go through
 `config.EvalSetEntry` and stay typed; every other source is `value.Str`,
 unsniffed.
 

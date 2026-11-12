@@ -170,7 +170,7 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 		scope.SetIfDefault(key, value.Str(val), false)
 	}
 
-	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.vars)
+	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.vars, scope.envFileRef)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -197,6 +197,24 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 	}
 
 	return scope, own, nil
+}
+
+// envFileRef resolves a $NAME inside a dotenv env: file, as the env: layer
+// of the chain above: a name a higher layer claimed (const:, a CLI arg, a
+// built-in, or anything the importer's scope set, its vars: defaults
+// included) reads its final value; otherwise the latest env file value so
+// far, then the OS env. This file's own vars: is below env: and never seen.
+func (scope *Scope) envFileRef(name string, envSoFar map[string]string) (string, bool) {
+	if scope.claimed(name) {
+		return scope.vars[name].String(), true
+	}
+	if val, ok := envSoFar[name]; ok {
+		return val, true
+	}
+	if val, ok := scope.vars[name]; ok {
+		return val.String(), true
+	}
+	return "", false
 }
 
 func evalSetEntry(scope *Scope, entry config.SetEntry) (value.Value, error) {

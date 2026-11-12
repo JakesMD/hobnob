@@ -593,8 +593,7 @@ env:
   - defaults.txt
 ```
 
-- Anything not ending in `.sh` is `KEY=VALUE` lines, with blank lines, `#`
-  comments and an optional `export` prefix allowed.
+- Anything not ending in `.sh` is read as dotenv text, never run.
 - `.sh` files are sourced in a subshell against the OS env; only variables
   the script sets or changes come in.
 - A missing file warns and is skipped.

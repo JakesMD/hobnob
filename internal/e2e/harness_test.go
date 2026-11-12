@@ -53,6 +53,11 @@
 // 36. hand os/exec the LineWriters instead of attachPipes' files     -> run_background_test.go (StepFinishesWhenShellExits)
 // 37. clearRunningPID before settle in execRun                       -> run_background_test.go (SecondCtrlCReachesLeftoverDuringGrace)
 // 38. drop signalGroupKill from stepPipes.settle                     -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace)
+//
+// 39. check envSoFar before scope.claimed in Scope.envFileRef        -> env_test.go (DotenvReferenceReadsFinalValueOfCLIArg)
+// 40. drop the unterminated-quote error in scope.parseDotenv         -> env_test.go (DotenvUnterminatedQuoteFailsNamingFileAndLine)
+// 41. close ${ at the first } instead of matchingBrace               -> env_test.go (DotenvDefaultAndUnsetReferences)
+// 42. drop the text-after-closing-quote error in parseDotenv         -> env_test.go (DotenvMalformedLineFailsNamingLine)
 package e2e
 
 import (
