@@ -314,6 +314,11 @@ still captures so the next step can react:
 Output is hidden only on success. A failing quiet step replays everything it
 suppressed, so nothing fails silently.
 
+> [!NOTE]
+> Jobs a step backgrounds with `&` stop when the step does. End the command
+> with `wait` to let them finish, or see
+> [background jobs](REFERENCE.md#run-shell-commands) to keep one running.
+
 ## Non-interactive runs
 
 Prompts are skipped when stdin is not a terminal, when `CI` is set, or with

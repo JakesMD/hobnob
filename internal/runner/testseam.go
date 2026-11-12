@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"time"
 
 	"hobnob/internal/value"
 )
@@ -24,4 +25,13 @@ func SetPrompts(text TextPromptFunc, sel SelectPromptFunc) (restore func()) {
 	return func() {
 		promptTextFn, promptSelectFn = origText, origSel
 	}
+}
+
+// SetLeftoverGrace shortens how long a run: step's leftover processes get
+// after SIGTERM before they're killed, and returns a func that restores it.
+// Test-only seam.
+func SetLeftoverGrace(d time.Duration) (restore func()) {
+	orig := leftoverGrace
+	leftoverGrace = d
+	return func() { leftoverGrace = orig }
 }

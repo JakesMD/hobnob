@@ -17,12 +17,18 @@ func cancelFunc(cmd *osExec.Cmd) func() error {
 	return cmd.Process.Kill
 }
 
+// signalGroupTerm and signalGroupKill are no-ops on windows: there's no
+// process group to signal. settle is never asked to signal here anyway, since
+// waitExitUnreaped is unsupported.
+func signalGroupTerm(pid int) {}
+func signalGroupKill(pid int) {}
+
 // KillRunningStep kills the currently executing run: step's process, if any.
 // Reports whether a step was actually running.
 func KillRunningStep() bool {
 	runningStepMu.Lock()
+	defer runningStepMu.Unlock()
 	pid := runningStepPID
-	runningStepMu.Unlock()
 	if pid == 0 {
 		return false
 	}

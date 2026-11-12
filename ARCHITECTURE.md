@@ -31,6 +31,10 @@ Every change must preserve these. Each is explained in the section named.
   `SetIfDefault`. Every `Set` claims its name. ([scope](#internalscope-the-runtime-scope-and-file-scopes))
 - **Private scope maps.** Writes go through `Set`/`SetIfDefault`/`MarkSecret`/
   `Bind`; output masking reads secrets only through `Mask`/`Display`.
+- **A step owns its process group.** A `run:` step ends only after `settle`
+  has SIGTERMed what it left running and drained or abandoned its pipes, so
+  `&` never hangs the run. The step's PID stays registered, and its process
+  unreaped, until then. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
@@ -349,8 +353,9 @@ flowchart TD
     tee --> startp
     live --> startp
     startp -- fails --> nocap["error, no capture<br/>(no process ran)"]
-    startp -- ok --> wait["Wait"]
-    wait --> replay{"quiet: and failed?"}
+    startp -- ok --> wait["Wait for the process"]
+    wait --> settle["settle: SIGTERM the group,<br/>drain the pipes"]
+    settle --> replay{"quiet: and failed?"}
     replay -- yes --> rp["replay both buffers<br/>through the LineWriters"]
     replay -- no --> intr
     rp --> intr{"failed and ctx cancelled?"}
@@ -439,7 +444,25 @@ values on exit.
 **Signals.** `runner_unix.go`/`runner_windows.go` manage process groups. The
 first CTRL+C signals the whole group, catching children a single-PID signal
 would miss, and waits. The second force-kills via `KillRunningStep`. A mutex
-guards the running PID so a racing second CTRL+C never hits a reused PID.
+guards the running PID, and on Linux and macOS it is cleared before the process
+is reaped, so a racing second CTRL+C never hits a reused PID.
+
+**Leftovers (`stepio.go`).** A `run:` step gets real OS pipes, copied by
+hobnob's own goroutines. With os/exec's pipes, `Wait` would block until EOF,
+which never comes while a backgrounded job holds them. `waitExitUnreaped`
+(`exitwait_*.go`: `waitid` with `WNOWAIT` on Linux, kqueue `NOTE_EXIT` on
+macOS) waits for the process to exit without reaping it. The zombie keeps its
+PID and process group ID from being reused, so `settle` and a second CTRL+C
+can signal the group safely until `Wait` reaps it.
+
+Once the process has exited, a first CTRL+C no longer signals it (`Cancel`
+returns `os.ErrProcessDone`), so `Wait` still reports the step's own exit
+status. `settle` SIGTERMs the group (unless a first CTRL+C already did) and drains
+until the pipes close. After `leftoverGrace` it SIGKILLs the group, drains for
+`killDrain`, then abandons the pipes: late writes are dropped and the read ends
+closed in the background. That frees hobnob even from a process that left the
+group. Where `waitExitUnreaped` is unsupported, the process is reaped and its
+PID cleared first, and `settle` signals nothing.
 
 ### `internal/tui`
 
@@ -516,7 +539,9 @@ one-statement breaks some test must catch. Walk it after changing the harness,
 in full before a release, and update it when a refactor moves what a line
 names.
 
-Write a package-local, table-driven unit test only for what e2e cannot observe:
+Write a package-local, table-driven unit test only for what e2e cannot observe
+(what a step leaves running, and a second CTRL+C reaching it, e2e can, so
+`run_background_test.go` covers those):
 
 - signals and process groups (`cmd/hobnob/main_signal_test.go`, `runner`'s
   kill and cancellation tests)
@@ -525,5 +550,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe:
 - combinatorial pure functions: `internal/value/path_test.go`,
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`
 
-Production code exposes exactly three test seams: `runner.SetPrompts`,
-`App.IsTerminal` and `App.SelectTask`.
+Production code exposes exactly four test seams: `runner.SetPrompts`,
+`runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.

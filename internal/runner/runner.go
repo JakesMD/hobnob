@@ -32,10 +32,10 @@ func wrapPromptErr(varName string, err error) error {
 	return fmt.Errorf("get %s: %w", varName, err)
 }
 
-// runningStepMu guards runningStepPID. execRun clears the PID and
-// KillRunningStep reads-and-signals it under the same lock so a 2nd CTRL+C
-// racing the exact instant a step finishes can't act on a stale PID that the
-// OS has since reused for an unrelated process (see setRunningPID /
+// runningStepMu guards runningStepPID. execRun clears the PID before reaping
+// the step's process, or right after where it can't hold it unreaped, and
+// KillRunningStep reads and signals it under the same lock, so a 2nd CTRL+C
+// can't act on a PID the OS has since reused (see setRunningPID /
 // clearRunningPID / KillRunningStep in the platform-specific files).
 var runningStepMu sync.Mutex
 var runningStepPID int

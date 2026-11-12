@@ -331,6 +331,34 @@ An entry can assemble a literal from several pieces:
 Output is hidden only on success: a failing quiet step replays its full stdout
 and stderr first. `into:` captures either way.
 
+**Background jobs.** A step owns every process it starts. When the command
+exits, anything it backgrounded with `&` is sent SIGTERM; output it prints on
+the way out still shows, and still reaches `into:`. A job still holding the
+step's output 2s later is killed. End the command with `wait` to let its jobs
+finish first:
+
+```yaml
+- run: |
+    ./fetch.sh jokes &
+    ./fetch.sh types &
+    wait
+```
+
+To leave a job running after the step, move it out of the step's process group
+and redirect its output. It outlives the run too, so stop it yourself:
+
+```yaml
+- run: bash -c 'set -m; ./server.sh > server.log 2>&1 &'
+```
+
+Run it under `bash`: `set -m` does nothing under dash, the `sh` on Debian and
+Ubuntu. `setsid cmd &` is not a substitute: the step can end before the job
+leaves its group, so it may be stopped anyway.
+
+A job that has redirected its own output and ignores SIGTERM is not killed. On
+platforms other than Linux and macOS nothing is signalled: leftover jobs keep
+running, and the step stops waiting on their output after 2s.
+
 #### Argv list form
 
 A YAML sequence executes directly, one element per argument, with no shell, so

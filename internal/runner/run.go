@@ -8,6 +8,7 @@ import (
 	"os"
 	osExec "os/exec"
 	"strings"
+	"sync/atomic"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
@@ -66,38 +67,70 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	// scripts, pipelines, background jobs) running. No-op on windows, which
 	// has no process groups in this sense.
 	setProcAttr(shellCmd)
-	shellCmd.Cancel = cancelFunc(shellCmd)
+	// Once the process has exited, a first CTRL+C leaves it alone: settle
+	// SIGTERMs the leftovers itself, and signalling the zombie would make
+	// Wait misreport a finished step as interrupted. termSent tells settle
+	// whether the group already got its SIGTERM.
+	var exited, termSent atomic.Bool
+	cancelGroup := cancelFunc(shellCmd)
+	shellCmd.Cancel = func() error {
+		if exited.Load() {
+			return os.ErrProcessDone
+		}
+		termSent.Store(true)
+		return cancelGroup()
+	}
 	// No WaitDelay: graceful shutdown waits for the step to exit on its own
 	// timeline, however long that takes. A step that ignores SIGTERM only
 	// stops via a 2nd CTRL+C, handled by KillRunningStep below.
 	shellCmd.Dir = runDir
 
 	var stdoutBuf, stderrBuf bytes.Buffer
+	var stdoutDest, stderrDest io.Writer
 	switch {
 	case step.Quiet:
 		// Buffered only — never teed to the LineWriters live. On failure,
 		// below, the buffers are replayed through them so a hidden step
 		// never fails silently.
-		shellCmd.Stdout = &stdoutBuf
-		shellCmd.Stderr = &stderrBuf
+		stdoutDest, stderrDest = &stdoutBuf, &stderrBuf
 	case len(step.IntoEntries) > 0:
-		shellCmd.Stdout = io.MultiWriter(stdoutLineWriter, &stdoutBuf)
-		shellCmd.Stderr = io.MultiWriter(stderrLineWriter, &stderrBuf)
+		stdoutDest = io.MultiWriter(stdoutLineWriter, &stdoutBuf)
+		stderrDest = io.MultiWriter(stderrLineWriter, &stderrBuf)
 	default:
-		shellCmd.Stdout = stdoutLineWriter
-		shellCmd.Stderr = stderrLineWriter
+		stdoutDest, stderrDest = stdoutLineWriter, stderrLineWriter
 	}
 	shellCmd.Env = envWithScopeOverrides(scope.Vars())
 
-	err := shellCmd.Start()
+	pipes, err := attachPipes(shellCmd)
 	if err != nil {
-		// The process never ran — no exit status exists, so there's nothing
-		// for into: exit to capture.
 		return err
 	}
-	setRunningPID(shellCmd.Process.Pid)
-	waitErr := shellCmd.Wait()
-	clearRunningPID()
+	if err := shellCmd.Start(); err != nil {
+		// The process never ran — no exit status exists, so there's nothing
+		// for into: exit to capture.
+		pipes.abandon()
+		return err
+	}
+	pipes.startCopying(stdoutDest, stderrDest)
+	pid := shellCmd.Process.Pid
+	setRunningPID(pid)
+	var waitErr error
+	if waitExitUnreaped(pid) {
+		// The exited process stays a zombie through settle, so its PID and
+		// process group ID can't be reused yet: settle and a 2nd CTRL+C can
+		// both safely signal the leftovers. The PID is cleared before Wait
+		// reaps it.
+		exited.Store(true)
+		pipes.settle(pid, termSent.Load())
+		clearRunningPID()
+		waitErr = shellCmd.Wait()
+	} else {
+		// No way to hold the PID here, so it's reaped and released first,
+		// and the leftovers can't be signalled.
+		waitErr = shellCmd.Wait()
+		clearRunningPID()
+		pipes.settle(0, false)
+	}
 
 	if step.Quiet && waitErr != nil {
 		stdoutLineWriter.Write(stdoutBuf.Bytes())

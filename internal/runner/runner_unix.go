@@ -39,6 +39,11 @@ func cancelFunc(cmd *osExec.Cmd) func() error {
 	}
 }
 
+// signalGroupTerm and signalGroupKill signal a step's process group. Errors
+// are ignored: ESRCH just means nothing is left in it.
+func signalGroupTerm(pid int) { _ = syscall.Kill(-pid, syscall.SIGTERM) }
+func signalGroupKill(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
+
 // KillRunningStep force-kills the process group of the currently executing
 // run: step, if any. It exists for a 2nd CTRL+C: the graceful path
 // (cancelFunc, above) already SIGTERMs that group, but a step that ignores
@@ -47,11 +52,11 @@ func cancelFunc(cmd *osExec.Cmd) func() error {
 // Setpgid'd out of it. Reports whether a step was actually running.
 func KillRunningStep() bool {
 	runningStepMu.Lock()
+	defer runningStepMu.Unlock()
 	pid := runningStepPID
-	runningStepMu.Unlock()
 	if pid == 0 {
 		return false
 	}
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	signalGroupKill(pid)
 	return true
 }

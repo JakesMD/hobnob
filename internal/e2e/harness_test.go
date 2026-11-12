@@ -47,6 +47,12 @@
 // 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
 // 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
 // 33. return an empty value for an unset name in runner.callSource   -> call_test.go (IntoMissingKeyErrors)
+//
+// 34. drop signalGroupTerm from stepPipes.settle                     -> run_background_test.go (LeftoverGetsSigtermAndItsOutputIsKept)
+// 35. skip the leftoverGrace timeout branch in stepPipes.settle      -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace, hangs)
+// 36. hand os/exec the LineWriters instead of attachPipes' files     -> run_background_test.go (StepFinishesWhenShellExits)
+// 37. clearRunningPID before settle in execRun                       -> run_background_test.go (SecondCtrlCReachesLeftoverDuringGrace)
+// 38. drop signalGroupKill from stepPipes.settle                     -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace)
 package e2e
 
 import (
