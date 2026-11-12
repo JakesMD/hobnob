@@ -169,6 +169,26 @@ func TestE2E_Accessor_BraceFreeOptionsForm(t *testing.T) {
 	res.OK(t)
 }
 
+func TestE2E_Accessor_BraceFreePrivateVarForm(t *testing.T) {
+	// given options: written without {{ }} naming a _-prefixed var, when it
+	// resolves, then it reads the var rather than staying a literal string
+	// (why: private variables are a task's scratch values, and a prompt's
+	// options list is the commonest one)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - _TYPES: [dad, programming]
+		      - get:
+		          - TYPE:
+		              options: ._TYPES
+		      - run: echo type={{.TYPE}}
+	`, "t", "--no-input", "TYPE=dad")
+	res.OK(t)
+	res.Lines(t, "type=dad")
+}
+
 func TestE2E_Accessor_BraceFreeDirForm(t *testing.T) {
 	// given dir: written without {{ }}, when it resolves through an
 	// accessor, then the task runs in the resolved directory

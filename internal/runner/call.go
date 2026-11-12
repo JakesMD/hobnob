@@ -75,13 +75,13 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 		if err := executeTask(execState, taskName, step.DirTmpl, childScope); err != nil {
 			return fmt.Errorf("call %s: %w", taskName, err)
 		}
-		return captureCallInto(step.IntoEntries, scope, childScope)
+		return finishCall(execState.cfg, taskName, task, step, scope, childScope)
 	}
 
 	id := callCacheID(task)
 	if cached, ok := execState.memo.scopes[id]; ok {
 		fmt.Println(tui.CallCacheHitLine(execState.task, taskName, execState.memo.summaries[id]))
-		return captureCallInto(step.IntoEntries, scope, cached)
+		return finishCall(execState.cfg, taskName, task, step, scope, cached)
 	}
 	if execState.memo.running[id] {
 		return fmt.Errorf("call %q: cycle detected — task is already running", taskName)
@@ -101,7 +101,37 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	execState.memo.scopes[id] = childScope
 	execState.memo.summaries[id] = summarizeCallDelta(before, childScope)
-	return captureCallInto(step.IntoEntries, scope, childScope)
+	return finishCall(execState.cfg, taskName, task, step, scope, childScope)
+}
+
+// finishCall checks the target's results: promise against its final scope,
+// then captures into the caller: the step's into: when it has one (even an
+// empty one, which takes nothing), otherwise the results themselves, as bare
+// entries. The promise is checked either way: it belongs to the task, not the
+// call site, so it holds however each result got there (set by a step,
+// inherited, or kept through an if: skip).
+//
+// A result may not land on a const: name of the caller's own file (callerCfg).
+// The load-time check catches literal same-file targets; this catches module
+// and templated ones, whose results aren't known until the call runs.
+func finishCall(callerCfg *config.ConfigFile, taskName string, task config.Task, step config.Step, scope, child *scope.Scope) error {
+	childVars := child.Vars()
+	for _, name := range task.Results {
+		if _, ok := childVars[name]; !ok {
+			return fmt.Errorf("call %s: result %q was not set (listed in its results:)", taskName, name)
+		}
+	}
+	if step.HasInto {
+		return captureCallInto(step.IntoEntries, scope, child)
+	}
+	entries := make([]config.IntoEntry, 0, len(task.Results))
+	for _, name := range task.Results {
+		if callerCfg.DeclaresConst(name) {
+			return fmt.Errorf("call %s: result %q would overwrite the const: of the same name; pull other values with into:", taskName, name)
+		}
+		entries = append(entries, config.BareIntoEntry(name))
+	}
+	return captureCallInto(entries, scope, child)
 }
 
 // summarizeCallDelta renders the vars a once: task's first run produced or

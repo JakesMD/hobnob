@@ -159,14 +159,17 @@ func checkConstNamesNotShadowed(cfg *ConfigFile) error {
 		names[entry.Key] = true
 	}
 	for _, taskName := range cfg.TaskNames {
-		if err := checkStepsDontShadow(taskName, cfg.Tasks[taskName].Steps, names); err != nil {
+		if err := checkStepsDontShadow(taskName, cfg.Tasks[taskName].Steps, names, cfg.Tasks); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkStepsDontShadow(taskName string, steps []Step, names map[string]bool) error {
+// A call: with no into: sets its target's results: in the caller, so those
+// count as set too. Only a literal target in this same file can be checked
+// here: a templated or module target isn't known at load time.
+func checkStepsDontShadow(taskName string, steps []Step, names map[string]bool, tasks map[string]Task) error {
 	shadow := func(target string) error {
 		if names[target] {
 			return fmt.Errorf("task %s sets %s, declared in const: — pick another name", taskName, target)
@@ -189,13 +192,20 @@ func checkStepsDontShadow(taskName string, steps []Step, names map[string]bool) 
 				return err
 			}
 		}
+		if step.Kind == KindCall && len(step.IntoEntries) == 0 {
+			for _, result := range tasks[step.CallTarget].Results {
+				if err := shadow(result); err != nil {
+					return err
+				}
+			}
+		}
 		for _, entry := range step.ForMatrix {
 			if err := shadow(entry.VarName); err != nil {
 				return err
 			}
 		}
 		if len(step.ForSteps) > 0 {
-			if err := checkStepsDontShadow(taskName, step.ForSteps, names); err != nil {
+			if err := checkStepsDontShadow(taskName, step.ForSteps, names, tasks); err != nil {
 				return err
 			}
 		}

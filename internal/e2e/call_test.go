@@ -643,7 +643,8 @@ func TestE2E_Call_IntoBareNamePullsSameName(t *testing.T) {
 
 func TestE2E_Call_IntoBareNameMixesWithMapEntries(t *testing.T) {
 	// given an into: mixing a bare name with a NAME: expr entry, when the
-	// call completes, then both apply, top to bottom
+	// call completes, then both apply, top to bottom (why: a bare name is
+	// only shorthand, so it must sit anywhere a full entry can)
 	res := Yml(t, `
 		tasks:
 		  parent:
@@ -720,7 +721,8 @@ func TestE2E_Call_IntoCannotReadPrivateChildVar(t *testing.T) {
 
 func TestE2E_Call_IntoBareNameCannotReadPrivateChildVar(t *testing.T) {
 	// given a bare _-prefixed name in into:, when the call completes, then
-	// the run fails naming it private
+	// the run fails naming it private (why: the shorthand must not be a way
+	// around the privacy rule)
 	res := Yml(t, `
 		tasks:
 		  parent:

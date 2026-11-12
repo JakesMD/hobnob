@@ -61,6 +61,12 @@
 //
 // 43. drop the "_" guard in runner.callSource                        -> call_test.go (IntoCannotReadPrivateChildVar)
 // 44. drop the non-call: bare-entry check in parseStepNode           -> call_test.go (IntoBareNameOnRunRejectedAtParseTime)
+// 45. pull results: even when the call: step has its own into:       -> results_test.go (IntoReplacesResults)
+// 46. drop the results: presence check in runner.finishCall          -> results_test.go (PromiseCheckedEvenWithInto)
+// 47. skip results: in config.checkStepsDontShadow                   -> results_test.go (BareCallClashingWithConstRejected)
+// 48. drop the leading-_ allowance in eval.isUpperHeadTerm           -> accessor_test.go (BraceFreePrivateVarForm)
+// 49. test len(IntoEntries) instead of HasInto in runner.finishCall  -> results_test.go (EmptyIntoTakesNothing)
+// 50. drop the DeclaresConst check in runner.finishCall              -> results_test.go (ModuleResultClashingWithCallerConstFails)
 package e2e
 
 import (

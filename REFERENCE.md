@@ -131,13 +131,14 @@ Any other top-level key is a load error, so a typo like `taks:` fails loudly.
 
 ## Tasks
 
-| Key      | Meaning                                                 |
-| -------- | ------------------------------------------------------- |
-| `info:`  | One-line description, shown in `--list` and the picker. |
-| `steps:` | The sequence to run.                                    |
-| `if:`    | Shell condition; non-zero skips the whole task.         |
-| `dir:`   | Working directory for the task's `run:` steps.          |
-| `once:`  | Memoize: run at most once per invocation.               |
+| Key        | Meaning                                                 |
+| ---------- | ------------------------------------------------------- |
+| `info:`    | One-line description, shown in `--list` and the picker. |
+| `steps:`   | The sequence to run.                                    |
+| `if:`      | Shell condition; non-zero skips the whole task.         |
+| `dir:`     | Working directory for the task's `run:` steps.          |
+| `once:`    | Memoize: run at most once per invocation.               |
+| `results:` | Variables a `call:` without `into:` hands back.         |
 
 A `_` prefix (`_fetch-joke`) makes a task internal: it runs, but is hidden
 from `--list`, the picker and the command line.
@@ -183,15 +184,56 @@ Call-step `dir:` beats task `dir:`, which beats the inherited one. A `run:`
 step's `dir:` applies to that step alone. `if:` always evaluates in the task's
 `dir:`, even on a step that overrides it.
 
+### `results:` (what a call hands back)
+
+`results:` lists the variables a task promises exist after any call to it. A
+`call:` with no `into:` copies them into the caller:
+
+```yaml
+tasks:
+  _pick-type:
+    results: [TYPE]
+    steps:
+      - run: curl -s {{.API}}/types
+        into:
+          - _TYPES: stdout # private scratch value
+      - get:
+          - TYPE:
+              info: Which kind of joke?
+              options: ._TYPES
+
+  tell-joke:
+    steps:
+      - call: _pick-type # TYPE is now in scope
+      - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
+```
+
+- **A promise, however it's kept.** After the call, each result must be in the
+  task's scope: set by a step, inherited from the caller, or kept through an
+  `if:` skip. `hobnob tell-joke TYPE=dad` skips the prompt and still keeps
+  it. A missing result fails the call, even when `into:` has a `| default`.
+  Running the task directly, rather than through `call:`, checks nothing.
+- **`into:` replaces results.** A call with its own `into:` takes exactly what
+  `into:` lists, which can be any public variable; `into: []` takes nothing.
+  Use it to rename, reshape, or avoid overwriting a variable the caller
+  already has.
+- **Plain names only.** No `_` names (they're private), no duplicates, no
+  expressions; reshape at the call site with `into:`.
+- **No `const:` names.** A call without `into:` can't pull a result named like
+  one of the calling file's `const:` variables. For a task in the same file
+  that fails at load; for a module or templated target, when the call runs.
+
 ### `once:` (memoized tasks)
 
 `once: true` runs a task at most once per invocation. Later `call:`s replay
-the first run's result, each pulling what it wants through its own `into:`.
+the first run's result, each pulling its results or what its own `into:` asks
+for.
 
 ```yaml
 tasks:
   _types:
     once: true
+    results: [TYPES, TYPE]
     steps:
       - run: curl -s {{.API}}/types
         into:
@@ -203,26 +245,25 @@ tasks:
 
   tell-joke:
     steps:
-      - call: _types
-        into: [TYPE]
+      - call: _types # brings back TYPES and TYPE
       - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
 
   count-jokes:
     steps:
       - call: _types # cached: no second prompt, no second request
-        into: [TYPES, TYPE]
       - run: echo "{{ .TYPES | len }} types, you picked {{.TYPE}}"
 ```
 
 - **A hit is announced:** `call: [count-jokes] _types (cached — TYPE=dad …)`.
 - **The memo is the whole scope** the first run produced, so sibling calls in
   separate sandboxes all get its results.
-- **A task skipped by its own `if:`** caches as producing nothing; use
-  `| default` in `into:`. A failure under `soft: true` is not cached, so the
-  next call retries.
+- **A task skipped by its own `if:`** caches as producing nothing, so its
+  results must have come from the caller (see above), or calls fall back to
+  `| default` in their own `into:`. A failure under `soft: true` is not
+  cached, so the next call retries.
 - **Replay overwrites.** If a caller changes `TYPE` between calls, the second
-  call's `into:` restores the cached value. Only names that `into:` asks for
-  are touched.
+  call restores the cached value. Only the results (or what `into:` asks
+  for) are touched.
 - **`once:` belongs to the task**, not the call site.
 
 ## Steps
@@ -428,7 +469,8 @@ with no `default:` aborts the run.
 ### `call`: sub-tasks
 
 Runs another task in a deep copy of scope. Nothing the child changes reaches
-the caller except through `into:`.
+the caller except through `into:`, or, when the step has no `into:`, the
+target's [`results:`](#results-what-a-call-hands-back).
 
 ```yaml
 - call: _fetch-joke

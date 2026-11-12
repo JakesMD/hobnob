@@ -19,7 +19,8 @@ Every change must preserve these. Each is explained in the section named.
 - **Deferred evaluation.** Templates render only at runtime, through
   `EvalTemplate`/`EvalValue`. ([config](#internalconfig-parsing))
 - **Call isolation.** Every `call:` runs in a `Scope.Copy()`; only `into:`
-  brings values back. The `once:` memo is keyed on `Task.Steps` identity and
+  brings values back, or with no `into:`, the target's `results:`, checked
+  present on every call. A `_`-prefixed variable never comes back. The `once:` memo is keyed on `Task.Steps` identity and
   caches the whole child scope. ([runner](#internalrunner-the-interpreter))
 - **Per-file load rules.** `checkConstClosedWorld`,
   `checkConstNamesNotShadowed`, `checkVarsNoSelfReference` and
@@ -198,7 +199,8 @@ parsed, so a module is checked against its own blocks:
   entries and the two built-ins. Otherwise a constant could read a lower layer
   and still call itself fixed.
 - `checkConstNamesNotShadowed`: no `set:`/`get:`/`into:`/`loop:` target may be
-  a `const:` name.
+  a `const:` name, nor a `results:` name pulled by an `into:`-less call to a
+  literal target in the same file.
 - `checkVarsNoSelfReference`: a `vars:` entry may not reference its own key;
   it already is the fallback.
 - `checkEnvPathsDontReferenceVars`: an `env:` path may not reference a `vars:`
@@ -391,7 +393,12 @@ shape. The name flag matters because `Display`, used by the `once:` cache-hit
 line, reads only it.
 
 **`call:` (`call.go`)** copies scope, evaluates `with:` into the child, runs
-the target, then pulls results back through `into:`. A `once: true` target is
+the target, then `finishCall` checks every `results:` name is in the child's
+final scope (a broken promise fails the call, whatever `into:` says) and pulls
+values back through `into:`, or, when the step has no `into:` at all
+(`Step.HasInto`; `into: []` takes nothing), the results as bare entries. A
+result landing on a `const:` name of the caller's own file fails here, which
+covers module and templated targets the load-time check can't see. A `once: true` target is
 memoized per invocation in a `callMemo` on `execCtx`, which survives the scope
 swap, so a shared prologue replays into sibling sandboxes:
 
@@ -406,11 +413,11 @@ sequenceDiagram
         C->>C: Copy() scope, evaluate with:
         C->>T: run target
         T-->>C: child's final scope
-        C->>S: captureInto(into:, child scope)
+        C->>S: finishCall(results:, into:, child scope)
     else once: true, cached
         C->>M: lookup by Task.Steps identity
         M-->>C: cached child scope + summary
-        C->>S: print CallCacheHitLine, captureInto(into:, cached scope)
+        C->>S: print CallCacheHitLine, finishCall(results:, into:, cached scope)
     else once: true, already running
         C-->>S: error: cycle detected
     else once: true, first call
@@ -419,7 +426,7 @@ sequenceDiagram
         C->>T: run target
         T-->>C: child's final scope
         C->>M: store whole child scope + summarizeCallDelta(before, after)
-        C->>S: captureInto(into:, child scope)
+        C->>S: finishCall(results:, into:, child scope)
     end
 ```
 
@@ -430,7 +437,8 @@ The memo is load-bearing in three ways:
    bare name inside its module) sharing one backing array; all collapse to one
    entry.
 2. **It caches the whole child scope, not a delta.** Each call site's `into:`
-   projects what it wants, which a delta would have to guess in advance.
+   (or the task's `results:`) projects what it wants, which a delta would
+   have to guess in advance.
 3. **A hit is announced.** `tui.CallCacheHitLine` names what the first run
    produced (`summarizeCallDelta`, masked, sorted).
 

@@ -5,6 +5,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"hobnob/internal/eval"
 	"hobnob/internal/value"
 )
 
@@ -147,10 +148,10 @@ func parseIntoNode(node *yaml.Node) ([]IntoEntry, error) {
 	for _, item := range node.Content {
 		if item.Kind == yaml.ScalarNode {
 			name := item.Value
-			if !isVarIdent(name) {
+			if !eval.IsVarName(name) {
 				return nil, fmt.Errorf("into entry %q: a bare entry must be a variable name", name)
 			}
-			entries = append(entries, IntoEntry{ParentKey: name, ValueTmpl: name, Bare: true})
+			entries = append(entries, BareIntoEntry(name))
 			continue
 		}
 		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {

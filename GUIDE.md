@@ -155,6 +155,28 @@ name it in `into:`:
 To keep a variable's name, list it bare: `into: [RESPONSE]`. A child's
 `_`-prefixed variables, like `_RAW`, are private: `into:` can't read them.
 
+A task that exists to produce a value can declare it with `results:`. Then a
+`call:` without `into:` brings it back:
+
+```yaml
+tasks:
+  _pick-type:
+    results: [TYPE]
+    steps:
+      - get:
+          - TYPE:
+              options: [general, programming]
+
+  tell-joke:
+    steps:
+      - call: _pick-type # TYPE is now in scope
+      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
+```
+
+`results:` is a promise: after the call, `TYPE` exists, whether the task asked
+for it or `hobnob tell-joke TYPE=dad` already set it. An `into:` on the call
+takes over and pulls exactly what it lists instead.
+
 A `_` prefix makes a task internal: it runs, but it is hidden from `--list` and
 cannot be named on the command line.
 
@@ -167,6 +189,7 @@ it. Later calls replay the first run's result:
 tasks:
   _types:
     once: true
+    results: [TYPE]
     steps:
       - run: curl -s https://official-joke-api.appspot.com/types
         into:
@@ -178,7 +201,6 @@ tasks:
   tell-joke:
     steps:
       - call: _types
-        into: [TYPE]
       - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
 ```
 

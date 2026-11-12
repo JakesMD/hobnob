@@ -75,6 +75,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				return Step{}, fmt.Errorf("into: %w", err)
 			}
 			step.IntoEntries = entries
+			step.HasInto = true
 		case "soft":
 			step.Soft = parseBool(fieldVal)
 		case "dir":

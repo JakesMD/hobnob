@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
+
+	"hobnob/internal/eval"
 )
 
 func ParseConfig(path string) (*ConfigFile, error) {
@@ -131,6 +133,12 @@ func parseTaskNode(node *yaml.Node) (Task, error) {
 			task.Dir = normalizeTmpl(entry.Val.Value)
 		case "once":
 			task.Once = parseBool(entry.Val)
+		case "results":
+			results, err := parseResultsNode(entry.Val)
+			if err != nil {
+				return Task{}, fmt.Errorf("results: %w", err)
+			}
+			task.Results = results
 		case "steps":
 			steps, err := parseStepSequence(entry.Val)
 			if err != nil {
@@ -140,6 +148,32 @@ func parseTaskNode(node *yaml.Node) (Task, error) {
 		}
 	}
 	return task, nil
+}
+
+// parseResultsNode parses a task's results: list. Entries are plain names
+// only: renaming and reshaping belong to the caller's into:. A _-prefixed
+// name is private to the task, so it can never be a result.
+func parseResultsNode(node *yaml.Node) ([]string, error) {
+	if node.Kind != yaml.SequenceNode {
+		return nil, fmt.Errorf("expected a list of variable names")
+	}
+	seen := make(map[string]bool, len(node.Content))
+	results := make([]string, 0, len(node.Content))
+	for _, item := range node.Content {
+		if item.Kind != yaml.ScalarNode || !eval.IsVarName(item.Value) {
+			return nil, fmt.Errorf("expected a list of variable names; reshape values with into: at the call site")
+		}
+		name := item.Value
+		if IsPrivateVar(name) {
+			return nil, fmt.Errorf("%q is private (a _ prefix keeps a variable inside its task), so it can't be a result", name)
+		}
+		if seen[name] {
+			return nil, fmt.Errorf("%q is listed twice", name)
+		}
+		seen[name] = true
+		results = append(results, name)
+	}
+	return results, nil
 }
 
 func parseStepSequence(node *yaml.Node) ([]Step, error) {

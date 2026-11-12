@@ -32,6 +32,10 @@ _Avoid_: module layer, layer (a layer is one source, a file scope spans several)
 
 ### Calls
 
+**Result**:
+A variable a task lists in `results:`, promising it exists after any call to it, however it got there. A `call:` with no `into:` copies the results into the caller; with an `into:`, the call takes exactly what `into:` lists instead.
+_Avoid_: output (that's a `run:` step's stdout/stderr), return value, export
+
 **Private variable**:
 A `_`-prefixed variable. `into:` can't read it out of a called task, so it stays the task's own scratch value. Privacy is upward only: it still flows down to called tasks.
 _Avoid_: internal variable, hidden variable (a hidden task is one `--list` leaves out)

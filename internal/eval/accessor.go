@@ -490,6 +490,20 @@ func isIdentCont(c byte) bool {
 	return isIdentStart(c) || (c >= '0' && c <= '9')
 }
 
+// IsVarName reports whether s is a plain variable name: a letter or _, then
+// letters, digits or _.
+func IsVarName(s string) bool {
+	if s == "" || !isIdentStart(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		if !isIdentCont(s[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 func isStepKeyStart(c byte) bool { return isIdentStart(c) }
 
 func isStepKeyCont(c byte) bool { return isIdentCont(c) || c == '-' }
@@ -497,10 +511,11 @@ func isStepKeyCont(c byte) bool { return isIdentCont(c) || c == '-' }
 // IsBareRef reports whether s is exactly one accessor term optionally
 // followed by "| filter | ..." — the brace-free form config.normalizeTmpl
 // wraps in {{ }}. Mirrors the old bareVarRef regex's head-charset
-// restriction ([A-Z][A-Z0-9_]*) so relative paths (./infra), dotfiles
-// (.git), and lowercase-leading text never match — only the step grammar
-// (bracket subscripts, dotted keys) is new; a step's own key charset is
-// wider ([A-Za-z_][A-Za-z0-9_-]*), since object keys are mixed-case.
+// restriction (_?[A-Z][A-Z0-9_]*, the _ for private variables) so relative
+// paths (./infra), dotfiles (.git), and lowercase-leading text never match.
+// Only the step grammar (bracket subscripts, dotted keys) is new; a step's
+// own key charset is wider ([A-Za-z_][A-Za-z0-9_-]*), since object keys are
+// mixed-case.
 func IsBareRef(s string) bool {
 	bar := findTopLevelByte(s, '|')
 	head := s
@@ -528,7 +543,10 @@ func isUpperHeadTerm(head string) bool {
 		return false
 	}
 	j := 1
-	if !(head[j] >= 'A' && head[j] <= 'Z') {
+	if head[j] == '_' { // a private variable: ._NAME
+		j++
+	}
+	if j >= len(head) || !(head[j] >= 'A' && head[j] <= 'Z') {
 		return false
 	}
 	j++

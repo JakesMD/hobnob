@@ -36,20 +36,11 @@ func validateVarName(name string) error {
 	return nil
 }
 
-// isVarIdent reports whether s is a plain variable name: a letter or _,
-// then letters, digits or _. It is the only shape a bare into: entry takes.
-func isVarIdent(s string) bool {
-	if s == "" {
-		return false
-	}
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		letter := c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
-		if !letter && (i == 0 || c < '0' || c > '9') {
-			return false
-		}
-	}
-	return true
+// IsPrivateVar reports whether name is a private variable: _-prefixed, so a
+// call:'s into: can't read it out of the called task and results: can't
+// list it. The one place the rule lives.
+func IsPrivateVar(name string) bool {
+	return strings.HasPrefix(name, "_")
 }
 
 // parseBool reports whether n's scalar value is the literal string "true" —

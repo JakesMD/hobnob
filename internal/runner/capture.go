@@ -2,7 +2,6 @@ package runner
 
 import (
 	"fmt"
-	"strings"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
@@ -69,7 +68,7 @@ func captureCallInto(entries []config.IntoEntry, scope, child *scope.Scope) erro
 // does not catch: privacy is upward only, so nothing else checks it.
 func callSource(child *scope.Scope) eval.IntoSource {
 	return func(name string) (value.Value, error) {
-		if strings.HasPrefix(name, "_") {
+		if config.IsPrivateVar(name) {
 			return value.Value{}, fmt.Errorf("%q is private to the called task (a _ prefix keeps a variable out of into:)", name)
 		}
 		if val, ok := child.Vars()[name]; ok {

@@ -5,9 +5,12 @@ type Task struct {
 	Dir    string // task-level working directory template
 	IfExpr string
 	Once   bool // memoize this task's result per hobnob invocation (see runner.execCall)
-	Steps  []Step
-	Hidden bool        // true = omit from --list
-	Cfg    *ConfigFile // non-nil = use this cfg for sub-calls (module task)
+	// Results names the vars this task promises exist after any call to it;
+	// a call: with no into: pulls exactly these (see runner.execCall).
+	Results []string
+	Steps   []Step
+	Hidden  bool        // true = omit from --list
+	Cfg     *ConfigFile // non-nil = use this cfg for sub-calls (module task)
 }
 
 type ModuleEntry struct {
@@ -59,6 +62,22 @@ type IntoEntry struct {
 	ValueTmpl string
 	ValNode   *JSONNode // non-nil for a nested object/array literal; ValueTmpl unused when set
 	Bare      bool      // written as a bare NAME, short for NAME: .NAME (call: only)
+}
+
+// BareIntoEntry is the entry a bare into: NAME parses to, and what a call:
+// without into: pulls for each of its target's results: NAME: NAME.
+func BareIntoEntry(name string) IntoEntry {
+	return IntoEntry{ParentKey: name, ValueTmpl: name, Bare: true}
+}
+
+// DeclaresConst reports whether name is one of this file's own const: names.
+func (cfg *ConfigFile) DeclaresConst(name string) bool {
+	for _, entry := range cfg.ConstEntries {
+		if entry.Key == name {
+			return true
+		}
+	}
+	return false
 }
 
 // JSONNodeKind discriminates the shape of a JSONNode.
@@ -133,6 +152,7 @@ type Step struct {
 	CallTarget  string // call: target
 	CallVars    []SetEntry
 	IntoEntries []IntoEntry
+	HasInto     bool // into: was written, even as []; a call: without it takes the target's results:
 
 	// KindFor
 	ForTarget string
