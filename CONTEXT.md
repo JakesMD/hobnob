@@ -1,6 +1,6 @@
 # hobnob
 
-A YAML task runner whose tasks pass typed values between steps. This glossary covers how a variable's value is decided before any task runs.
+A YAML task runner whose tasks pass typed values between steps. This glossary covers how a variable's value is decided before any task runs, and how values cross calls.
 
 ## Language
 
@@ -29,3 +29,9 @@ _Avoid_: fallback, initial value
 **File scope**:
 The variables one taskfile's own `const:`, `env:` files and `vars:` contribute, resolved against its importer's scope (for the root file: the OS env, built-ins and CLI args). A module's file scope never reads a caller's `with:` or `set:`, and applies only to that module's tasks: its `const:` overrides, its `env:`/`vars:` fill only unclaimed names.
 _Avoid_: module layer, layer (a layer is one source, a file scope spans several)
+
+### Calls
+
+**Private variable**:
+A `_`-prefixed variable. `into:` can't read it out of a called task, so it stays the task's own scratch value. Privacy is upward only: it still flows down to called tasks.
+_Avoid_: internal variable, hidden variable (a hidden task is one `--list` leaves out)

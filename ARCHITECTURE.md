@@ -383,7 +383,9 @@ because `os/exec` takes the first occurrence and scope must win.
 step kinds; only the source differs. `runSource` builds `stdout`/`stderr` via
 `value.Capture` only when a leaf names them, and `exit` as `value.Num`; any
 other name errors. `callSource` reads the child's final vars; an unset name is
-`Missing`. For `call:`, every result is `Adopt`ed, and the target name is
+`Missing`, and a `_`-prefixed one is a hard error (private variables). A bare
+`into:` entry parses to `NAME: NAME` with `Bare` set, which `parseStepNode`
+rejects off `call:`. For `call:`, every result is `Adopt`ed, and the target name is
 flagged secret whenever its value carries a child secret, whatever the leaf's
 shape. The name flag matters because `Display`, used by the `once:` cache-hit
 line, reads only it.

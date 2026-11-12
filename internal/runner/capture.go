@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"strings"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
@@ -63,9 +64,14 @@ func captureCallInto(entries []config.IntoEntry, scope, child *scope.Scope) erro
 }
 
 // callSource is a call: step's into: source: the child's final vars. A name
-// the child never set is a deferred "not found", catchable by | default.
+// the child never set is a deferred "not found", catchable by | default. A
+// _-prefixed name is private to the child and a hard error, which | default
+// does not catch: privacy is upward only, so nothing else checks it.
 func callSource(child *scope.Scope) eval.IntoSource {
 	return func(name string) (value.Value, error) {
+		if strings.HasPrefix(name, "_") {
+			return value.Value{}, fmt.Errorf("%q is private to the called task (a _ prefix keeps a variable out of into:)", name)
+		}
 		if val, ok := child.Vars()[name]; ok {
 			return val, nil
 		}

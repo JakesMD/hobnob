@@ -204,13 +204,13 @@ tasks:
   tell-joke:
     steps:
       - call: _types
-        into: [{ TYPE: .TYPE }]
+        into: [TYPE]
       - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
 
   count-jokes:
     steps:
       - call: _types # cached: no second prompt, no second request
-        into: [{ TYPES: .TYPES }, { TYPE: .TYPE }]
+        into: [TYPES, TYPE]
       - run: echo "{{ .TYPES | len }} types, you picked {{.TYPE}}"
 ```
 
@@ -443,8 +443,17 @@ the caller except through `into:`.
 
 An `into:` entry names one of the child's variables (leading `.` optional),
 then any accessor and filter chain, exactly like `stdout` on `run:`. Dynamic
-keys and `{{ }}` entries read the caller's scope. A name the child never set
-is an error that `| default` catches:
+keys and `{{ }}` entries read the caller's scope. A bare name keeps the
+child's name, and mixes with other entries (`run:` rejects bare names):
+
+```yaml
+- call: _pick-disk
+  into:
+    - DISK # same as DISK: .DISK
+    - PARTITION: "{{.DISK}}s1"
+```
+
+A name the child never set is an error that `| default` catches:
 
 ```yaml
 - call: _fetch-joke
@@ -463,6 +472,12 @@ An entry can also be a literal built from several child values:
 ```
 
 `soft: true` continues past a failed call, as on `run:`.
+
+**`_` variables are private.** `into:` can't read a child's `_`-prefixed
+variable, and `| default` doesn't catch the error. Use them for a task's
+scratch values. Privacy is upward only: a child still sees the caller's `_`
+variables, `with:` can pass them down, and `{{ }}` entries still read the
+caller's own.
 
 **Secrets cross calls both ways.** Masking matches on value, so a secret stays
 masked when `with:` passes it down under a new name, and when `into:` pulls a

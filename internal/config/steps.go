@@ -103,6 +103,13 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 	if step.Quiet && step.Kind != KindRun {
 		return Step{}, fmt.Errorf("quiet: is only supported on run: steps")
 	}
+	if step.Kind != KindCall {
+		for _, entry := range step.IntoEntries {
+			if entry.Bare {
+				return Step{}, fmt.Errorf("into: bare entry %q only works on call: steps; on run: write %s: stdout", entry.ParentKey, entry.ParentKey)
+			}
+		}
+	}
 
 	return step, nil
 }

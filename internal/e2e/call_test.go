@@ -619,3 +619,146 @@ func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) 
 	res.Out(t, "cached")
 	res.Masked(t, "hunter2")
 }
+
+func TestE2E_Call_IntoBareNamePullsSameName(t *testing.T) {
+	// given a call: whose into: lists a bare name, when the call completes,
+	// then the parent gets the child's var under the same name (why: a bare
+	// name is shorthand for NAME: .NAME, the common case of pulling a
+	// prompt task's answer back unchanged)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: _pick
+		        into: [DISK]
+		      - run: echo disk={{.DISK}}
+		  _pick:
+		    steps:
+		      - set:
+		          - DISK: /dev/disk4
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "disk=/dev/disk4")
+}
+
+func TestE2E_Call_IntoBareNameMixesWithMapEntries(t *testing.T) {
+	// given an into: mixing a bare name with a NAME: expr entry, when the
+	// call completes, then both apply, top to bottom
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - DISK
+		          - DEV: "{{.DISK}}s1"
+		          - SIZE: INFO.size
+		      - run: echo disk={{.DISK}} dev={{.DEV}} size={{.SIZE}}
+		  child:
+		    steps:
+		      - set:
+		          - DISK: /dev/disk4
+		          - INFO: { size: 32G }
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "disk=/dev/disk4 dev=/dev/disk4s1 size=32G")
+}
+
+func TestE2E_Call_IntoBareNameMissingErrors(t *testing.T) {
+	// given a bare into: name the child never set, when the call completes,
+	// then the run fails with "not found" (why: same strictness as NAME: .NAME)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into: [DSIK]
+		  child:
+		    steps:
+		      - set:
+		          - DISK: /dev/disk4
+	`, "parent")
+	res.Fails(t)
+	res.Err(t, `"DSIK" not found`)
+}
+
+func TestE2E_Call_IntoBareNameOnRunRejectedAtParseTime(t *testing.T) {
+	// given a bare name in a run: step's into:, when parsed, then it's
+	// rejected (why: a run: step has no variables to pull by name, only
+	// stdout, stderr and exit, so a bare name there is always a mistake)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo hi
+		        into: [OUT]
+	`, "t")
+	res.Fails(t)
+	res.Err(t, "into:", "OUT", "call:")
+}
+
+func TestE2E_Call_IntoCannotReadPrivateChildVar(t *testing.T) {
+	// given a child that sets a _-prefixed var, when the caller's into:
+	// names it, then the run fails naming it private, and | default does not
+	// catch it (why: _ marks a task's scratch vars, which a caller must not
+	// depend on)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into:
+		          - RAW: ._RAW | default "x"
+		  child:
+		    steps:
+		      - set:
+		          - _RAW: secret-sauce
+	`, "parent")
+	res.Fails(t)
+	res.Err(t, "_RAW", "private")
+}
+
+func TestE2E_Call_IntoBareNameCannotReadPrivateChildVar(t *testing.T) {
+	// given a bare _-prefixed name in into:, when the call completes, then
+	// the run fails naming it private
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - call: child
+		        into: [_RAW]
+		  child:
+		    steps:
+		      - set:
+		          - _RAW: secret-sauce
+	`, "parent")
+	res.Fails(t)
+	res.Err(t, "_RAW", "private")
+}
+
+func TestE2E_Call_PrivateVarsStillFlowDown(t *testing.T) {
+	// given a caller holding a _-prefixed var, when it calls a child with
+	// and without with:, and an into: template reads the caller's own _ var,
+	// then all of it works (why: privacy is upward only — inheritance,
+	// with: and the caller's own scope are unaffected)
+	res := Yml(t, `
+		tasks:
+		  parent:
+		    steps:
+		      - set:
+		          - _BASE: /mnt
+		      - call: child
+		        with:
+		          - _SUB: usb
+		        into:
+		          - MOUNT
+		          - LABEL: "{{._BASE}}-label"
+		      - run: echo mount={{.MOUNT}} label={{.LABEL}}
+		  child:
+		    steps:
+		      - set:
+		          - MOUNT: "{{._BASE}}/{{._SUB}}"
+	`, "parent")
+	res.OK(t)
+	res.Lines(t, "mount=/mnt/usb label=/mnt-label")
+}

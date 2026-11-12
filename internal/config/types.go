@@ -58,6 +58,7 @@ type IntoEntry struct {
 	ParentKey string
 	ValueTmpl string
 	ValNode   *JSONNode // non-nil for a nested object/array literal; ValueTmpl unused when set
+	Bare      bool      // written as a bare NAME, short for NAME: .NAME (call: only)
 }
 
 // JSONNodeKind discriminates the shape of a JSONNode.

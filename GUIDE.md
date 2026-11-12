@@ -152,6 +152,9 @@ name it in `into:`:
     - JOKE: .RESPONSE
 ```
 
+To keep a variable's name, list it bare: `into: [RESPONSE]`. A child's
+`_`-prefixed variables, like `_RAW`, are private: `into:` can't read them.
+
 A `_` prefix makes a task internal: it runs, but it is hidden from `--list` and
 cannot be named on the command line.
 
@@ -175,7 +178,7 @@ tasks:
   tell-joke:
     steps:
       - call: _types
-        into: [{ TYPE: .TYPE }]
+        into: [TYPE]
       - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
 ```
 

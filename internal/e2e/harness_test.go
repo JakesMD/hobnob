@@ -58,6 +58,9 @@
 // 40. drop the unterminated-quote error in scope.parseDotenv         -> env_test.go (DotenvUnterminatedQuoteFailsNamingFileAndLine)
 // 41. close ${ at the first } instead of matchingBrace               -> env_test.go (DotenvDefaultAndUnsetReferences)
 // 42. drop the text-after-closing-quote error in parseDotenv         -> env_test.go (DotenvMalformedLineFailsNamingLine)
+//
+// 43. drop the "_" guard in runner.callSource                        -> call_test.go (IntoCannotReadPrivateChildVar)
+// 44. drop the non-call: bare-entry check in parseStepNode           -> call_test.go (IntoBareNameOnRunRejectedAtParseTime)
 package e2e
 
 import (

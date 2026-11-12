@@ -141,12 +141,20 @@ func parseSetNode(node *yaml.Node) ([]SetEntry, error) {
 
 func parseIntoNode(node *yaml.Node) ([]IntoEntry, error) {
 	if node.Kind != yaml.SequenceNode {
-		return nil, fmt.Errorf("into must be a sequence of key: value maps")
+		return nil, fmt.Errorf("into must be a sequence of NAME or NAME: value entries")
 	}
 	var entries []IntoEntry
 	for _, item := range node.Content {
+		if item.Kind == yaml.ScalarNode {
+			name := item.Value
+			if !isVarIdent(name) {
+				return nil, fmt.Errorf("into entry %q: a bare entry must be a variable name", name)
+			}
+			entries = append(entries, IntoEntry{ParentKey: name, ValueTmpl: name, Bare: true})
+			continue
+		}
 		if item.Kind != yaml.MappingNode || len(item.Content) < 2 {
-			return nil, fmt.Errorf("each into entry must be a single key: value pair")
+			return nil, fmt.Errorf("each into entry must be a NAME or a single NAME: value pair")
 		}
 		parentKey := item.Content[0].Value
 		if err := validateVarName(parentKey); err != nil {
