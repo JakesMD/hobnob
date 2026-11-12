@@ -76,23 +76,95 @@ _download() {
     echo "Installed: $INSTALL_DIR/hobnob"
 }
 
-_ensure_hobnob_block_in_rc() {
+# Writes body between the hobnob markers in rc. One well-formed block is
+# replaced in place, none means append, anything else leaves rc untouched.
+# Blocks written by installers before the markers are removed on the way.
+_write_hobnob_block() {
     local rc="$1"
-    local comp_line="$2"
-    # Stable marker ensures PATH always precedes completion and re-runs are idempotent.
-    local marker="# hobnob: path+completion"
-    if grep -qF "$marker" "$rc" 2>/dev/null; then
+    local body="$2"
+    local tmp status=0
+    touch "$rc"
+    tmp="$(mktemp)"
+    BODY="$body" awk '
+        function bare(s) { sub(/\r$/, "", s); return s }
+        function legacy_len(i,   b, n1, n2) {
+            b = bare(line[i]); n1 = bare(line[i + 1]); n2 = bare(line[i + 2])
+            if (b == "# hobnob: path+completion" && n1 == "export PATH=\"$HOME/.local/bin:$PATH\"" &&
+                (n2 == "type compdef &>/dev/null || { autoload -Uz compinit && compinit; }; eval \"$(hobnob completion zsh)\"" ||
+                 n2 == "eval \"$(hobnob completion bash)\"")) return 3
+            if (b == "# hobnob" && n1 == "fish_add_path \"$HOME/.local/bin\"") return 2
+            if (b == "# hobnob completion" && n1 == "hobnob completion fish | source") return 2
+            return 0
+        }
+        {
+            line[NR] = $0
+            if (bare($0) == "### hobnob ###")     { begins++; first = NR }
+            if (bare($0) == "### end hobnob ###") { ends++; last = NR }
+        }
+        END {
+            if (begins > 1 || ends > 1 || begins != ends || first > last) exit 3
+            for (i = 1; i <= NR; i++) {
+                if (i == first) {
+                    out[++n] = "### hobnob ###"; out[++n] = ENVIRON["BODY"]; out[++n] = "### end hobnob ###"
+                    i = last
+                    continue
+                }
+                skip = legacy_len(i)
+                if (skip) {
+                    if (n > 0 && bare(out[n]) == "") n--
+                    i += skip - 1
+                    continue
+                }
+                out[++n] = line[i]
+            }
+            if (!begins) {
+                if (n > 0 && bare(out[n]) != "") out[++n] = ""
+                out[++n] = "### hobnob ###"; out[++n] = ENVIRON["BODY"]; out[++n] = "### end hobnob ###"
+            }
+            for (i = 1; i <= n; i++) print out[i]
+        }
+    ' "$rc" > "$tmp" || status=$?
+
+    if [[ $status -eq 3 ]]; then
+        rm -f "$tmp"
+        echo "warning: $rc has unpaired '### hobnob ###' markers; left it unchanged. Add these lines yourself:" >&2
+        printf '%s\n' "$body" >&2
+        return
+    elif [[ $status -ne 0 ]]; then
+        rm -f "$tmp"
+        echo "error: could not read $rc" >&2
+        exit 1
+    fi
+
+    if cmp -s "$tmp" "$rc"; then
+        rm -f "$tmp"
+        echo "PATH and completion already configured in $rc"
         return
     fi
-    printf '\n%s\nexport PATH="$HOME/.local/bin:$PATH"\n%s\n' "$marker" "$comp_line" >> "$rc"
+
+    # cat rather than mv so a symlinked rc keeps its link and permissions.
+    local backup
+    backup="$(mktemp)"
+    cp "$rc" "$backup"
+    if ! cat "$tmp" > "$rc"; then
+        rm -f "$tmp"
+        echo "error: could not write $rc; its previous contents are saved in $backup" >&2
+        exit 1
+    fi
+    rm -f "$tmp" "$backup"
     echo "PATH and completion configured in $rc"
 }
 
 _setup_shell() {
     local shell="$1"
+    # Written as $HOME/... when under home so the rc line survives a renamed home.
+    local dir="$INSTALL_DIR"
+    case "$dir" in "$HOME"/*) dir="\$HOME${dir#"$HOME"}" ;; esac
     case "$shell" in
         zsh)
-            _ensure_hobnob_block_in_rc "$HOME/.zshrc" 'type compdef &>/dev/null || { autoload -Uz compinit && compinit; }; eval "$(hobnob completion zsh)"'
+            _write_hobnob_block "$HOME/.zshrc" "export PATH=\"$dir:\$PATH\"
+type compdef &>/dev/null || { autoload -Uz compinit && compinit; }
+eval \"\$(hobnob completion zsh)\""
             echo "Reload: source ~/.zshrc"
             ;;
         bash)
@@ -102,20 +174,15 @@ _setup_shell() {
             else
                 rc="$HOME/.bashrc"
             fi
-            _ensure_hobnob_block_in_rc "$rc" 'eval "$(hobnob completion bash)"'
+            _write_hobnob_block "$rc" "export PATH=\"$dir:\$PATH\"
+eval \"\$(hobnob completion bash)\""
             echo "Reload: source $rc"
             ;;
         fish)
             mkdir -p "$HOME/.config/fish"
             local rc="$HOME/.config/fish/config.fish"
-            if ! grep -qF "fish_add_path" "$rc" 2>/dev/null || ! grep -qF "local/bin" "$rc" 2>/dev/null; then
-                printf '\n# hobnob\nfish_add_path "$HOME/.local/bin"\n' >> "$rc"
-                echo "Added ~/.local/bin to fish PATH in $rc"
-            fi
-            if ! grep -qF "hobnob completion fish" "$rc" 2>/dev/null; then
-                printf '\n# hobnob completion\nhobnob completion fish | source\n' >> "$rc"
-                echo "Completion configured in $rc"
-            fi
+            _write_hobnob_block "$rc" "fish_add_path \"$dir\"
+hobnob completion fish | source"
             echo "Reload: source $rc"
             ;;
         *)
@@ -151,4 +218,5 @@ main() {
     echo "Done. hobnob installed to $INSTALL_DIR/hobnob"
 }
 
-main
+# Tests source this file with HOBNOB_INSTALL_SOURCE_ONLY=1 to reach the helpers.
+[[ -n "${HOBNOB_INSTALL_SOURCE_ONLY:-}" ]] || main
