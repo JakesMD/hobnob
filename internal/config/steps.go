@@ -25,12 +25,17 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 					return Step{}, fmt.Errorf("run: list form needs at least one element")
 				}
 				for _, item := range fieldVal.Content {
-					step.Argv = append(step.Argv, normalizeTmpl(item.Value))
+					tmpl, _ := templateLeaf(item.Value)
+					step.Argv = append(step.Argv, tmpl)
 				}
 			case yaml.MappingNode:
 				return Step{}, fmt.Errorf("run: expected a command string or a list of arguments, got a mapping")
 			default:
-				step.Command = normalizeTmpl(fieldVal.Value)
+				cmd, err := normalizeTmpl(fieldVal.Value)
+				if err != nil {
+					return Step{}, fmt.Errorf("run: %w", err)
+				}
+				step.Command = cmd
 			}
 		case "set":
 			step.Kind = KindSet
@@ -79,7 +84,11 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		case "soft":
 			step.Soft = parseBool(fieldVal)
 		case "dir":
-			step.DirTmpl = normalizeTmpl(fieldVal.Value)
+			dir, err := normalizeTmpl(fieldVal.Value)
+			if err != nil {
+				return Step{}, fmt.Errorf("dir: %w", err)
+			}
+			step.DirTmpl = dir
 		case "quiet":
 			if fieldVal.Kind != yaml.ScalarNode {
 				return Step{}, fmt.Errorf("quiet: expected true/false or a message string")
@@ -88,7 +97,11 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				step.Quiet = parseBool(fieldVal)
 			} else {
 				step.Quiet = true
-				step.QuietMsg = normalizeTmpl(fieldVal.Value)
+				msg, err := normalizeTmpl(fieldVal.Value)
+				if err != nil {
+					return Step{}, fmt.Errorf("quiet: %w", err)
+				}
+				step.QuietMsg = msg
 			}
 		case "rerun":
 			return Step{}, fmt.Errorf("rerun: was removed along with use: — omit once: on the target task instead")
@@ -151,12 +164,20 @@ func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, for
 					entry.List = append(entry.List, item.Value)
 				}
 			} else {
-				entry.ListTmpl = normalizeTmpl(valNode.Value)
+				tmpl, err := normalizeTmpl(valNode.Value)
+				if err != nil {
+					return "", nil, nil, fmt.Errorf("loop: %s: %w", varName, err)
+				}
+				entry.ListTmpl = tmpl
 			}
 			forMatrix = append(forMatrix, entry)
 		}
 	default:
-		forTarget = normalizeTmpl(fieldVal.Value)
+		target, err := normalizeTmpl(fieldVal.Value)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("loop: %w", err)
+		}
+		forTarget = target
 	}
 	return forTarget, forList, forMatrix, nil
 }

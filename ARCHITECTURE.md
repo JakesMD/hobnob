@@ -160,7 +160,13 @@ Everything renders through `text/template` against `map[string]value.Value`.
 - **`ResolveArgv(tmpls, vars)`** builds `run:`'s list form. An array splices
   into one argument per item (empty splices to nothing), an object errors
   naming the accessor fix, and an empty element stays one empty argument so
-  later positions never shift.
+  later positions never shift. A spread element (`.OPTS...`) resolves as its
+  reference does.
+- **Spread** (`spread.go`, [ADR-0004](docs/adr/0004-list-spread-in-literals.md)).
+  `CutSpread` is the grammar: one reference (a bare ref or a parenthesised
+  pipeline) followed by `...`; `CutIntoSpread` is the same for an `into:` leaf.
+  Text that merely ends in `...` is not a spread. `SpreadItems` returns a
+  list's items and errors on any other kind, naming `| json` for a string.
 - **`ReferencedVars(expr)`** (`refs.go`) collects every top-level var a
   template touches, dynamic keys included. The `const:`/`vars:` checks use it.
 - Shared helpers: `ResolvePath` (relative to the taskfile dir), `SplitKV` (the
@@ -216,6 +222,13 @@ evaluates each leaf with the caller's `evalLeaf` and assembles a real Go tree,
 never round-tripping through JSON text, so a leaf holding a quote or backslash
 cannot corrupt the structure. `EvalSetEntry` wraps scalar-or-literal for
 `set:`, `with:`, `const:` and `vars:`.
+
+A list element written `REF...` parses to a leaf with `JSONNode.Spread` set
+(`templateLeaf` for template literals, `intoLeaf` for `into:`), and
+`EvalJSONNode` appends its `eval.SpreadItems` in place of one element. A
+spread anywhere else is a parse error: `normalizeTmpl`, which every
+single-value field that takes a bare reference goes through, rejects it, as do
+object fields and bare entries in a `set:`/`into:` list.
 
 **Modules.** `modules.go` parses an entry into a `ModuleEntry` (raw path,
 `show:`/`hide:`/`flatten:`). `RegisterModuleTasks` applies those filters and
@@ -566,7 +579,8 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
 - `--upgrade` networking and tarballs (`internal/app/upgrade_test.go`)
 - bubbletea `Update`/`View` (`internal/tui`)
 - combinatorial pure functions: `internal/value/path_test.go`,
-  `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`
+  `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`,
+  `internal/eval/spread_test.go`
 
 Production code exposes exactly four test seams: `runner.SetPrompts`,
 `runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.

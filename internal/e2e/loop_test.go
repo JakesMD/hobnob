@@ -263,3 +263,56 @@ func TestE2E_Loop_MatrixIteratorVarsNotLeakedAfterLoop(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "linux/amd64", "mac/amd64", "after os=gone arch=gone")
 }
+
+func TestE2E_Loop_SpreadTargetErrors(t *testing.T) {
+	// given loop: .A... (a spread outside any list), when the file loads,
+	// then it errors rather than looping once over the text ".A..." (why: a
+	// spread has no list to splice into outside a list element)
+
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - A: [a, b]
+		      - loop: .A...
+		        steps:
+		          - run: echo item={{.ITEM}}
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, `".A..."`, "only works as a list element")
+	res.NotOut(t, "item=")
+}
+
+func TestE2E_Loop_TextEndingInDotsStaysText(t *testing.T) {
+	// given a step field holding plain text that ends in ..., when the task
+	// runs, then the text is kept as written (why: only a reference followed
+	// by ... is a spread)
+
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - A: x
+		      - run: echo hi
+		        quiet: Loading...
+		      - loop: ['{{ .A }}...']
+		        steps:
+		          - run: echo item={{.ITEM}}
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "Loading...", "item=x...")
+}

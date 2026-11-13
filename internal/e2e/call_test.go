@@ -764,3 +764,33 @@ func TestE2E_Call_PrivateVarsStillFlowDown(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "mount=/mnt/usb label=/mnt-label")
 }
+
+func TestE2E_Call_WithListLiteralSpreadsAList(t *testing.T) {
+	// given a with: list literal spreading a caller list, when the call runs,
+	// then the child sees one flat list (why: with: builds structure, so it
+	// takes spread like every other literal)
+
+	// Arrange
+	yml := `
+		tasks:
+		  child:
+		    steps:
+		      - loop: .OPTS
+		        steps:
+		          - run: echo opt={{.ITEM}}
+		  t:
+		    steps:
+		      - set:
+		          - BASE: [-s, -L]
+		      - call: child
+		        with:
+		          - OPTS: [.BASE..., --verbose]
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "opt=-s", "opt=-L", "opt=--verbose")
+}

@@ -67,6 +67,12 @@
 // 48. drop the leading-_ allowance in eval.isUpperHeadTerm           -> accessor_test.go (BraceFreePrivateVarForm)
 // 49. test len(IntoEntries) instead of HasInto in runner.finishCall  -> results_test.go (EmptyIntoTakesNothing)
 // 50. drop the DeclaresConst check in runner.finishCall              -> results_test.go (ModuleResultClashingWithCallerConstFails)
+//
+// 51. append a spread's list whole in config.evalJSONNodeTree         -> set_test.go (SpreadSplicesListsIntoAListLiteral), call/const/vars/run_into _test.go (ListLiteralSpreads...)
+// 52. make config.intoLeaf never report a spread                     -> run_into_test.go (ListLiteralSpreadsCapturedList, SpreadOutsideAListErrors)
+// 53. drop the child.Spread check on object fields in parseJSONLiteralNode -> set_test.go (SpreadOutsideAListErrors)
+// 54. wrap run: list elements with eval.IsBareRef alone in config.parseStepNode -> run_test.go (SpreadIsANoOp)
+// 55. let config.singleValue return a spread's template instead of erroring -> loop_test.go (SpreadTargetErrors), set/run_into _test.go (SpreadOutsideAListErrors)
 package e2e
 
 import (

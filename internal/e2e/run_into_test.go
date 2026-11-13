@@ -322,3 +322,63 @@ func TestE2E_RunInto_DynamicKeyNamedSRCReadsCallerScope(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, `{"a":"from-caller-key"}`, "out=from-caller-key")
 }
+
+func TestE2E_RunInto_ListLiteralSpreadsCapturedList(t *testing.T) {
+	// given an into: list literal spreading captured JSON stdout beside a
+	// plain leaf, when the step runs, then the stdout items splice in ahead
+	// of the exit code (why: into: builds structure, so it takes spread like
+	// every other literal)
+
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo '["a","b"]'
+		        into:
+		          - ALL: [stdout..., exit]
+		      - run: echo '{{ .ALL }}'
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, `["a","b",0]`)
+}
+
+func TestE2E_RunInto_SpreadOutsideAListErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		yml     string
+		wantErr string
+	}{
+		{"given a single-value into: entry written stdout..., when the file loads, then it errors (why: OUT: stdout... has no list to splice into)", `
+			tasks:
+			  t:
+			    steps:
+			      - run: echo '[1]'
+			        into:
+			          - OUT: stdout...
+		`, `into entry "OUT": "stdout..." spreads a list`},
+		{"given a bare spread entry in into:'s entry list, when the file loads, then it errors (why: a spread names no variable to set)", `
+			tasks:
+			  t:
+			    steps:
+			      - run: echo '[1]'
+			        into:
+			          - stdout...
+		`, `into entry "stdout...": a spread is not a KEY: value pair`},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Act
+			res := Yml(t, tc.yml, "t")
+
+			// Assert
+			res.Fails(t)
+			res.Err(t, tc.wantErr)
+		})
+	}
+}

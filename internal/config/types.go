@@ -105,6 +105,7 @@ const (
 type JSONNode struct {
 	Kind     JSONNodeKind
 	Tmpl     string      // JSONString
+	Spread   string      // JSONString: the reference before a trailing ... in a list element, whose items join the list. Empty if not a spread.
 	Literal  any         // JSONLiteral
 	Fields   []JSONField // JSONObject
 	Elements []JSONNode  // JSONArray

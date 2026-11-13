@@ -310,6 +310,19 @@ arrives intact, and the URL's `&` and `?` are just characters. The string form s
 > form for pipes, redirects and globs, escaping values with
 > [`quote`](REFERENCE.md#filters).
 
+A variable holding a list splices into several arguments. To build one list
+from another, spread it with a trailing `...`; without it, a list nests inside
+the new one:
+
+```yaml
+- set:
+    - CURL_OPTS: [-s, --max-time, "10"]
+- set:
+    - CURL_OPTS: [.CURL_OPTS..., --verbose]
+  if: '[ "{{.VERBOSE}}" = true ]'
+- run: [curl, .CURL_OPTS, "{{.API}}/questions?limit=1"]
+```
+
 ## When a command fails
 
 A non-zero exit stops the run. `soft: true` continues past it, and `into:`

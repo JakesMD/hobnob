@@ -191,3 +191,29 @@ func TestE2E_Const_UnknownTopLevelKeyErrors(t *testing.T) {
 	res.Fails(t)
 	res.Err(t, `unknown top-level key "taks"`)
 }
+
+func TestE2E_Const_ListLiteralSpreadsEarlierConst(t *testing.T) {
+	// given a const: list literal spreading an earlier const: list, when the
+	// file loads, then the constant is one flat list and passes the closed-
+	// world check (why: const: builds structure, so it takes spread like
+	// every other literal, and the spread still counts as a reference)
+
+	// Arrange
+	yml := `
+		const:
+		  - BASE: [a, b]
+		  - ALL: [.BASE..., c]
+
+		tasks:
+		  t:
+		    steps:
+		      - run: echo '{{ .ALL }}'
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, `["a","b","c"]`)
+}

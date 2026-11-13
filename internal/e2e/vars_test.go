@@ -141,3 +141,28 @@ func TestE2E_Vars_ListLiteralStaysTyped(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "port=8080", "port=9090")
 }
+
+func TestE2E_Vars_ListLiteralSpreadsEarlierVar(t *testing.T) {
+	// given a vars: list literal spreading an earlier vars: list, when the
+	// file loads, then the default is one flat list (why: vars: builds
+	// structure, so it takes spread like every other literal)
+
+	// Arrange
+	yml := `
+		vars:
+		  - CURL_OPTS: [-s]
+		  - VERBOSE_OPTS: [.CURL_OPTS..., --verbose]
+
+		tasks:
+		  t:
+		    steps:
+		      - run: echo '{{ .VERBOSE_OPTS }}'
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, `["-s","--verbose"]`)
+}

@@ -223,3 +223,26 @@ func TestE2E_RunArgv_DisplayLineQuotesOnlyWhenNeeded(t *testing.T) {
 	res.OK(t)
 	res.Out(t, "run: [t] echo 'hello world'")
 }
+
+func TestE2E_RunArgv_SpreadIsANoOp(t *testing.T) {
+	// given an argv element written with ..., when the step runs, then it
+	// splices exactly as the bare element would (why: argv lists already
+	// splice arrays, so both kinds of list share one spelling)
+
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - WORDS: [hello, world]
+		      - run: [echo, .WORDS..., "!"]
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "hello world !")
+}

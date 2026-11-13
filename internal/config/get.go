@@ -42,14 +42,22 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 						entry.FromList = append(entry.FromList, option.Value)
 					}
 				} else {
-					entry.FromTmpl = normalizeTmpl(fieldVal.Value)
+					tmpl, err := normalizeTmpl(fieldVal.Value)
+					if err != nil {
+						return nil, fmt.Errorf("get entry %q options: %w", entry.VarName, err)
+					}
+					entry.FromTmpl = tmpl
 				}
 			case "multi":
 				entry.Multi = parseBool(fieldVal)
 			case "check":
 				entry.Check = fieldVal.Value
 			case "default":
-				entry.DefaultTmpl = normalizeTmpl(fieldVal.Value)
+				tmpl, err := normalizeTmpl(fieldVal.Value)
+				if err != nil {
+					return nil, fmt.Errorf("get entry %q default: %w", entry.VarName, err)
+				}
+				entry.DefaultTmpl = tmpl
 			case "secret":
 				entry.Secret = parseBool(fieldVal)
 			case "optional":

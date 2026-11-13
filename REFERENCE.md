@@ -426,6 +426,10 @@ Each element is a whole field value, so a bare `.VAR` or a filter chain works:
 ```
 
 - **Array** splices into several arguments; an empty one splices to nothing.
+- **`...`** is accepted and changes nothing, since arrays already splice:
+  `[curl, .CURL_OPTS..., .URL]` runs the same as `[curl, .CURL_OPTS, .URL]`.
+  Write it if you like lists to read the same everywhere (see
+  [Spreading a list](#types)).
 - **`""`** stays an empty argument, so later positions never shift.
 - **Object** is an error. Use an accessor to pick the field you meant.
 
@@ -720,6 +724,34 @@ keeps its type. Any surrounding text makes it a string:
 
 This is what makes `options: .CATEGORIES` and `- run: [curl, .CURL_OPTS, .URL]`
 work.
+
+**Spreading a list.** A list literal nests what it holds, as JSON does. A
+trailing `...` on an element splices that list's items in instead:
+
+```yaml
+- set:
+    - CURL_OPTS: [-s, --max-time, "10"]
+    - EXTRA: [--retry, "3"]
+    - NESTED: [.CURL_OPTS, --verbose] # [["-s", "--max-time", "10"], "--verbose"]
+    - FLAT: [.CURL_OPTS..., .EXTRA..., --verbose] # ["-s", "--max-time", "10", "--retry", "3", "--verbose"]
+```
+
+- Any number of spreads, in any position. Only Go's `...` spelling is
+  borrowed, not its rule of one spread as the last argument.
+- It works in every `set:`/`with:`/`into:`/`const:`/`vars:` list literal. In
+  `into:`, spread a source the same way: `[stdout..., exit]`.
+- `...` covers the whole element, accessors and filters included:
+  `.QUESTIONS[*].category...`, `(.TAGS | json)...`.
+- An empty list adds nothing.
+- Spreading anything but a list (string, number, bool, object, null) is an
+  error. A string names `| json`, the way to parse text that should be a list.
+- A missing path errors, as anywhere else, unless `| default` catches it.
+- `...` outside a list element is an error when the file loads, in any field
+  that takes a reference: `B: .A...`, `loop: .A...`, `options:`, `default:`,
+  `dir:` and the rest hold one value, so there is no list to splice into.
+  Neither has an object field or a bare entry in `set:`/`into:`.
+- Only a reference spreads. Plain text such as `Loading...` stays text; write
+  a reference followed by literal dots as a template: `"{{ .A }}..."`.
 
 ## Accessors
 

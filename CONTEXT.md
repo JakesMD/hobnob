@@ -39,3 +39,9 @@ _Avoid_: output (that's a `run:` step's stdout/stderr), return value, export
 **Private variable**:
 A `_`-prefixed variable. `into:` can't read it out of a called task, so it stays the task's own scratch value. Privacy is upward only: it still flows down to called tasks.
 _Avoid_: internal variable, hidden variable (a hidden task is one `--list` leaves out)
+
+### Values
+
+**Spread**:
+A list element written with a trailing `...` (`[.A..., d]`), whose items join the surrounding list one by one instead of nesting inside it as a single element. Only a list can be spread, and only into a list.
+_Avoid_: append, concat, flatten

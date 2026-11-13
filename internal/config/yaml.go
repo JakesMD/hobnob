@@ -5,19 +5,15 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-
-	"hobnob/internal/eval"
 )
 
 // normalizeTmpl wraps a bare accessor or accessor | filter expression in
 // {{ }} so users can write `default: .LIST[0]` or
 // `options: .CFG.items[0].name` instead of the {{ }}-wrapped form. See
-// eval.IsBareRef.
-func normalizeTmpl(value string) string {
-	if eval.IsBareRef(value) {
-		return "{{" + value + "}}"
-	}
-	return value
+// eval.IsBareRef. Every field normalised here holds one value, so a spread
+// (.A...) in it is an error.
+func normalizeTmpl(value string) (string, error) {
+	return singleValue(templateLeaf, value)
 }
 
 // isEmptyNode reports whether node is a YAML null (a key given with no value,

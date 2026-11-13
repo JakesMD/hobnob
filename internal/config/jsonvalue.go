@@ -1,6 +1,9 @@
 package config
 
-import "hobnob/internal/value"
+import (
+	"hobnob/internal/eval"
+	"hobnob/internal/value"
+)
 
 // EvalJSONNode walks a JSONNode, calling evalLeaf on every JSONString leaf
 // and assembling the result as a real Go tree (json.Number/string/bool/
@@ -33,13 +36,21 @@ func evalJSONNodeTree(n JSONNode, evalLeaf func(string) (value.Value, error)) (a
 		}
 		return obj, nil
 	case JSONArray:
-		arr := make([]any, len(n.Elements))
-		for i, elem := range n.Elements {
+		arr := make([]any, 0, len(n.Elements))
+		for _, elem := range n.Elements {
+			if elem.Spread != "" {
+				items, err := evalSpread(elem, evalLeaf)
+				if err != nil {
+					return nil, err
+				}
+				arr = append(arr, items...)
+				continue
+			}
 			val, err := evalJSONNodeTree(elem, evalLeaf)
 			if err != nil {
 				return nil, err
 			}
-			arr[i] = val
+			arr = append(arr, val)
 		}
 		return arr, nil
 	case JSONLiteral:
@@ -51,6 +62,14 @@ func evalJSONNodeTree(n JSONNode, evalLeaf func(string) (value.Value, error)) (a
 		}
 		return val.Any(), nil
 	}
+}
+
+func evalSpread(elem JSONNode, evalLeaf func(string) (value.Value, error)) ([]any, error) {
+	val, err := evalLeaf(elem.Tmpl)
+	if err != nil {
+		return nil, err
+	}
+	return eval.SpreadItems(elem.Spread, val)
 }
 
 // EvalSetEntry evaluates a SetEntry — shared shape across set:, with:, and
