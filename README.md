@@ -25,7 +25,7 @@ One static Go binary, nothing else to install.
 ## 👀 Try it
 
 ```bash
-hobnob --demo tell-joke
+hobnob --demo ask-trivia
 ```
 
 ![Demo](.github/assets/demo.gif)
@@ -34,31 +34,45 @@ That runs this file:
 
 ```yaml
 tasks:
-  tell-joke:
-    info: Tell a joke from a type you pick.
+  ask-trivia:
+    info: Answer a trivia question from a category you pick.
     steps:
       # Query an API. The response is a value now.
-      - run: curl -s https://official-joke-api.appspot.com/types
+      - run: curl -fsS https://the-trivia-api.com/v2/categories
         into:
-          - TYPES: stdout
+          - CATEGORIES: stdout
 
       # The menu is built from what that step returned.
       - get:
-          - TYPE:
-              info: Which kind of joke?
-              options: .TYPES
+          - CATEGORY:
+              info: Which category?
+              options: .CATEGORIES | keys
 
       # A sub-task, handing back a value.
-      - call: _fetch-joke
+      - call: _fetch-question
         into:
-          - JOKE: .RESPONSE
+          - TRIVIA: .RESPONSE[0]
+
+      # Shuffle the answers, so the right one isn't always first.
+      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
+        into:
+          - ANSWERS: stdout | lines
 
       # Dot straight into the JSON. No parsing step.
-      - run: echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
+      - get:
+          - GUESS:
+              info: "{{ .TRIVIA.question.text }}"
+              options: .ANSWERS
 
-  _fetch-joke:
+      - run: echo "Correct!"
+        if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
+      - run: 'echo "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."'
+        if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
+
+  _fetch-question:
     steps:
-      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
+      # Look up the chosen category's id by name.
+      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
         into:
           - RESPONSE: stdout
 ```

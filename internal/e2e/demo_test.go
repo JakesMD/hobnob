@@ -10,7 +10,7 @@ func TestE2E_Demo_FlagListsBuiltInTasks(t *testing.T) {
 	// listed instead of anything discovered on disk
 	res := Run(t, Case{Files: Files{}, Args: []string{"--demo", "--list"}, Discover: true})
 	res.OK(t)
-	res.Out(t, "tell-joke")
+	res.Out(t, "ask-trivia")
 }
 
 func TestE2E_Demo_FlagSaysItIsTheDemo(t *testing.T) {
@@ -40,7 +40,7 @@ func TestE2E_Demo_FlagBeatsARealTaskfile(t *testing.T) {
 		      - run: echo building
 	`, Args: []string{"--demo", "--list"}, Discover: true})
 	res.OK(t)
-	res.Out(t, "tell-joke")
+	res.Out(t, "ask-trivia")
 	res.NotOut(t, "build")
 }
 
@@ -57,7 +57,7 @@ func TestE2E_Demo_NotReachableWithoutTheFlag(t *testing.T) {
 	// given no hobnob.yml anywhere and no --demo, when a demo task name is
 	// run, then discovery still fails (why: the demo is opt-in — someone who
 	// doesn't know hobnob isn't helped by a task appearing from nowhere)
-	res := Run(t, Case{Files: Files{}, Args: []string{"tell-joke"}, Discover: true})
+	res := Run(t, Case{Files: Files{}, Args: []string{"ask-trivia"}, Discover: true})
 	res.Fails(t)
 	res.Err(t, "no hobnob.yml or hobnob.yaml found")
 	assertNoDemoNotice(t, res)
@@ -69,7 +69,7 @@ func TestE2E_Demo_BareInvocationStillShowsUsage(t *testing.T) {
 	res := Run(t, Case{Files: Files{}, Discover: true})
 	res.OK(t)
 	res.Out(t, "Usage:")
-	res.NotOut(t, "tell-joke")
+	res.NotOut(t, "ask-trivia")
 	assertNoDemoNotice(t, res)
 }
 

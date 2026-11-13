@@ -11,7 +11,7 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 
 One static binary into `~/.local/bin`, plus completion for bash, zsh and fish.
 
-Nothing written yet? `hobnob --demo tell-joke` runs a taskfile baked into the
+Nothing written yet? `hobnob --demo ask-trivia` runs a taskfile baked into the
 binary.
 
 ## Running tasks
@@ -20,7 +20,7 @@ Hobnob finds the nearest `hobnob.yml` in the current directory or its
 parents. Run a task by name:
 
 ```bash
-hobnob tell-joke
+hobnob ask-trivia
 ```
 
 Bare `hobnob` runs the task named `default`, or opens a picker if there is
@@ -32,7 +32,7 @@ hobnob --list     # every task, with its description
 hobnob --select   # the picker, even when a default exists
 ```
 
-Point at a different file with `--file ops/jokes.yml`.
+Point at a different file with `--file ops/trivia.yml`.
 
 ## Writing your first taskfile
 
@@ -40,10 +40,10 @@ A task is a name and a list of steps:
 
 ```yaml
 tasks:
-  tell-joke:
-    info: Tell a random joke.
+  ask-trivia:
+    info: Ask a random trivia question.
     steps:
-      - run: curl -s https://official-joke-api.appspot.com/random_joke
+      - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1"
 ```
 
 `info:` is what `--list` and the picker show. No targets, no dependency
@@ -55,21 +55,21 @@ graph, no phony declarations.
 
 ```yaml
 - get:
-    - TYPE:
-        info: Which kind of joke?
-        default: general
-- run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
+    - CATEGORY:
+        info: Which category?
+        default: general_knowledge
+- run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
 **`get:` is skipped when the variable is already set**, so the same task is
 interactive or not depending on how you call it:
 
 ```bash
-hobnob tell-joke              # prompts
-hobnob tell-joke TYPE=dad     # no prompt
+hobnob ask-trivia                     # prompts
+hobnob ask-trivia CATEGORY=history    # no prompt
 ```
 
-Anything that put `TYPE` in scope counts: a CLI argument, a `vars:` default,
+Anything that put `CATEGORY` in scope counts: a CLI argument, a `vars:` default,
 an earlier step.
 
 > [!TIP]
@@ -94,23 +94,24 @@ they do inside `{{ }}`.
 Captured output that parses as JSON becomes real data, not text. Dot into it:
 
 ```yaml
-- run: curl -s https://official-joke-api.appspot.com/random_joke
+- run: curl -s "https://the-trivia-api.com/v2/questions?limit=1"
   into:
-    - JOKE: stdout
-- run: echo "{{ .JOKE.setup }} ... {{ .JOKE.punchline }}"
+    - QUESTIONS: stdout
+- run: echo "{{ .QUESTIONS[0].question.text }} ... {{ .QUESTIONS[0].correctAnswer }}"
 ```
 
-No parse step, no `jq`. Ten steps later `.JOKE.id` is still a number, so
-`{{ gt .JOKE.id 400 }}` compares numerically.
+No parse step, no `jq`. Numbers stay numbers too: capture
+`/v2/metadata` as `META`, and ten steps later
+`{{ gt .META.byCategory.science 1000 }}` still compares numerically.
 
 Arrays, indexes, slices and wildcards all work:
 
 ```yaml
-- run: curl -s https://official-joke-api.appspot.com/jokes/random/5
+- run: curl -s "https://the-trivia-api.com/v2/questions?limit=5"
   into:
-    - JOKES: stdout
-- run: echo "{{ .JOKES[0].setup }}"
-- run: echo "{{ .JOKES[*].id }}"      # [99, 32, 218, 407, 209]
+    - QUESTIONS: stdout
+- run: echo "{{ .QUESTIONS[0].question.text }}"
+- run: echo "{{ .QUESTIONS[*].difficulty }}"   # [hard, hard, easy, hard, medium]
 ```
 
 > [!NOTE]
@@ -120,23 +121,24 @@ Arrays, indexes, slices and wildcards all work:
 
 ## Building a prompt from live data
 
-A captured array is a real list, so it can be the menu. Let the API's `/types`
-endpoint populate the prompt:
+A captured array is a real list, so it can be the menu. The API's `/metadata`
+endpoint counts questions per category, and `keys` turns those counts into a
+list of category names:
 
 ```yaml
-- run: curl -s https://official-joke-api.appspot.com/types
+- run: curl -s https://the-trivia-api.com/v2/metadata
   into:
-    - TYPES: stdout
+    - CATEGORIES: stdout.byCategory | keys
 - get:
-    - TYPE:
-        info: Which kind of joke?
-        options: .TYPES
+    - CATEGORY:
+        info: Which category?
+        options: .CATEGORIES
 ```
 
-The prompt can only offer types the API has: a form built from a previous
+The prompt can only offer categories the API has: a form built from a previous
 step's output.
 
-`options: .TYPES` has no `{{ }}`. A field that is one variable reference can
+`options: .CATEGORIES` has no `{{ }}`. A field that is one variable reference can
 drop the braces, which also keeps the value's type.
 
 ## Calling other tasks
@@ -145,11 +147,11 @@ drop the braces, which also keeps the value's type.
 name it in `into:`:
 
 ```yaml
-- call: _fetch-joke
+- call: _fetch-question
   with:
-    - TYPE: programming
+    - CATEGORY: science
   into:
-    - JOKE: .RESPONSE
+    - QUESTIONS: .RESPONSE
 ```
 
 To keep a variable's name, list it bare: `into: [RESPONSE]`. A child's
@@ -160,22 +162,22 @@ A task that exists to produce a value can declare it with `results:`. Then a
 
 ```yaml
 tasks:
-  _pick-type:
-    results: [TYPE]
+  _pick-category:
+    results: [CATEGORY]
     steps:
       - get:
-          - TYPE:
-              options: [general, programming]
+          - CATEGORY:
+              options: [general_knowledge, science]
 
-  tell-joke:
+  ask-trivia:
     steps:
-      - call: _pick-type # TYPE is now in scope
-      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
+      - call: _pick-category # CATEGORY is now in scope
+      - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
-`results:` is a promise: after the call, `TYPE` exists, whether the task asked
-for it or `hobnob tell-joke TYPE=dad` already set it. An `into:` on the call
-takes over and pulls exactly what it lists instead.
+`results:` is a promise: after the call, `CATEGORY` exists, whether the task
+asked for it or `hobnob ask-trivia CATEGORY=science` already set it. An
+`into:` on the call takes over and pulls exactly what it lists instead.
 
 A `_` prefix makes a task internal: it runs, but it is hidden from `--list` and
 cannot be named on the command line.
@@ -187,34 +189,35 @@ it. Later calls replay the first run's result:
 
 ```yaml
 tasks:
-  _types:
+  _categories:
     once: true
-    results: [TYPE]
+    results: [CATEGORY]
     steps:
-      - run: curl -s https://official-joke-api.appspot.com/types
+      - run: curl -s https://the-trivia-api.com/v2/metadata
         into:
-          - TYPES: stdout
+          - CATEGORIES: stdout.byCategory | keys
       - get:
-          - TYPE:
-              options: .TYPES
+          - CATEGORY:
+              options: .CATEGORIES
 
-  tell-joke:
+  ask-trivia:
     steps:
-      - call: _types
-      - run: curl -s https://official-joke-api.appspot.com/jokes/{{.TYPE}}/random
+      - call: _categories
+      - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
-Any other task calling `_types` gets the same answer, with no second prompt or
-request. Hobnob prints `(cached — TYPE=dad …)` when it replays.
+Any other task calling `_categories` gets the same answer, with no second
+prompt or request. When it replays, hobnob prints what the first run set:
+`(cached — CATEGORIES=[…] CATEGORY=history)`.
 
 ## Looping over values
 
 Iterate a list, with the current element as `{{.ITEM}}`:
 
 ```yaml
-- loop: .TYPES
+- loop: .CATEGORIES
   steps:
-    - run: curl -s https://official-joke-api.appspot.com/jokes/{{.ITEM}}/random
+    - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.ITEM}}"
 ```
 
 An object iterates as `{{.KEY}}` and `{{.VALUE}}`. A matrix runs every
@@ -222,10 +225,10 @@ combination:
 
 ```yaml
 - loop:
-    TYPE: [general, programming]
+    CATEGORY: [general_knowledge, science]
     COUNT: [1, 3]
   steps:
-    - run: echo "{{.TYPE}} x {{.COUNT}}"
+    - run: echo "{{.CATEGORY}} x {{.COUNT}}"
 ```
 
 ## Shared values and defaults
@@ -235,10 +238,10 @@ a CLI argument. `vars:` is a default anyone can override:
 
 ```yaml
 const:
-  - API: https://official-joke-api.appspot.com
+  - API: https://the-trivia-api.com/v2
 
 vars:
-  - TYPE: general
+  - CATEGORY: general_knowledge
 ```
 
 The full order is `env < vars: < env files < CLI args < const:`, and a task's
@@ -267,40 +270,40 @@ vars:
 which makes it the natural home for a wrapper:
 
 ```yaml
-# jokes.yml
+# trivia.yml
 const:
-  - API: https://official-joke-api.appspot.com
+  - API: https://the-trivia-api.com/v2
 
 tasks:
   random:
     steps:
-      - run: [curl, -s, "{{.API}}/random_joke"]
+      - run: [curl, -s, "{{.API}}/questions?limit=1"]
 ```
 
 ```yaml
 # hobnob.yml
 modules:
-  - jokes: ./jokes.yml
+  - trivia: ./trivia.yml
 
 tasks:
   standup:
     steps:
-      - call: jokes:random
+      - call: trivia:random
 ```
 
 Imported tasks are namespaced by module key. `API` reaches every task in
-`jokes.yml` and stays invisible to the parent.
+`trivia.yml` and stays invisible to the parent.
 
 ## Passing variables safely
 
 Write `run:` as a list and it executes directly, with no shell in between:
 
 ```yaml
-- run: [curl, -s, "{{.API}}/jokes/{{.TYPE}}/random"]
+- run: [curl, -s, "{{.API}}/questions?limit=1&categories={{.CATEGORY}}"]
 ```
 
 Each element is one argument, so a value holding spaces, quotes or a semicolon
-arrives intact. The string form splices values into text the shell re-parses.
+arrives intact, and the URL's `&` and `?` are just characters. The string form splices values into text the shell re-parses.
 
 > [!TIP]
 > Use the list form whenever an argument contains a variable. Keep the string
@@ -313,11 +316,11 @@ A non-zero exit stops the run. `soft: true` continues past it, and `into:`
 still captures so the next step can react:
 
 ```yaml
-- run: curl -sf {{.API}}/jokes/999999
+- run: curl -sf {{.API}}/question/no-such-id
   soft: true
   into:
     - CODE: exit
-- run: echo "no joke with that id"
+- run: echo "no question with that id"
   if: '{{ ne .CODE 0 }}'
 ```
 
@@ -328,12 +331,12 @@ still captures so the next step can react:
 `quiet:` replaces a command's output with a one-line message:
 
 ```yaml
-- run: curl -o jokes.json {{.API}}/jokes/ten
-  quiet: Downloading ten jokes
+- run: curl -o questions.json "{{.API}}/questions?limit=10"
+  quiet: Downloading ten questions
 ```
 
 ```
-⊙ [seed] Downloading ten jokes… (output hidden)
+⊙ [seed] Downloading ten questions… (output hidden)
 ```
 
 Output is hidden only on success. A failing quiet step replays everything it
@@ -351,13 +354,13 @@ Prompts are skipped when stdin is not a terminal, when `CI` is set, or with
 same taskfile works for a person and a script:
 
 ```bash
-hobnob tell-joke                          # asks
-hobnob tell-joke TYPE=dad --no-input      # does not
+hobnob ask-trivia                                  # asks
+hobnob ask-trivia CATEGORY=history --no-input      # does not
 ```
 
 ## Conventions
 
-- **Task names** in kebab-case (`tell-joke`).
+- **Task names** in kebab-case (`ask-trivia`).
 - **Variable names** in `ALL_CAPS` with underscores.
 - **`info:` first**, in tasks and in `get:` entries.
 

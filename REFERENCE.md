@@ -19,7 +19,7 @@ The task to run, always the first argument. Without one, hobnob runs the task
 named `default`, or opens the picker if there is none.
 
 ```bash
-hobnob tell-joke
+hobnob ask-trivia
 ```
 
 A `_`-prefixed task is internal: only `call:` can reach it.
@@ -32,7 +32,7 @@ name, which is what makes an interactive task scriptable. Values are always
 text; see [Types](#types).
 
 ```bash
-hobnob tell-joke TYPE=programming COUNT=3
+hobnob ask-trivia CATEGORY=science COUNT=3
 ```
 
 ### `--no-input`
@@ -42,7 +42,7 @@ one. Implied when `CI` is set or stdin is not a terminal, so scripts and AI
 agents get it for free.
 
 ```bash
-hobnob tell-joke --no-input
+hobnob ask-trivia --no-input
 ```
 
 ### `--file <path>`
@@ -50,7 +50,7 @@ hobnob tell-joke --no-input
 Uses a specific taskfile.
 
 ```bash
-hobnob --file ops/jokes.yml tell-joke
+hobnob --file ops/trivia.yml ask-trivia
 ```
 
 Without it, hobnob searches upward from the current directory for
@@ -63,7 +63,7 @@ Runs a small built-in taskfile. It replaces `--file` (passing both is an
 error) and combines with every other flag.
 
 ```bash
-hobnob --demo tell-joke
+hobnob --demo ask-trivia
 hobnob --demo --list
 ```
 
@@ -110,10 +110,10 @@ Five optional top-level keys:
 
 ```yaml
 const: # fixed values, nothing outside the file can override
-  - API: https://official-joke-api.appspot.com
+  - API: https://the-trivia-api.com/v2
 
 vars: # overridable defaults
-  - TYPE: general
+  - CATEGORY: general_knowledge
 
 env: # files to source
   - .env
@@ -122,9 +122,9 @@ modules: # imported hobnob files
   - report: ./reporting.yml
 
 tasks:
-  tell-joke:
+  ask-trivia:
     steps:
-      - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
+      - run: curl -s "{{.API}}/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
 Any other top-level key is a load error, so a typo like `taks:` fails loudly.
@@ -140,24 +140,24 @@ Any other top-level key is a load error, so a typo like `taks:` fails loudly.
 | `once:`    | Memoize: run at most once per invocation.               |
 | `results:` | Variables a `call:` without `into:` hands back.         |
 
-A `_` prefix (`_fetch-joke`) makes a task internal: it runs, but is hidden
+A `_` prefix (`_fetch-question`) makes a task internal: it runs, but is hidden
 from `--list`, the picker and the command line.
 
 ### `if:`
 
 ```yaml
 tasks:
-  explain-joke:
-    if: '[ "{{.TYPE}}" = "programming" ]'
+  explain-answer:
+    if: '[ "{{.CATEGORY}}" = "science" ]'
     steps:
-      - run: echo "it is funny because it is true"
+      - run: echo "here is the science behind it"
 ```
 
 Exit 0 proceeds, non-zero skips. A skipped `call:` target is not an error, but
 it sets nothing, so an `into:` entry pulling from it needs `| default`:
 
 ```yaml
-- call: explain-joke
+- call: explain-answer
   into:
     - EXPLAINED: .EXPLAINED | default "no"
 ```
@@ -169,13 +169,13 @@ there by default.
 
 ```yaml
 tasks:
-  archive-joke:
-    dir: ./jokes
+  archive-question:
+    dir: ./questions
     steps:
-      - run: curl -s -o {{.ID}}.json {{.API}}/jokes/{{.ID}} # writes into ./jokes
-      - run: ./lint-punchline.sh
+      - run: curl -s -o {{.ID}}.json {{.API}}/question/{{.ID}} # writes into ./questions
+      - run: ./lint-answers.sh
         dir: ../scripts # this step only
-      - call: _index # inherits ./jokes
+      - call: _index # inherits ./questions
       - call: _index
         dir: ./archive # overrides _index's own dir:
 ```
@@ -191,27 +191,27 @@ step's `dir:` applies to that step alone. `if:` always evaluates in the task's
 
 ```yaml
 tasks:
-  _pick-type:
-    results: [TYPE]
+  _pick-category:
+    results: [CATEGORY]
     steps:
-      - run: curl -s {{.API}}/types
+      - run: curl -s {{.API}}/metadata
         into:
-          - _TYPES: stdout # private scratch value
+          - _CATEGORIES: stdout.byCategory | keys # private scratch value
       - get:
-          - TYPE:
-              info: Which kind of joke?
-              options: ._TYPES
+          - CATEGORY:
+              info: Which category?
+              options: ._CATEGORIES
 
-  tell-joke:
+  ask-trivia:
     steps:
-      - call: _pick-type # TYPE is now in scope
-      - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
+      - call: _pick-category # CATEGORY is now in scope
+      - run: curl -s "{{.API}}/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
 - **A promise, however it's kept.** After the call, each result must be in the
   task's scope: set by a step, inherited from the caller, or kept through an
-  `if:` skip. `hobnob tell-joke TYPE=dad` skips the prompt and still keeps
-  it. A missing result fails the call, even when `into:` has a `| default`.
+  `if:` skip. `hobnob ask-trivia CATEGORY=history` skips the prompt and still
+  keeps it. A missing result fails the call, even when `into:` has a `| default`.
   Running the task directly, rather than through `call:`, checks nothing.
 - **`into:` replaces results.** A call with its own `into:` takes exactly what
   `into:` lists, which can be any public variable; `into: []` takes nothing.
@@ -231,37 +231,38 @@ for.
 
 ```yaml
 tasks:
-  _types:
+  _categories:
     once: true
-    results: [TYPES, TYPE]
+    results: [CATEGORIES, CATEGORY]
     steps:
-      - run: curl -s {{.API}}/types
+      - run: curl -s {{.API}}/metadata
         into:
-          - TYPES: stdout
+          - CATEGORIES: stdout.byCategory | keys
       - get:
-          - TYPE:
-              info: Which kind of joke?
-              options: .TYPES
+          - CATEGORY:
+              info: Which category?
+              options: .CATEGORIES
 
-  tell-joke:
+  ask-trivia:
     steps:
-      - call: _types # brings back TYPES and TYPE
-      - run: curl -s {{.API}}/jokes/{{.TYPE}}/random
+      - call: _categories # brings back CATEGORIES and CATEGORY
+      - run: curl -s "{{.API}}/questions?limit=1&categories={{.CATEGORY}}"
 
-  count-jokes:
+  count-categories:
     steps:
-      - call: _types # cached: no second prompt, no second request
-      - run: echo "{{ .TYPES | len }} types, you picked {{.TYPE}}"
+      - call: _categories # cached: no second prompt, no second request
+      - run: echo "{{ .CATEGORIES | len }} categories, you picked {{.CATEGORY}}"
 ```
 
-- **A hit is announced:** `call: [count-jokes] _types (cached — TYPE=dad …)`.
+- **A hit is announced** with what the first run set:
+  `call: [count-categories] _categories (cached — CATEGORIES=[…] CATEGORY=history)`.
 - **The memo is the whole scope** the first run produced, so sibling calls in
   separate sandboxes all get its results.
 - **A task skipped by its own `if:`** caches as producing nothing, so its
   results must have come from the caller (see above), or calls fall back to
   `| default` in their own `into:`. A failure under `soft: true` is not
   cached, so the next call retries.
-- **Replay overwrites.** If a caller changes `TYPE` between calls, the second
+- **Replay overwrites.** If a caller changes `CATEGORY` between calls, the second
   call restores the cached value. Only the results (or what `into:` asks
   for) are touched.
 - **`once:` belongs to the task**, not the call site.
@@ -271,17 +272,17 @@ tasks:
 Five kinds. Any step takes `if:` to skip itself:
 
 ```yaml
-- run: echo "nerd humour incoming"
-  if: '[ "{{.TYPE}}" = "programming" ]'
+- run: echo "lab coats on"
+  if: '[ "{{.CATEGORY}}" = "science" ]'
 ```
 
 ### `set`: assign variables
 
 ```yaml
 - set:
-    - API: https://official-joke-api.appspot.com
-    - RANDOM_URL: "{{.API}}/random_joke" # sees the line above it
-    - LABELS: { dad: Dad jokes, programming: Nerd jokes }
+    - API: https://the-trivia-api.com/v2
+    - RANDOM_URL: "{{.API}}/questions?limit=1" # sees the line above it
+    - LABELS: { history: History buffs, science: Lab coats }
     - WEBHOOK:
         value: .SLACK_URL
         secret: true # masked in terminal output
@@ -293,10 +294,10 @@ or array (see [Types](#types)).
 ### `run`: shell commands
 
 ```yaml
-- run: curl -s {{.API}}/random_joke
-  dir: ./jokes
+- run: curl -s "{{.API}}/questions?limit=1"
+  dir: ./questions
   into:
-    - JOKE: stdout
+    - QUESTIONS: stdout
     - CURL_ERRORS: stderr
 ```
 
@@ -313,11 +314,11 @@ it is valid JSON; `exit` captures the exit code as a number. Each takes an
 [accessor](#accessors) and [filter](#filters) chain:
 
 ```yaml
-- run: curl -s {{.API}}/jokes/random/5
+- run: curl -s "{{.API}}/questions?limit=5"
   into:
-    - JOKES: stdout # the whole array
-    - FIRST: stdout[0].setup # one field out of it
-    - SETUPS: stdout[*].setup # every setup, as an array
+    - QUESTIONS: stdout # the whole array
+    - FIRST: stdout[0].question.text # one field out of it
+    - ANSWERS: stdout[*].correctAnswer # every answer, as an array
 ```
 
 A dynamic key (`stdout[.KEY]`) and a `{{ }}` entry read the caller's scope,
@@ -333,12 +334,12 @@ including entries above it:
 Captures happen on failure too, so a `soft:` step can report what went wrong:
 
 ```yaml
-- run: curl -sf {{.API}}/jokes/999999
+- run: curl -sf {{.API}}/question/no-such-id
   soft: true
   into:
     - CODE: exit
     - ERRORS: stderr
-- run: echo "no joke with that id (curl exited {{.CODE}})"
+- run: echo "no question with that id (curl exited {{.CODE}})"
   if: "{{ ne .CODE 0 }}"
 ```
 
@@ -348,25 +349,25 @@ signal kill reports exit `-1`.
 An entry can assemble a literal from several pieces:
 
 ```yaml
-- run: curl -s {{.API}}/random_joke
+- run: curl -s "{{.API}}/questions?limit=1"
   into:
     - CARD:
-        text: stdout.setup
-        id: stdout.id
-    # CARD = {"text":"What do you call…","id":451}, id still a real number
+        text: stdout[0].question.text
+        niche: stdout[0].isNiche
+    # CARD = {"niche":false,"text":"How many limbs…"}, niche still a real bool
 ```
 
 **`quiet:`** (`run:` only) replaces the output with a one-line message:
 
 ```yaml
-- run: curl -o jokes.json {{.API}}/jokes/ten
-  quiet: Downloading ten jokes
+- run: curl -o questions.json "{{.API}}/questions?limit=10"
+  quiet: Downloading ten questions
 - run: ./import.sh
   quiet: true # hide output, no custom message
 ```
 
 ```
-⊙ [seed] Downloading ten jokes… (output hidden)
+⊙ [seed] Downloading ten questions… (output hidden)
 ```
 
 Output is hidden only on success: a failing quiet step replays its full stdout
@@ -380,8 +381,8 @@ finish first:
 
 ```yaml
 - run: |
-    ./fetch.sh jokes &
-    ./fetch.sh types &
+    ./fetch.sh questions &
+    ./fetch.sh categories &
     wait
 ```
 
@@ -406,7 +407,7 @@ A YAML sequence executes directly, one element per argument, with no shell, so
 no value is ever re-split. Use it whenever an argument holds a variable:
 
 ```yaml
-- run: [curl, -s, "{{.API}}/jokes/{{.TYPE}}/random"]
+- run: [curl, -s, "{{.API}}/questions?limit=1&categories={{.CATEGORY}}"]
 ```
 
 Each element is a whole field value, so a bare `.VAR` or a filter chain works:
@@ -414,8 +415,8 @@ Each element is a whole field value, so a bare `.VAR` or a filter chain works:
 ```yaml
 - set:
     - CURL_OPTS: ["-s", "--max-time", "10"]
-- run: [curl, .CURL_OPTS, "{{.API}}/random_joke"]
-# argv: curl -s --max-time 10 https://official-joke-api.appspot.com/random_joke
+- run: [curl, .CURL_OPTS, "{{.API}}/questions?limit=1"]
+# argv: curl -s --max-time 10 https://the-trivia-api.com/v2/questions?limit=1
 ```
 
 - **Array** splices into several arguments; an empty one splices to nothing.
@@ -430,7 +431,7 @@ YAML block scalar spares you YAML's own quoting:
 
 ```yaml
 - run: |
-    echo "{{ .JOKE[0].setup }} ... {{ .JOKE[0].punchline }}"
+    echo "{{ .QUESTIONS[0].question.text }} ... {{ .QUESTIONS[0].correctAnswer }}"
 ```
 
 > **Unbuffered Python.** Python buffers stdout when not on a terminal, so
@@ -442,14 +443,14 @@ YAML block scalar spares you YAML's own quoting:
 Prompts for a variable, skipped when it is already in scope.
 
 ```yaml
-- get: [TYPE] # bare form
+- get: [CATEGORY] # bare form
 - get:
     - COUNT:
-        info: How many jokes?
+        info: How many questions?
         default: 3
         check: "[ {{.COUNT}} -le 10 ]"
-    - TYPES:
-        options: .ALL_TYPES
+    - CATEGORIES:
+        options: .ALL_CATEGORIES
         multi: true
 ```
 
@@ -473,14 +474,14 @@ the caller except through `into:`, or, when the step has no `into:`, the
 target's [`results:`](#results-what-a-call-hands-back).
 
 ```yaml
-- call: _fetch-joke
-  dir: ./jokes
+- call: _fetch-question
+  dir: ./questions
   with:
-    - TYPE: programming
+    - CATEGORY: science
     - TIMEOUT_SECS: 10
   into:
-    - SETUP: .RESPONSE[0].setup
-    - PUNCHLINE: .RESPONSE[0].punchline
+    - QUESTION: .RESPONSE[0].question.text
+    - ANSWER: .RESPONSE[0].correctAnswer
 ```
 
 An `into:` entry names one of the child's variables (leading `.` optional),
@@ -498,7 +499,7 @@ child's name, and mixes with other entries (`run:` rejects bare names):
 A name the child never set is an error that `| default` catches:
 
 ```yaml
-- call: _fetch-joke
+- call: _fetch-question
   into:
     - AUTHOR: .AUTHOR | default "anonymous"
 ```
@@ -506,11 +507,11 @@ A name the child never set is an error that `| default` catches:
 An entry can also be a literal built from several child values:
 
 ```yaml
-- call: _fetch-joke
+- call: _fetch-question
   into:
     - CARD:
-        setup: .RESPONSE[0].setup
-        punchline: .RESPONSE[0].punchline
+        question: .RESPONSE[0].question.text
+        answer: .RESPONSE[0].correctAnswer
 ```
 
 `soft: true` continues past a failed call, as on `run:`.
@@ -531,12 +532,12 @@ child's secret back up in any shape. Mark it `secret:` where it is defined;
 **List form.** Iterates an array, current element as `{{.ITEM}}`:
 
 ```yaml
-- run: curl -s {{.API}}/types
+- run: curl -s {{.API}}/metadata
   into:
-    - TYPES: stdout
-- loop: .TYPES
+    - CATEGORIES: stdout.byCategory | keys
+- loop: .CATEGORIES
   steps:
-    - run: curl -s {{.API}}/jokes/{{.ITEM}}/random
+    - run: curl -s "{{.API}}/questions?limit=1&categories={{.ITEM}}"
 ```
 
 A plain string runs the body once, with `ITEM` as the whole string, unsplit
@@ -547,7 +548,7 @@ A plain string runs the body once, with `ITEM` as the whole string, unsplit
 
 ```yaml
 - set:
-    - LABELS: { dad: Dad jokes, programming: Nerd jokes }
+    - LABELS: { history: History buffs, science: Lab coats }
 - loop: .LABELS
   steps:
     - run: echo "{{.KEY}} = {{.VALUE}}"
@@ -557,10 +558,10 @@ A plain string runs the body once, with `ITEM` as the whole string, unsplit
 
 ```yaml
 - loop:
-    TYPE: [general, programming]
+    CATEGORY: [general_knowledge, science]
     COUNT: [1, 3]
   steps:
-    - run: curl -s {{.API}}/jokes/random/{{.COUNT}}
+    - run: curl -s "{{.API}}/questions?limit={{.COUNT}}&categories={{.CATEGORY}}"
 ```
 
 ## Variables
@@ -594,11 +595,11 @@ bottom within their block.
 
 ```yaml
 const:
-  - API: https://official-joke-api.appspot.com
-  - LABELS: { dad: Dad jokes, programming: Nerd jokes }
+  - API: https://the-trivia-api.com/v2
+  - LABELS: { history: History buffs, science: Lab coats }
 
 vars:
-  - TYPE: general
+  - CATEGORY: general_knowledge
   - WEBHOOK:
       value: .SLACK_URL
       secret: true
@@ -612,17 +613,17 @@ layer and still call itself fixed.
 
 ```yaml
 const:
-  - API: https://official-joke-api.appspot.com
-  - TYPES_URL: "{{.API}}/types" # ok, earlier entry
-  - TYPE: '{{ .TYPE | default "dad" }}' # error, not a file constant
+  - API: https://the-trivia-api.com/v2
+  - METADATA_URL: "{{.API}}/metadata" # ok, earlier entry
+  - CATEGORY: '{{ .CATEGORY | default "history" }}' # error, not a file constant
 ```
 
 **A `const:` name is reserved file-wide.** No `set:`/`get:`/`into:`/`loop:`
 may write to it.
 
 **`vars:` may not reference its own key.** It is already the fallback, so
-`- TYPE: '{{ .TYPE | default "general" }}'` is an error; write
-`- TYPE: general`.
+`- CATEGORY: '{{ .CATEGORY | default "general_knowledge" }}'` is an error;
+write `- CATEGORY: general_knowledge`.
 
 **`vars:` fills gaps only.** An entry can build its default from `env:` files,
 CLI args and `const:`:
@@ -689,11 +690,11 @@ Everything else is text, however JSON-shaped: env vars, CLI args and env file
 values included. Parse them explicitly:
 
 ```bash
-hobnob report TYPES='["dad","programming"]'
+hobnob report CATEGORIES='["history","science"]'
 ```
 
 ```yaml
-- loop: .TYPES | json
+- loop: .CATEGORIES | json
 ```
 
 Structure is detected once, at capture. A later accessor or filter never
@@ -706,12 +707,12 @@ keeps its type. Any surrounding text makes it a string:
 
 ```yaml
 - set:
-    - A: .TYPES # still an array
-    - B: "{{ .TYPES }}" # text (JSON text, here)
-    - C: "count: {{ .TYPES | len }}" # text, surrounding text forces it
+    - A: .CATEGORIES # still an array
+    - B: "{{ .CATEGORIES }}" # text (JSON text, here)
+    - C: "count: {{ .CATEGORIES | len }}" # text, surrounding text forces it
 ```
 
-This is what makes `options: .TYPES` and `- run: [curl, .CURL_OPTS, .URL]`
+This is what makes `options: .CATEGORIES` and `- run: [curl, .CURL_OPTS, .URL]`
 work.
 
 ## Accessors
@@ -719,38 +720,38 @@ work.
 Query an array or object with the syntax the value resembles:
 
 ```yaml
-- run: curl -s {{.API}}/random_joke
+- run: curl -s "{{.API}}/questions?limit=1"
   into:
-    - JOKE: stdout
+    - QUESTIONS: stdout
 - set:
-    - SETUP: .JOKE.setup
+    - QUESTION: .QUESTIONS[0].question.text
 ```
 
-| Form                    | Meaning                                                         |
-| ----------------------- | --------------------------------------------------------------- |
-| `.A.b.c`                | object keys                                                     |
-| `.A[0]`                 | array index                                                     |
-| `.A[-1]`                | negative index, from the end                                    |
-| `.A[1:3]`               | slice (bounds clamp, like Go: `[0:99]` on 3 elements returns 3) |
-| `.A[*]`                 | every element of an array, or every value of an object          |
-| `.A["key with . or /"]` | a literal key that is not a valid identifier                    |
-| `.A[.KEY]`              | dynamic key or index, taken from a variable                     |
-| `.A[.KEY][0].name`      | any combination, any depth                                      |
-| `(.TYPES \| json)[0]`   | a pipeline result as the head                                   |
+| Form                       | Meaning                                                         |
+| -------------------------- | --------------------------------------------------------------- |
+| `.A.b.c`                   | object keys                                                     |
+| `.A[0]`                    | array index                                                     |
+| `.A[-1]`                   | negative index, from the end                                    |
+| `.A[1:3]`                  | slice (bounds clamp, like Go: `[0:99]` on 3 elements returns 3) |
+| `.A[*]`                    | every element of an array, or every value of an object          |
+| `.A["key with . or /"]`    | a literal key that is not a valid identifier                    |
+| `.A[.KEY]`                 | dynamic key or index, taken from a variable                     |
+| `.A[.KEY][0].name`         | any combination, any depth                                      |
+| `(.CATEGORIES \| json)[0]` | a pipeline result as the head                                   |
 
-`{{ .LABELS[.TYPE] }}` is a lookup, not string concatenation, so a key holding
-`.` or `[` (`knock-knock.v2`) is matched literally.
+`{{ .LABELS[.CATEGORY] }}` is a lookup, not string concatenation, so a key
+holding `.` or `[` (`science.v2`) is matched literally.
 
 **Multiplicity.** After a slice or `[*]`, later steps map over every node,
 producing an array:
 
 ```yaml
-- run: curl -s {{.API}}/jokes/random/5
+- run: curl -s "{{.API}}/questions?limit=5"
   into:
-    - JOKES: stdout
+    - QUESTIONS: stdout
 - set:
-    - SETUPS: .JOKES[*].setup # ["Did you hear the news?", …]
-    - FIRST_TWO: .JOKES[0:2].id # [99, 32]
+    - TEXTS: .QUESTIONS[*].question.text # ["How many limbs does an octopus have?", …]
+    - FIRST_TWO: .QUESTIONS[0:2].difficulty # ["easy", "hard"]
 ```
 
 - Nodes with no match, or of the wrong kind, are **dropped**, as with `lines`
@@ -762,8 +763,8 @@ producing an array:
 index, or indexing into something that is not an array or object errors:
 
 ```yaml
-{{ .JOKE.author }}                      # error: path not found
-{{ .JOKE.author | default "anonymous" }}  # "anonymous"
+{{ .QUESTIONS[0].author }}                        # error: path not found
+{{ .QUESTIONS[0].author | default "anonymous" }}  # "anonymous"
 ```
 
 `default` catches absence only. A wrong-kind access (indexing a string,
@@ -771,7 +772,7 @@ slicing an object) is a taskfile bug fixed with `| json`, and `default` never
 catches it.
 
 This strictness applies wherever a chain lands, argv included:
-`- run: [curl, -s, .JOKE.pucnhline]` aborts on the typo rather than pass an
+`- run: [echo, .QUESTIONS[0].corectAnswer]` aborts on the typo rather than pass an
 empty argument.
 
 ## Filters
@@ -794,19 +795,19 @@ Usable anywhere templates are, and in `into:` pipes. Chain with `|`.
 
 ```yaml
 - set:
-    - TYPE: '{{ .JOKE_TYPE | default "general" }}'
-- run: curl -s {{.API}}/jokes/ten | jq -r '.[].setup'
+    - CATEGORY: '{{ .TRIVIA_CATEGORY | default "general_knowledge" }}'
+- run: curl -s "{{.API}}/questions?limit=10" | jq -r '.[].question.text'
   into:
-    - SETUPS: stdout | lines
-- run: echo {{ .JOKE.punchline | quote }}
+    - TEXTS: stdout | lines
+- run: echo {{ .QUESTIONS[0].correctAnswer | quote }}
 ```
 
 - **`json`** leaves structured values alone, so it is always safe before an
   accessor or `keys`.
 - **`keys`** errors on anything but an object, naming `| json`. For values,
-  use `[*]`: on one joke, `.JOKE | keys` gives
-  `["id","punchline","setup","type"]` and `.JOKE[*]` gives
-  `[1,"Dam.","What did the fish say…","general"]`, same order.
+  use `[*]`: with `/metadata` captured as `META`, `.META.byDifficulty | keys`
+  gives `["easy","hard","medium"]` and `.META.byDifficulty[*]` gives
+  `[2963,4997,7339]`, same order.
 - **`quote`** escapes for the string `run:` form; the
   [argv list form](#argv-list-form) usually removes the need.
 
@@ -814,8 +815,8 @@ Name intermediate values rather than stacking many pipes inline:
 
 ```yaml
 - set:
-    - TYPES: "{{ .TYPES_TEXT | json }}"
-- run: [curl, -s, "{{.API}}/jokes/{{ .TYPES[0] }}/random"]
+    - CATEGORIES: "{{ .CATEGORIES_TEXT | json }}"
+- run: [curl, -s, "{{.API}}/questions?limit=1&categories={{ .CATEGORIES[0] }}"]
 ```
 
 ### Comparisons
@@ -824,10 +825,10 @@ Name intermediate values rather than stacking many pipes inline:
 rendered `true`/`false` as a shell condition:
 
 ```yaml
-- run: echo "nerd humour incoming"
-  if: '{{ eq .TYPE "programming" }}'
-- run: echo "that is a lot of jokes"
-  if: "{{ gt (.JOKES | len) 5 }}"
+- run: echo "lab coats on"
+  if: '{{ eq .CATEGORY "science" }}'
+- run: echo "that is a lot of questions"
+  if: "{{ gt (.QUESTIONS | len) 5 }}"
 ```
 
 - **JSON number text on both sides** (`-3`, `1.5`, `1e9`), whatever its kind,
@@ -840,7 +841,7 @@ rendered `true`/`false` as a shell condition:
 
 Bools support only `eq`/`ne`; arrays and objects are not comparable, so access
 the field you meant. `eq` is true if any right-hand argument matches:
-`eq .TYPE "dad" "knock-knock"`.
+`eq .CATEGORY "history" "geography"`.
 
 ## Modules
 
@@ -848,7 +849,7 @@ Import tasks from other files.
 
 ```yaml
 modules:
-  - jokes: ./jokes.yml # short form: key and path
+  - trivia: ./trivia.yml # short form: key and path
   - _drafts: ./drafts.yml # `_` key marks the module internal
   - report:
       path: ./reporting.yml
