@@ -80,3 +80,23 @@ func TestE2E_Secrets_NonSecretVarWithSameValueAsUnrelatedSecretNotAssumedSafe(t 
 	res.OK(t)
 	res.Masked(t, "shared-value")
 }
+
+func TestE2E_Secrets_CommandOutputPrintedAsIs(t *testing.T) {
+	// given a secret the command itself prints, when the step runs, then the
+	// echoed command line is masked but the command's own output is not
+	// (why: secret: covers what hobnob displays, not what a command chooses
+	// to print — the docs promise exactly that much)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		      - run: printf 'got %s\n' "{{.TOKEN}}"
+	`, "t")
+	res.OK(t)
+	res.Out(t, "****", "got hunter2")
+	res.NotOut(t, `"hunter2"`)
+}

@@ -285,11 +285,17 @@ Five kinds. Any step takes `if:` to skip itself:
     - LABELS: { history: History buffs, science: Lab coats }
     - WEBHOOK:
         value: .SLACK_URL
-        secret: true # masked in terminal output
+        secret: true # masked wherever hobnob shows it
 ```
 
 Entries resolve top to bottom. A YAML map or list literal becomes a real object
 or array (see [Types](#types)).
+
+**What `secret:` masks.** hobnob replaces the value with `****` wherever it
+prints it itself: the echoed command, `quiet:` messages, `call:` summaries.
+What a command prints is shown as-is, so `echo {{.WEBHOOK}}` reveals it.
+Masking matches the exact value, so a copy captured by `into:` stays masked,
+but a value derived from it (`| upper`, a substring, an encoding) does not.
 
 ### `run`: shell commands
 
@@ -461,7 +467,7 @@ Prompts for a variable, skipped when it is already in scope.
 | `options:`  | Turns it into a select. A list literal or a variable holding one. |
 | `multi:`    | Multi-select; the result is an array.                             |
 | `check:`    | Shell condition the answer must satisfy (exit 0).                 |
-| `secret:`   | Mask in terminal output.                                          |
+| `secret:`   | Mask wherever hobnob shows it; command output is not.             |
 | `optional:` | Skip silently if unanswered, leaving the variable empty.          |
 
 When prompts are off (see [`--no-input`](#--no-input)), a missing variable
@@ -646,7 +652,7 @@ evaluated. A name set only by the OS env is still a gap.
 ```yaml
 env:
   - .env:
-      secret: true # mask this file's variables
+      secret: true # mask this file's values wherever hobnob shows them
   - ./credentials.sh
   - defaults.txt
 ```

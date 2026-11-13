@@ -269,6 +269,10 @@ why `secret:` on `with:` is a parse error: redundant at best, over-masking a
 composed value like `postgres://{{.USER}}:{{.PASS}}@db` at worst. `Adopt`
 covers the way back up (see `into:` under the runner).
 
+Masking covers only text hobnob renders itself. A `run:` process's own
+stdout and stderr reach the terminal unmasked; `secret:` promises nothing
+about what a command chooses to print.
+
 `Copy()` deep-copies all four maps: every `call:` gets an isolated sandbox.
 
 **`Load(ctx, cfg, cliVars, invocationDir)`** returns the root `*Scope` and
