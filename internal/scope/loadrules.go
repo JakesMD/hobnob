@@ -35,12 +35,6 @@ var builtinVars = map[string]bool{
 	invocationDirVar: true,
 }
 
-// InvocationDir returns the built-in HOBNOB_INVOCATION_DIR: the directory
-// hobnob was run from.
-func (scope *Scope) InvocationDir() string {
-	return scope.vars[invocationDirVar].String()
-}
-
 // checkConstClosedWorld enforces that a const: entry may reference only
 // earlier const: entries in the same block plus the builtins — never a
 // lower-priority var (env, env files, CLI args) and never itself, since

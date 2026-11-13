@@ -262,7 +262,7 @@ evaluator:
 | `Into` | `ParseInto(name, n)`, `IntoLeaf(name)` | one `into:` leaf, or a literal of leaves | `Eval(source, vars)` via `eval.EvalIntoLeaf` |
 | `Argv` | `ParseArgv(n)`                | `run:`'s list form                      | `Resolve(vars)`                      |
 
-- **References.** A field that is one bare reference (`options: .VAR[0].name`,
+- **References.** A field that is one reference (`options: .VAR[0].name`,
   `.X | json`) is wrapped in `{{ }}` when `eval.IsBareRef` matches, so
   `Value` keeps its type. Everything else is stored as written. `Single` is
   every single-value field: `run:`, `dir:`, `quiet:`, `loop:`, `options:`,
@@ -276,7 +276,7 @@ evaluator:
   cannot corrupt the structure. `name` roots the field path in error
   messages (`B.k`).
 - **Spread** ([ADR-0004](docs/adr/0004-list-spread-in-literals.md)). A list
-  element written `REF...`, one reference (a bare ref or a parenthesised
+  element written `REF...`, one reference (a `.NAME` or a parenthesised
   pipeline, `eval.IsParenRef`) followed by `...`, has its items appended in
   place of one element; any other kind errors, naming `| json` for a string.
   An `into:` leaf's spread is any non-template leaf ending in `...`. Text that

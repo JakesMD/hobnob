@@ -159,3 +159,37 @@ func TestRewriteAccessors_UnterminatedBracketErrors(t *testing.T) {
 		t.Fatal("expected an error for an unterminated bracket")
 	}
 }
+
+func TestIsBareRef(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want bool
+	}{
+		{"given a var name, when checked, then it is a reference (why: brace-free fields read it as a value)", ".VAR", true},
+		{"given a var piped through a filter, when checked, then it is a reference (why: a pipeline still names one value)", ".VAR | first", true},
+		{"given a var with accessors, when checked, then it is a reference (why: accessors refine one value)", ".VAR[0].name", true},
+		{"given a var name with underscores, when checked, then it is a reference (why: names are upper snake case)", ".RELEASE_LIST", true},
+		{"given a relative dir path, when checked, then it is text (why: dir: ./infra must stay a path)", "./infra", false},
+		{"given a parent dir path, when checked, then it is text (why: dir: ../tests must stay a path)", "../tests", false},
+		{"given a dotfile name, when checked, then it is text (why: .git is a file, not a var)", ".git", false},
+		{"given a dotted dotfile name, when checked, then it is text (why: env: .env.local is a path)", ".env.local", false},
+		{"given a mixed-case dotfile, when checked, then it is text (why: var names are upper case)", ".DS_Store", false},
+		{"given a var name run into lower case, when checked, then it is text (why: .VARfoo names no var)", ".VARfoo", false},
+		{"given a pipeline holding template braces, when checked, then it is text (why: braces make it a template)", ".VAR | first {{", false},
+		{"given a dangling pipe, when checked, then it is text (why: an empty filter is not a pipeline)", ".VAR |", false},
+		{"given empty text, when checked, then it is text (why: nothing to reference)", "", false},
+		{"given a lone dot, when checked, then it is text (why: the root context names no var)", ".", false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			// Act
+			got := IsBareRef(tc.in)
+
+			// Assert
+			if got != tc.want {
+				t.Errorf("IsBareRef(%q) = %v, want %v", tc.in, got, tc.want)
+			}
+		})
+	}
+}

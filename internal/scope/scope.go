@@ -211,3 +211,9 @@ func (scope *Scope) Copy() *Scope {
 		carried: eval.CloneMap(scope.carried),
 	}
 }
+
+// InvocationDir returns the built-in HOBNOB_INVOCATION_DIR: the directory
+// hobnob was run from.
+func (scope *Scope) InvocationDir() string {
+	return scope.vars[invocationDirVar].String()
+}

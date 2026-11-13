@@ -25,7 +25,7 @@ func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
 					Kind:    config.KindFor,
 					ForList: []string{"a", "b", "c", "d", "e"},
 					ForSteps: []config.Step{
-						{Kind: config.KindRun, Command: shellCommand("sleep 0.1")},
+						{Kind: config.KindRun, Command: shellCommand(t, "sleep 0.1")},
 					},
 				},
 			}},

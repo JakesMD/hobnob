@@ -101,7 +101,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	// cancellation that lands between steps, not just mid-command)
 
 	// Arrange
-	cfg := makeRunCfg("echo hello", nil)
+	cfg := makeRunCfg(t, "echo hello", nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 

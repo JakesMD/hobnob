@@ -801,7 +801,8 @@ func TestE2E_Modules_OwnConstReadingImporterConstFailsAtLoad(t *testing.T) {
 	// when the file loads, then it errors naming the module (why: a const:
 	// is a closed world over its own file, so a module constant can't
 	// quietly depend on whoever imports it)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				const:
@@ -824,7 +825,12 @@ func TestE2E_Modules_OwnConstReadingImporterConstFailsAtLoad(t *testing.T) {
 			`,
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `module "mod": const: HOST references .REGION, which is not a file constant`)
 }
@@ -833,7 +839,8 @@ func TestE2E_Modules_OwnVarsSelfReferenceFailsAtLoad(t *testing.T) {
 	// given a module whose vars: entry reads its own name, when the file
 	// loads, then it errors naming the module (why: the vars: rules hold
 	// per file, for modules as for the root)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				modules:
@@ -854,7 +861,12 @@ func TestE2E_Modules_OwnVarsSelfReferenceFailsAtLoad(t *testing.T) {
 			`,
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `module "mod": vars: PORT references itself`)
 }

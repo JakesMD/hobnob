@@ -17,30 +17,32 @@ import (
 )
 
 // shellCommand parses raw as a run: command string.
-func shellCommand(raw string) literal.Expr {
+func shellCommand(t *testing.T, raw string) literal.Expr {
+	t.Helper()
 	expr, err := literal.Single(raw)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	return expr
 }
 
-func makeRunCfg(command string, into []config.IntoEntry) *config.ConfigFile {
+func makeRunCfg(t *testing.T, command string, into []config.IntoEntry) *config.ConfigFile {
 	return &config.ConfigFile{
 		Tasks: map[string]config.Task{
-			"t": {Steps: []config.Step{{Kind: config.KindRun, Command: shellCommand(command), IntoEntries: into}}},
+			"t": {Steps: []config.Step{{Kind: config.KindRun, Command: shellCommand(t, command), IntoEntries: into}}},
 		},
 	}
 }
 
-func makeArgvRunCfg(elems []string) *config.ConfigFile {
+func makeArgvRunCfg(t *testing.T, elems []string) *config.ConfigFile {
+	t.Helper()
 	seq := &yaml.Node{Kind: yaml.SequenceNode}
 	for _, elem := range elems {
 		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: elem})
 	}
 	argv, err := literal.ParseArgv(seq)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 	return &config.ConfigFile{
 		Tasks: map[string]config.Task{
@@ -55,7 +57,7 @@ func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	// need to distinguish a graceful shutdown from an ordinary command failure)
 
 	// Arrange
-	cfg := makeRunCfg("sleep 5", nil)
+	cfg := makeRunCfg(t, "sleep 5", nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -76,7 +78,7 @@ func TestExecRun_OrdinaryFailure_NotWrappedAsInterrupted(t *testing.T) {
 	// graceful shutdown)
 
 	// Arrange
-	cfg := makeRunCfg("exit 3", nil)
+	cfg := makeRunCfg(t, "exit 3", nil)
 
 	// Act
 	err := ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, t.TempDir())
@@ -100,7 +102,7 @@ func TestExecRun_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	// Arrange
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "child-finished")
-	cfg := makeRunCfg(fmt.Sprintf("(sleep 5; touch %s) & wait", marker), nil)
+	cfg := makeRunCfg(t, fmt.Sprintf("(sleep 5; touch %s) & wait", marker), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -128,7 +130,7 @@ func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 	// Arrange
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "child-finished")
-	cfg := makeRunCfg(fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker), nil)
+	cfg := makeRunCfg(t, fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -164,7 +166,7 @@ func TestExecRun_Argv_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	// execRun — this is the regression guard for that sharing)
 
 	// Arrange
-	cfg := makeArgvRunCfg([]string{"sleep", "5"})
+	cfg := makeArgvRunCfg(t, []string{"sleep", "5"})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
@@ -188,7 +190,7 @@ func TestKillRunningStep_Argv_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 	// Arrange
 	dir := t.TempDir()
 	marker := filepath.Join(dir, "child-finished")
-	cfg := makeArgvRunCfg([]string{"sh", "-c", fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker)})
+	cfg := makeArgvRunCfg(t, []string{"sh", "-c", fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker)})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
