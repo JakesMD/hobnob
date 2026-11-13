@@ -46,8 +46,9 @@ Every change must preserve these. Each is explained in the section named.
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
   (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`.
-- **One sniff point.** Only `value.Capture` turns text into structure. `keys`
-  and accessors error on a String, naming `| json`, rather than parse it.
+- **One sniff point.** Only `value.Capture` turns text into structure. `keys`,
+  `join` and accessors error on a String, naming `| json`, rather than parse
+  it.
   ([value](#internalvalue-the-typed-scope-value))
 - **Absence defers; wrong kind fails.** A missing path is a `value.Missing`
   sentinel that only `| default` catches; every other consumer raises it. A

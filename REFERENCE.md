@@ -726,8 +726,8 @@ hobnob report CATEGORIES='["history","science"]'
 ```
 
 Structure is detected once, at capture. A later accessor or filter never
-re-reads a string as an array, which is why `keys` and accessors error on a
-string.
+re-reads a string as an array, which is why `keys`, `join` and accessors
+error on a string.
 
 **Keeping a type.** A field that is exactly one variable reference (a bare
 `.VAR`, an accessor chain, or a single `{{ }}` action, with optional filters)
@@ -842,6 +842,7 @@ Usable anywhere templates are, and in `into:` pipes. Chain with `|`.
 | `upper` / `lower` | Changes case.                                              |
 | `split ","`       | Splits a string into a list, dropping empty parts.         |
 | `lines`           | Splits on newlines, trimming each and dropping blank ones. |
+| `join ","`        | Joins a list's elements into one string with a separator.  |
 | `json`            | Parses a string into a real array or object.               |
 | `string`          | Forces a value to text; compact JSON for a list or object. |
 | `keys`            | Sorted list of an object's top-level keys.                 |
@@ -860,10 +861,15 @@ Usable anywhere templates are, and in `into:` pipes. Chain with `|`.
 
 - **`json`** leaves structured values alone, so it is always safe before an
   accessor or `keys`.
-- **`keys`** errors on anything but an object, naming `| json`. For values,
-  use `[*]`: with `/metadata` captured as `META`, `.META.byDifficulty | keys`
-  gives `["easy","hard","medium"]` and `.META.byDifficulty[*]` gives
-  `[2963,4997,7339]`, same order.
+- **`keys`** errors on anything but an object, naming `| json` when it is a
+  string. For values, use `[*]`: with `/metadata` captured as `META`,
+  `.META.byDifficulty | keys` gives `["easy","hard","medium"]` and
+  `.META.byDifficulty[*]` gives `[2963,4997,7339]`, same order.
+- **`join`** is the inverse of `split`: `.CATEGORIES | join ","` gives
+  `history,science`. Numbers and bools join as their text. A `null`, list or
+  object element errors, naming its index; access the text you meant first,
+  such as `.QUESTIONS[*].category`. Anything but a list errors too, naming
+  `| json` when it is a string. An empty list joins to `""`.
 - **`quote`** escapes for the string `run:` form; the
   [argv list form](#argv-list-form) usually removes the need.
 

@@ -382,3 +382,20 @@ func TestE2E_RunInto_SpreadOutsideAListErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestE2E_RunInto_JoinFilterTurnsCapturedListIntoSeparatedText(t *testing.T) {
+	// given stdout that captures as a JSON array, when piped through
+	// | join "," in into:, then the var holds one comma-separated string
+	// (why: the inverse of | split, for building a query param from a list)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf '["history","science"]'
+		        into:
+		          - CATEGORIES: stdout | join ","
+		      - run: [echo, 'categories={{ .CATEGORIES }}']
+	`, "t")
+	res.OK(t)
+	res.Lines(t, `["history","science"]`, "categories=history,science")
+}

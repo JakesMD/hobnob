@@ -1,6 +1,9 @@
 package value
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func call(t *testing.T, name string, args ...Value) (Value, error) {
 	t.Helper()
@@ -111,6 +114,165 @@ func TestFilterSplit(t *testing.T) {
 	}
 	if got.String() != `["a","b"]` {
 		t.Errorf("got %q, want %q", got.String(), `["a","b"]`)
+	}
+}
+
+func TestFilterJoin(t *testing.T) {
+	// given a list of strings, when join called, then elements joined by the
+	// separator (why: the inverse of split, for comma-separated query params)
+
+	// Arrange
+	list := Of([]any{"history", "science"})
+
+	// Act
+	got, err := call(t, "join", Str(","), list)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Kind() != KindString {
+		t.Fatalf("kind: got %v, want String", got.Kind())
+	}
+	if got.String() != "history,science" {
+		t.Errorf("got %q, want %q", got.String(), "history,science")
+	}
+}
+
+func TestFilterJoin_ScalarsJoinAsText(t *testing.T) {
+	// given numbers and bools in the list, when join called, then each joins
+	// as its text (why: JSON-captured lists mix scalars, e.g. IDs and flags)
+
+	// Arrange
+	list := Of([]any{float64(42), 1.5, true, "x"})
+
+	// Act
+	got, err := call(t, "join", Str(" "), list)
+
+	// Assert
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.String() != "42 1.5 true x" {
+		t.Errorf("got %q, want %q", got.String(), "42 1.5 true x")
+	}
+}
+
+func TestFilterJoin_ErrorsOnNonTextElement(t *testing.T) {
+	tests := []struct {
+		name     string
+		elem     any
+		wantHint string
+	}{
+		{"given an object element, when join called, then errors pointing at a field accessor (why: compact JSON mid-string is never what was meant)", map[string]any{"k": "v"}, ".LIST[*].name"},
+		{"given a nested list element, when join called, then errors pointing at an index accessor (why: a,[\"b\"] is never what was meant)", []any{"b"}, ".LIST[*][0]"},
+		{"given a null element, when join called, then errors (why: a silent empty part, a,,b, hides missing data)", nil, "null"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			list := Of([]any{"a", test.elem})
+
+			// Act
+			_, err := call(t, "join", Str(","), list)
+
+			// Assert
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			for _, want := range []string{"element [1]", test.wantHint} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err.Error(), want)
+				}
+			}
+		})
+	}
+}
+
+func TestFilterJoin_NilErrorsWithoutJSONHint(t *testing.T) {
+	// given nil (an unset variable), when join called, then errors without
+	// suggesting | json (why: there is no text to parse, so the hint misleads)
+
+	// Arrange
+	nothing := Nil()
+
+	// Act
+	_, err := call(t, "join", Str(","), nothing)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), "| json") {
+		t.Errorf("error %q suggests | json for nil", err.Error())
+	}
+}
+
+func TestFilterJoin_ErrorsWithoutSeparator(t *testing.T) {
+	// given no separator, when join called, then errors (why: {{ .A | join }}
+	// is a typo, not a request for a default separator)
+
+	// Arrange
+	list := Of([]any{"a", "b"})
+
+	// Act
+	_, err := call(t, "join", list)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
+
+func TestFilterJoin_ErrorsOnNonListNamingJSON(t *testing.T) {
+	// given JSON-shaped text rather than a list, when join called, then errors
+	// naming | json (why: env vars and CLI args arrive as text and must be
+	// parsed explicitly; joining a string's characters is never meant)
+
+	// Arrange
+	text := Str(`["a","b"]`)
+
+	// Act
+	_, err := call(t, "join", Str(","), text)
+
+	// Assert
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "| json") {
+		t.Errorf("error %q does not name | json", err.Error())
+	}
+}
+
+func TestFilterJoin_EmptyListGivesEmptyString(t *testing.T) {
+	// given an empty list, when join called, then "" (why: a list that ends up
+	// empty, e.g. split of "", must round-trip rather than error)
+
+	// Arrange
+	fromSplit, err := call(t, "split", Str(","), Str(""))
+	if err != nil {
+		t.Fatalf("split: unexpected error: %v", err)
+	}
+	tests := []struct {
+		name string
+		list Value
+	}{
+		{"literal empty list", Of([]any{})},
+		{"empty split result", fromSplit},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Act
+			got, err := call(t, "join", Str(","), test.list)
+
+			// Assert
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got.String() != "" {
+				t.Errorf("got %q, want empty", got.String())
+			}
+		})
 	}
 }
 
