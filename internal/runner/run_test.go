@@ -9,19 +9,39 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"hobnob/internal/config"
+	"hobnob/internal/literal"
 	"hobnob/internal/scope"
 )
+
+// shellCommand parses raw as a run: command string.
+func shellCommand(raw string) literal.Expr {
+	expr, err := literal.Single(raw)
+	if err != nil {
+		panic(err)
+	}
+	return expr
+}
 
 func makeRunCfg(command string, into []config.IntoEntry) *config.ConfigFile {
 	return &config.ConfigFile{
 		Tasks: map[string]config.Task{
-			"t": {Steps: []config.Step{{Kind: config.KindRun, Command: command, IntoEntries: into}}},
+			"t": {Steps: []config.Step{{Kind: config.KindRun, Command: shellCommand(command), IntoEntries: into}}},
 		},
 	}
 }
 
-func makeArgvRunCfg(argv []string) *config.ConfigFile {
+func makeArgvRunCfg(elems []string) *config.ConfigFile {
+	seq := &yaml.Node{Kind: yaml.SequenceNode}
+	for _, elem := range elems {
+		seq.Content = append(seq.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: elem})
+	}
+	argv, err := literal.ParseArgv(seq)
+	if err != nil {
+		panic(err)
+	}
 	return &config.ConfigFile{
 		Tasks: map[string]config.Task{
 			"t": {Steps: []config.Step{{Kind: config.KindRun, Argv: argv}}},

@@ -6,48 +6,6 @@ import (
 	"hobnob/internal/eval"
 )
 
-// referencedVarsInSetEntry returns every scope-var name entry's value
-// references — walking into a map/list literal's leaves when entry holds
-// one (ValNode), or parsing the plain template text otherwise (ValTmpl).
-// Shared by const:'s closed-world check and vars:'s self-reference check,
-// the two file-level rules that need to see every name a const:/vars: entry
-// touches, not just its outermost token.
-func referencedVarsInSetEntry(entry SetEntry) ([]string, error) {
-	if entry.ValNode != nil {
-		return referencedVarsInJSONNode(*entry.ValNode)
-	}
-	return eval.ReferencedVars(entry.ValTmpl)
-}
-
-func referencedVarsInJSONNode(n JSONNode) ([]string, error) {
-	var out []string
-	switch n.Kind {
-	case JSONString:
-		refs, err := eval.ReferencedVars(n.Tmpl)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, refs...)
-	case JSONObject:
-		for _, field := range n.Fields {
-			refs, err := referencedVarsInJSONNode(field.Node)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, refs...)
-		}
-	case JSONArray:
-		for _, elem := range n.Elements {
-			refs, err := referencedVarsInJSONNode(elem)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, refs...)
-		}
-	}
-	return out, nil
-}
-
 // builtinVars are the only names const: may reference besides earlier
 // const: entries — the two vars scope.Load always sets before any file-level
 // layer runs.
@@ -78,7 +36,7 @@ func checkConstClosedWorld(entries []SetEntry) error {
 			return fmt.Errorf("const: %s declared twice in the same block", entry.Key)
 		}
 		declared[entry.Key] = true
-		refs, err := referencedVarsInSetEntry(entry)
+		refs, err := entry.Val.Refs()
 		if err != nil {
 			return fmt.Errorf("const: %s: %w", entry.Key, err)
 		}
@@ -101,7 +59,7 @@ func checkConstClosedWorld(entries []SetEntry) error {
 // run yet.
 func checkVarsNoSelfReference(entries []SetEntry) error {
 	for _, entry := range entries {
-		refs, err := referencedVarsInSetEntry(entry)
+		refs, err := entry.Val.Refs()
 		if err != nil {
 			return fmt.Errorf("vars: %s: %w", entry.Key, err)
 		}

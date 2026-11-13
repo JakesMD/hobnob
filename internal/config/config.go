@@ -8,6 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"hobnob/internal/eval"
+	"hobnob/internal/literal"
 )
 
 func ParseConfig(path string) (*ConfigFile, error) {
@@ -130,7 +131,7 @@ func parseTaskNode(node *yaml.Node) (Task, error) {
 		case "if":
 			task.IfExpr = entry.Val.Value
 		case "dir":
-			dir, err := normalizeTmpl(entry.Val.Value)
+			dir, err := literal.Single(entry.Val.Value)
 			if err != nil {
 				return Task{}, fmt.Errorf("dir: %w", err)
 			}

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"hobnob/internal/literal"
 )
 
 func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
@@ -42,7 +44,7 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 						entry.FromList = append(entry.FromList, option.Value)
 					}
 				} else {
-					tmpl, err := normalizeTmpl(fieldVal.Value)
+					tmpl, err := literal.Single(fieldVal.Value)
 					if err != nil {
 						return nil, fmt.Errorf("get entry %q options: %w", entry.VarName, err)
 					}
@@ -53,7 +55,7 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 			case "check":
 				entry.Check = fieldVal.Value
 			case "default":
-				tmpl, err := normalizeTmpl(fieldVal.Value)
+				tmpl, err := literal.Single(fieldVal.Value)
 				if err != nil {
 					return nil, fmt.Errorf("get entry %q default: %w", entry.VarName, err)
 				}

@@ -326,11 +326,12 @@ func EvalTemplate(tmpl string, vars map[string]value.Value) (string, error) {
 	return out, nil
 }
 
-// ResolveItems renders a literal list or a template that resolves to an
-// array into a []value.Value, each item still typed — a fromTmpl bare ref
-// resolving to a real Array keeps its typed elements instead of stringifying
-// them first. Used by execFor (loop: ITEM) and execFor's matrix form.
-func ResolveItems(fromList []string, fromTmpl string, vars map[string]value.Value, ctxName string) ([]value.Value, error) {
+// ResolveItems renders a literal list, or else the value from evaluates to,
+// into a []value.Value, each item still typed — a reference resolving to a
+// real Array keeps its typed elements instead of stringifying them first.
+// from is the parsed source field's Value (literal.Expr.Value); nil means
+// none. Used by execFor (loop: ITEM) and execFor's matrix form.
+func ResolveItems(fromList []string, from func(map[string]value.Value) (value.Value, error), vars map[string]value.Value, ctxName string) ([]value.Value, error) {
 	if len(fromList) > 0 {
 		items := make([]value.Value, 0, len(fromList))
 		for _, item := range fromList {
@@ -342,8 +343,8 @@ func ResolveItems(fromList []string, fromTmpl string, vars map[string]value.Valu
 		}
 		return items, nil
 	}
-	if fromTmpl != "" {
-		rendered, err := EvalValue(fromTmpl, vars)
+	if from != nil {
+		rendered, err := from(vars)
 		if err != nil {
 			return nil, fmt.Errorf("%s from template: %w", ctxName, err)
 		}
@@ -375,8 +376,8 @@ func ItemsFromValue(v value.Value) []value.Value {
 // ResolveItemStrings is ResolveItems for callers that need plain text — get:
 // options: displays and compares choices as strings, so typed elements are
 // stringified after resolution rather than never being resolved typed.
-func ResolveItemStrings(fromList []string, fromTmpl string, vars map[string]value.Value, ctxName string) ([]string, error) {
-	items, err := ResolveItems(fromList, fromTmpl, vars, ctxName)
+func ResolveItemStrings(fromList []string, from func(map[string]value.Value) (value.Value, error), vars map[string]value.Value, ctxName string) ([]string, error) {
+	items, err := ResolveItems(fromList, from, vars, ctxName)
 	if err != nil {
 		return nil, err
 	}

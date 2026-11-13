@@ -4,8 +4,9 @@ Hobnob is one Go binary: a YAML task runner built on a **timeline**, not a
 dependency graph. A task is a list of steps. Variables, conditions and prompts
 resolve in order as execution reaches each one. Two decisions shape everything:
 
-1. **Nothing is evaluated at parse time.** Every template field is stored raw
-   and rendered against the scope as it stands when execution reaches it.
+1. **Nothing is evaluated at parse time.** Every template field is parsed
+   once, at load, and rendered against the scope as it stands when execution
+   reaches it.
 2. **A variable is a typed value, not text.** nil, string, bool, number, array
    or object. JSON captured from a command stays structured for the whole run.
 
@@ -17,7 +18,9 @@ Domain terms (layer, precedence, upward read, file scope) are defined in
 Every change must preserve these. Each is explained in the section named.
 
 - **Deferred evaluation.** Templates render only at runtime, through
-  `EvalTemplate`/`EvalValue`. ([config](#internalconfig-parsing))
+  `EvalTemplate`/`EvalValue`. A templated field is parsed at load into a
+  `literal.Expr`, `Into` or `Argv`, and only their evaluators render it.
+  ([literal](#internalliteral-references-and-literals))
 - **Call isolation.** Every `call:` runs in a `Scope.Copy()`; only what the
   call contract (`config.CallInto`) projects comes back: its `into:` (even
   `into: []`), or with none, the target's `results:`, checked present on every
@@ -64,6 +67,7 @@ internal/scope/   the runtime scope, and loading the root and module file scopes
 internal/cli/     --list/--help, completions
 internal/tui/     bubbletea prompts, lipgloss styles, output line writers
 internal/config/  YAML into typed structs, load-time rule checks
+internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
 internal/e2e/     end-to-end CLI suite (test files only)
@@ -87,9 +91,11 @@ flowchart TD
     runner --> scope
     runner --> config
     runner --> tui
+    runner --> literal
     scope --> config
     scope --> tui
-    config --> eval
+    config --> literal
+    literal --> eval
     eval --> value
     tui --> value
 ```
@@ -99,6 +105,8 @@ For readability the graph omits the direct `eval`/`value` imports from
 `go list -f '{{.ImportPath}}: {{join .Imports " "}}' ./internal/...`.
 
 - `value` imports only the stdlib.
+- `literal` imports `eval` and `value`, never `config`; `eval` imports
+  neither. `runner` names `literal.Expr` only for a call's `dir:`.
 - `tui` imports `value` but not `eval`: `PromptText` takes a validator closure,
   so the prompt layer never learns how a shell condition works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
@@ -156,28 +164,21 @@ Everything renders through `text/template` against `map[string]value.Value`.
   never hangs on a condition. `EvalCheckWithOverride` tests a candidate answer
   without committing it to scope.
 - **`EvalIntoLeaf(leaf, source, vars)`** (`into.go`) is the one `into:` leaf
-  grammar for `run:` and `call:`. A `{{ }}` leaf is a template over the
+  grammar for `run:` and `call:`, which `literal.Into` calls for each leaf. A `{{ }}` leaf is a template over the
   caller's scope. Otherwise the head name (leading `.` optional) resolves
   through an `IntoSource` (`stdout`/`stderr`/`exit`, or the child's vars), and
   the rest of the leaf (`NAME|trim` works unspaced) runs through `EvalValue`'s
   typed evaluator, with the caller's vars underneath for dynamic keys. A head
   the source lacks is `Missing`. Capture happens at the source, not the chain's
   end, so a string leaf that looks like JSON stays a string.
-- **`ResolveArgv(tmpls, vars)`** builds `run:`'s list form. An array splices
-  into one argument per item (empty splices to nothing), an object errors
-  naming the accessor fix, and an empty element stays one empty argument so
-  later positions never shift. A spread element (`.OPTS...`) resolves as its
-  reference does.
-- **Spread** (`spread.go`, [ADR-0004](docs/adr/0004-list-spread-in-literals.md)).
-  `CutSpread` is the grammar: one reference (a bare ref or a parenthesised
-  pipeline) followed by `...`; `CutIntoSpread` is the same for an `into:` leaf.
-  Text that merely ends in `...` is not a spread. `SpreadItems` returns a
-  list's items and errors on any other kind, naming `| json` for a string.
 - **`ReferencedVars(expr)`** (`refs.go`) collects every top-level var a
-  template touches, dynamic keys included. The `const:`/`vars:` checks use it.
+  template touches, dynamic keys included. `literal.Expr.Refs` and the `env:`
+  path check use it.
 - Shared helpers: `ResolvePath` (relative to the taskfile dir), `SplitKV` (the
   `KEY=VALUE` rule for CLI args, `os.Environ()` and env files), `CloneMap`,
-  `ResolveItems`/`ItemsFromValue` (`loop:`, `options:`), `IsBareRef`.
+  `ResolveItems`/`ItemsFromValue` (`loop:`, `options:`), and `IsBareRef`/
+  `IsParenRef`, the accessor scanner `literal`'s reference grammar is built
+  on.
 
 **The accessor rewriter (`accessor.go`) is the one piece of real machinery.**
 text/template has no bracket subscripts, and hobnob does not fork it. Before
@@ -200,9 +201,12 @@ against a baseline `env`, so noise like `SHLVL` stays out.
 bytes, which is how the embedded `--demo` loads. Both walk a `yaml.Node` into
 a `ConfigFile`. An unknown top-level key is a load error, so `taks:` fails.
 
-Every template field is stored raw. `const:`/`vars:` are no exception: their
-values still defer to `scope.Load`; only their reference structure is
-inspected here.
+Every templated field is parsed by `literal` (see below) and stored
+unevaluated. `const:`/`vars:` are no exception: their values still defer to
+`scope.Load`; only their reference structure (`Expr.Refs`) is inspected here.
+`config` keeps the entry-list syntax around those values: the
+`{ value:, secret: }` form, bare `into:` names, and the wording for a spread
+written as a whole entry, which it gives when `literal.ErrSpread` comes back.
 
 **Load-time rules** (`constvars.go`) run per file after the whole tree is
 parsed, so a module is checked against its own blocks:
@@ -243,28 +247,50 @@ time and runtime alike:
   returns the `into:` source over the child's vars: an unset name is
   `Missing`, a `_`-prefixed one a hard error.
 
-**Literal assembly.** A `set:`/`with:`/`into:`/`const:`/`vars:` map or list
-literal parses into a `JSONNode` tree of raw string leaves. `EvalJSONNode`
-evaluates each leaf with the caller's `evalLeaf` and assembles a real Go tree,
-never round-tripping through JSON text, so a leaf holding a quote or backslash
-cannot corrupt the structure. `EvalSetEntry` wraps scalar-or-literal for
-`set:`, `with:`, `const:` and `vars:`.
-
-A list element written `REF...` parses to a leaf with `JSONNode.Spread` set
-(`templateLeaf` for template literals, `intoLeaf` for `into:`), and
-`EvalJSONNode` appends its `eval.SpreadItems` in place of one element. A
-spread anywhere else is a parse error: `normalizeTmpl`, which every
-single-value field that takes a bare reference goes through, rejects it, as do
-object fields and bare entries in a `set:`/`into:` list.
-
 **Modules.** `modules.go` parses an entry into a `ModuleEntry` (raw path,
 `show:`/`hide:`/`flatten:`). `RegisterModuleTasks` applies those filters and
 registers the tasks into the importer under namespaced names. Walking imports
 and reading `env:` files belong to `scope`.
 
-`normalizeTmpl` (`yaml.go`) lets a field that is one bare reference drop its
-braces: `options: .VAR[0].name` is wrapped in `{{ }}` when `eval.IsBareRef`
-matches.
+### `internal/literal`: references and literals
+
+The one home of the [reference](CONTEXT.md) and [literal](CONTEXT.md)
+grammar. A field's YAML parses here once, at load; what comes back evaluates
+against the scope at run time. Three types, each a constructor and an
+evaluator:
+
+| Type   | Parsed by                     | Holds                                   | Evaluated by                         |
+| ------ | ----------------------------- | --------------------------------------- | ------------------------------------ |
+| `Expr` | `Single(raw)`, `Parse(name, n)` | one template, or a list/map literal     | `Value(vars)` typed, `Text(vars)` rendered |
+| `Into` | `ParseInto(name, n)`, `IntoLeaf(name)` | one `into:` leaf, or a literal of leaves | `Eval(source, vars)` via `eval.EvalIntoLeaf` |
+| `Argv` | `ParseArgv(n)`                | `run:`'s list form                      | `Resolve(vars)`                      |
+
+- **References.** A field that is one bare reference (`options: .VAR[0].name`,
+  `.X | json`) is wrapped in `{{ }}` when `eval.IsBareRef` matches, so
+  `Value` keeps its type. Everything else is stored as written. `Single` is
+  every single-value field: `run:`, `dir:`, `quiet:`, `loop:`, `options:`,
+  `default:`. Raw-text fields (`if:`, `info:`, `call:`, `check:`, `env:` and
+  module paths) never come here.
+- **Literals.** `Parse` and `ParseInto` turn a `set:`/`with:`/`const:`/
+  `vars:`/`into:` map or list into a tree of string leaves and typed scalars
+  (YAML aliases followed, map keys free of template syntax). Evaluating one
+  walks the tree, evaluating each leaf and assembling a real Go tree, never
+  round-tripping through JSON text, so a leaf holding a quote or backslash
+  cannot corrupt the structure. `name` roots the field path in error
+  messages (`B.k`).
+- **Spread** ([ADR-0004](docs/adr/0004-list-spread-in-literals.md)). A list
+  element written `REF...`, one reference (a bare ref or a parenthesised
+  pipeline, `eval.IsParenRef`) followed by `...`, has its items appended in
+  place of one element; any other kind errors, naming `| json` for a string.
+  An `into:` leaf's spread is any non-template leaf ending in `...`. Text that
+  merely ends in `...` is not a spread. A spread anywhere else (a single-value
+  field, an object field) fails at load with an error wrapping `ErrSpread`.
+- **Argv.** `Resolve` splices an array into one argument per item (empty
+  splices to nothing), errors on an object naming the accessor fix, and keeps
+  an empty element as one empty argument so later positions never shift. A
+  spread element resolves as its reference does.
+- **`Expr.Refs`** returns every name an `Expr` reads, spreads included: the
+  `const:`/`vars:` load rules use it.
 
 ### `internal/scope`: the runtime scope and file scopes
 
@@ -336,8 +362,8 @@ Precedence (`env < vars: < env files < CLI args < const:`) falls out of this
 order plus the claimed rule. `resolve` hands `envFileRef` to the env file
 loader, so a `$NAME` inside a dotenv file (`dotenv.go`) follows it too: a
 claimed name reads its final value, then the latest env file value, then the
-ambient OS env. `const:`/`vars:` go through
-`config.EvalSetEntry` and stay typed; every other source is `value.Str`,
+ambient OS env. `const:`/`vars:` go through their entry's
+`literal.Expr` `Value` and stay typed; every other source is `value.Str`,
 unsniffed.
 
 **Modules** are walked after the root chain, depth first:
@@ -385,14 +411,15 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
 `*scope.Scope` stays a separate argument because it is what mutates: `call:`
 swaps in a child scope while `execCtx` carries forward.
 
-**`run:` (`run.go`)** branches on `Step.Argv` versus `Step.Command`; both then
+**`run:` (`run.go`)** branches on `Step.Argv` (a `literal.Argv`) versus
+`Step.Command`; both then
 share process-group setup, output plumbing, `into:` capture and interrupts:
 
 ```mermaid
 flowchart TD
     start["run: step (its if: already passed)"] --> form{"YAML sequence?"}
-    form -- yes --> argv["eval.ResolveArgv<br/>exec argv directly, no shell"]
-    form -- no --> sh["eval.EvalTemplate<br/>sh -c"]
+    form -- yes --> argv["Step.Argv.Resolve<br/>exec argv directly, no shell"]
+    form -- no --> sh["Step.Command.Text<br/>sh -c"]
     argv --> show["print the command, masked"]
     sh --> show
     show --> out{"output mode"}
@@ -426,10 +453,11 @@ strips inherited env vars that scope redefines before appending scope's,
 because `os/exec` takes the first occurrence and scope must win.
 
 **`into:` (`capture.go`).** `captureInto` is the one assignment path for both
-step kinds; only the source differs. `runSource` builds `stdout`/`stderr` via
+step kinds; only the source differs: each entry's `literal.Into` evaluates
+against it. `runSource` builds `stdout`/`stderr` via
 `value.Capture` only when a leaf names them, and `exit` as `value.Num`; any
 other name errors. A call's source is `config.CallSource` (see the call
-contract under config). A bare `into:` entry parses to `NAME: NAME` with
+contract under config). A bare `into:` entry parses to `NAME: NAME` (`literal.IntoLeaf`) with
 `Bare` set, which `parseStepNode` rejects on `run:`. For `call:`, every result is `Adopt`ed, and the target name is
 flagged secret whenever its value carries a child secret, whatever the leaf's
 shape. The name flag matters because `Display`, used by the `once:` cache-hit
@@ -571,7 +599,7 @@ Thin: `app.New(version)`, SIGINT/SIGTERM handling (cancel on the first,
 ```mermaid
 flowchart TD
     args["os.Args[1:]"] -->|"App.Run (app/app.go)"| src["hobnob.yml, --file, or the embedded demo"]
-    src -->|"ParseConfig / ParseConfigData<br/>all templates stored raw"| cfg["*ConfigFile"]
+    src -->|"ParseConfig / ParseConfigData<br/>templated fields parsed by literal, none rendered"| cfg["*ConfigFile"]
     cfg -->|"scope.Load (scope/load.go)<br/>root chain, then each module's<br/>chain on its importer's scope"| sc["root *Scope + FileScopes"]
     sc -->|"ExecuteTask (runner/runner.go)"| loop["executeSteps<br/>FileScopes.Apply on entering a module task<br/>per step: if:, then dispatch on StepKind<br/>each step reads and may mutate the current scope"]
     loop --> exit["process exit code (cmd/hobnob)"]
@@ -604,8 +632,8 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
 - `--upgrade` networking and tarballs (`internal/app/upgrade_test.go`)
 - bubbletea `Update`/`View` (`internal/tui`)
 - combinatorial pure functions: `internal/value/path_test.go`,
-  `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`,
-  `internal/eval/spread_test.go`
+  `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
+  `internal/literal`'s parse-then-evaluate tables, one per constructor
 
 Production code exposes exactly four test seams: `runner.SetPrompts`,
 `runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.

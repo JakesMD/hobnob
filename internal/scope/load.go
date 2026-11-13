@@ -157,7 +157,7 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 	own := newFileScope(parent)
 
 	for _, entry := range cfg.ConstEntries {
-		val, err := evalSetEntry(scope, entry)
+		val, err := entry.Val.Value(scope.vars)
 		if err != nil {
 			return nil, nil, fmt.Errorf("const: %s: %w", entry.Key, err)
 		}
@@ -187,7 +187,7 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 		if scope.claimed(entry.Key) {
 			continue
 		}
-		val, err := evalSetEntry(scope, entry)
+		val, err := entry.Val.Value(scope.vars)
 		if err != nil {
 			return nil, nil, fmt.Errorf("vars: %s: %w", entry.Key, err)
 		}
@@ -215,10 +215,4 @@ func (scope *Scope) envFileRef(name string, envSoFar map[string]string) (string,
 		return val.String(), true
 	}
 	return "", false
-}
-
-func evalSetEntry(scope *Scope, entry config.SetEntry) (value.Value, error) {
-	return config.EvalSetEntry(entry, func(tmpl string) (value.Value, error) {
-		return eval.EvalValue(tmpl, scope.vars)
-	})
 }

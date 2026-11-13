@@ -32,7 +32,7 @@
 // 19. drop the use:/rerun: parse-time rejection in config/steps.go   -> once_test.go (UseRejectedAtParseTime, RerunRejectedAtParseTime)
 //
 // 20. make run:'s Array-splice loop stringify the whole Array        -> run_test.go (ArrayElementSplices)
-// 21. drop the empty-argument-preserved rule in eval.ResolveArgv     -> run_test.go (EmptyElementPreserved)
+// 21. drop the empty-argument-preserved rule in literal.Argv.Resolve -> run_test.go (EmptyElementPreserved)
 // 22. allow run: [] to parse instead of erroring                     -> run_test.go (EmptyListIsParseError)
 //
 // 23. make hbpath return Nil instead of the missing sentinel         -> accessor_test.go (MissingPathErrorsNamingThePath)
@@ -68,11 +68,11 @@
 // 49. test len(IntoEntries) instead of HasInto in config.CallInto    -> results_test.go (EmptyIntoTakesNothing, EmptyIntoLoadsDespiteConstResult)
 // 50. drop the DeclaresConst check in runner.finishCall              -> results_test.go (ModuleResultClashingWithCallerConstFails)
 //
-// 51. append a spread's list whole in config.evalJSONNodeTree         -> set_test.go (SpreadSplicesListsIntoAListLiteral), call/const/vars/run_into _test.go (ListLiteralSpreads...)
-// 52. make config.intoLeaf never report a spread                     -> run_into_test.go (ListLiteralSpreadsCapturedList, SpreadOutsideAListErrors)
-// 53. drop the child.Spread check on object fields in parseJSONLiteralNode -> set_test.go (SpreadOutsideAListErrors)
-// 54. wrap run: list elements with eval.IsBareRef alone in config.parseStepNode -> run_test.go (SpreadIsANoOp)
-// 55. let config.singleValue return a spread's template instead of erroring -> loop_test.go (SpreadTargetErrors), set/run_into _test.go (SpreadOutsideAListErrors)
+// 51. append a spread's list whole in literal's node.eval            -> set_test.go (SpreadSplicesListsIntoAListLiteral), call/const/vars/run_into _test.go (ListLiteralSpreads...)
+// 52. make literal.intoLeaf never report a spread                    -> run_into_test.go (ListLiteralSpreadsCapturedList, SpreadOutsideAListErrors)
+// 53. drop the child.spread check on object fields in literal.parseTree -> set_test.go (SpreadOutsideAListErrors)
+// 54. wrap run: list elements with eval.IsBareRef alone in literal.ParseArgv -> run_test.go (SpreadIsANoOp)
+// 55. let literal.singleLeaf return a spread's template instead of erroring -> loop_test.go (SpreadTargetErrors), set/run_into _test.go (SpreadOutsideAListErrors)
 // 56. let config.stepKindOf keep the last of two kind keys           -> parse_test.go (StepWithRunAndSetRejected, StepWithLoopAndRunRejected)
 // 57. drop the foreign-key loop in config.stepKindOf                 -> parse_test.go (KeyForeignToStepKindRejected, UnknownStepKeyRejected)
 // 58. return only ITEM for a templated source in loopIterators       -> const_test.go (ReservedNameRejectsTemplatedLoopKeyAndValue)

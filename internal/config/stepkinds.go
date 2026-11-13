@@ -81,7 +81,7 @@ func loopIterators(step Step, _ map[string]Task) []string {
 			names[i] = entry.VarName
 		}
 		return names
-	case strings.Contains(step.ForTarget, "{{"):
+	case strings.Contains(step.ForTarget.String(), "{{"):
 		return []string{"ITEM", "KEY", "VALUE"}
 	default:
 		return []string{"ITEM"}

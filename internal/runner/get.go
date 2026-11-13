@@ -51,10 +51,10 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 		}
 		return nil
 	}
-	if getEntry.DefaultTmpl == "" {
+	if getEntry.DefaultTmpl.IsZero() {
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
 	}
-	val, err := eval.EvalValue(getEntry.DefaultTmpl, scope.Vars())
+	val, err := getEntry.DefaultTmpl.Value(scope.Vars())
 	if err != nil {
 		return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 	}
@@ -69,14 +69,14 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 	}
 
 	defaultVal := ""
-	if getEntry.DefaultTmpl != "" {
-		defaultVal, err = eval.EvalTemplate(getEntry.DefaultTmpl, scope.Vars())
+	if !getEntry.DefaultTmpl.IsZero() {
+		defaultVal, err = getEntry.DefaultTmpl.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 		}
 	}
 
-	fromItems, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl, scope.Vars(), "get "+getEntry.VarName)
+	fromItems, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl.Value, scope.Vars(), "get "+getEntry.VarName)
 	if err != nil {
 		return err
 	}
@@ -137,8 +137,8 @@ func promptSelectUntilValid(execState execCtx, getEntry config.GetEntry, fromIte
 
 // validateGetValue validates check and (in noPrompts mode) options for a var already in scope.
 func validateGetValue(execState execCtx, getEntry config.GetEntry, vars map[string]value.Value) error {
-	if execState.noPrompts && (len(getEntry.FromList) > 0 || getEntry.FromTmpl != "") {
-		items, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl, vars, "get "+getEntry.VarName)
+	if execState.noPrompts && (len(getEntry.FromList) > 0 || !getEntry.FromTmpl.IsZero()) {
+		items, err := eval.ResolveItemStrings(getEntry.FromList, getEntry.FromTmpl.Value, vars, "get "+getEntry.VarName)
 		if err != nil {
 			return err
 		}

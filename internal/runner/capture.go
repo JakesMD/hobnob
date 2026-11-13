@@ -19,17 +19,8 @@ import (
 // and the target name is flagged secret whenever the value carries one,
 // whatever shape the leaf had.
 func captureInto(kind string, entries []config.IntoEntry, source eval.IntoSource, scope, child *scope.Scope) error {
-	evalLeaf := func(leaf string) (value.Value, error) {
-		return eval.EvalIntoLeaf(leaf, source, scope.Vars())
-	}
 	for _, intoEntry := range entries {
-		var val value.Value
-		var err error
-		if intoEntry.ValNode != nil {
-			val, err = config.EvalJSONNode(*intoEntry.ValNode, evalLeaf)
-		} else {
-			val, err = evalLeaf(intoEntry.ValueTmpl)
-		}
+		val, err := intoEntry.Val.Eval(source, scope.Vars())
 		if err != nil {
 			return fmt.Errorf("%s into %q: %w", kind, intoEntry.ParentKey, err)
 		}

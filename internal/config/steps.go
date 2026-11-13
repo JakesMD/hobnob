@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"gopkg.in/yaml.v3"
+
+	"hobnob/internal/literal"
 )
 
 func parseStepNode(node *yaml.Node) (Step, error) {
@@ -25,17 +27,15 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		case "run":
 			switch fieldVal.Kind {
 			case yaml.SequenceNode:
-				if len(fieldVal.Content) == 0 {
-					return Step{}, fmt.Errorf("run: list form needs at least one element")
+				argv, err := literal.ParseArgv(fieldVal)
+				if err != nil {
+					return Step{}, err
 				}
-				for _, item := range fieldVal.Content {
-					tmpl, _ := templateLeaf(item.Value)
-					step.Argv = append(step.Argv, tmpl)
-				}
+				step.Argv = argv
 			case yaml.MappingNode:
 				return Step{}, fmt.Errorf("run: expected a command string or a list of arguments, got a mapping")
 			default:
-				cmd, err := normalizeTmpl(fieldVal.Value)
+				cmd, err := literal.Single(fieldVal.Value)
 				if err != nil {
 					return Step{}, fmt.Errorf("run: %w", err)
 				}
@@ -82,7 +82,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		case "soft":
 			step.Soft = parseBool(fieldVal)
 		case "dir":
-			dir, err := normalizeTmpl(fieldVal.Value)
+			dir, err := literal.Single(fieldVal.Value)
 			if err != nil {
 				return Step{}, fmt.Errorf("dir: %w", err)
 			}
@@ -95,7 +95,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				step.Quiet = parseBool(fieldVal)
 			} else {
 				step.Quiet = true
-				msg, err := normalizeTmpl(fieldVal.Value)
+				msg, err := literal.Single(fieldVal.Value)
 				if err != nil {
 					return Step{}, fmt.Errorf("quiet: %w", err)
 				}
@@ -138,7 +138,7 @@ func rejectSecretCallVars(entries []SetEntry) error {
 	return nil
 }
 
-func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, forMatrix []ForMatrixEntry, err error) {
+func parseLoopNode(fieldVal *yaml.Node) (forTarget literal.Expr, forList []string, forMatrix []ForMatrixEntry, err error) {
 	switch fieldVal.Kind {
 	case yaml.SequenceNode:
 		for _, item := range fieldVal.Content {
@@ -148,7 +148,7 @@ func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, for
 		for _, mapEntry := range mapEntries(fieldVal.Content) {
 			varName := mapEntry.Key
 			if err := validateVarName(varName); err != nil {
-				return "", nil, nil, err
+				return literal.Expr{}, nil, nil, err
 			}
 			valNode := mapEntry.Val
 			entry := ForMatrixEntry{VarName: varName}
@@ -157,18 +157,18 @@ func parseLoopNode(fieldVal *yaml.Node) (forTarget string, forList []string, for
 					entry.List = append(entry.List, item.Value)
 				}
 			} else {
-				tmpl, err := normalizeTmpl(valNode.Value)
+				tmpl, err := literal.Single(valNode.Value)
 				if err != nil {
-					return "", nil, nil, fmt.Errorf("loop: %s: %w", varName, err)
+					return literal.Expr{}, nil, nil, fmt.Errorf("loop: %s: %w", varName, err)
 				}
 				entry.ListTmpl = tmpl
 			}
 			forMatrix = append(forMatrix, entry)
 		}
 	default:
-		target, err := normalizeTmpl(fieldVal.Value)
+		target, err := literal.Single(fieldVal.Value)
 		if err != nil {
-			return "", nil, nil, fmt.Errorf("loop: %w", err)
+			return literal.Expr{}, nil, nil, fmt.Errorf("loop: %w", err)
 		}
 		forTarget = target
 	}

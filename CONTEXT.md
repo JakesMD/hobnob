@@ -42,6 +42,14 @@ _Avoid_: internal variable, hidden variable (a hidden task is one `--list` leave
 
 ### Values
 
+**Reference**:
+A variable named without template braces, as `.NAME` with optional accessors (`.A.b[0]`) or as a parenthesised pipeline (`(.X | json)`). It keeps the variable's type, where a `{{ }}` template renders text. Only fields that hold a single value or a list element take one; elsewhere `.NAME` is plain text.
+_Avoid_: bare ref, variable expression, accessor (an accessor is the `.b[0]` part)
+
+**Literal**:
+A list or map written in YAML inside `set:`, `with:`, `into:`, `const:` or `vars:`, whose leaves are references, templates or plain values. It nests what it holds, as JSON does, unless an element is a spread.
+_Avoid_: JSON literal, structure, object (an object is one kind of value)
+
 **Spread**:
 A list element written with a trailing `...` (`[.A..., d]`), whose items join the surrounding list one by one instead of nesting inside it as a single element. Only a list can be spread, and only into a list.
 _Avoid_: append, concat, flatten

@@ -23,7 +23,7 @@ func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
 				{Kind: config.KindCall, CallTarget: "child", Soft: true},
 			}},
 			"child": {Steps: []config.Step{
-				{Kind: config.KindRun, Command: "sleep 5"},
+				{Kind: config.KindRun, Command: shellCommand("sleep 5")},
 			}},
 		},
 	}

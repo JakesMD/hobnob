@@ -4,16 +4,12 @@ import (
 	"fmt"
 
 	"hobnob/internal/config"
-	"hobnob/internal/eval"
 	"hobnob/internal/scope"
-	"hobnob/internal/value"
 )
 
 func execSet(step config.Step, scope *scope.Scope) error {
 	for _, setEntry := range step.SetEntries {
-		val, err := config.EvalSetEntry(setEntry, func(tmpl string) (value.Value, error) {
-			return eval.EvalValue(tmpl, scope.Vars())
-		})
+		val, err := setEntry.Val.Value(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("set value for %q: %w", setEntry.Key, err)
 		}

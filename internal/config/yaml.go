@@ -7,15 +7,6 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// normalizeTmpl wraps a bare accessor or accessor | filter expression in
-// {{ }} so users can write `default: .LIST[0]` or
-// `options: .CFG.items[0].name` instead of the {{ }}-wrapped form. See
-// eval.IsBareRef. Every field normalised here holds one value, so a spread
-// (.A...) in it is an error.
-func normalizeTmpl(value string) (string, error) {
-	return singleValue(templateLeaf, value)
-}
-
 // isEmptyNode reports whether node is a YAML null (a key given with no value,
 // e.g. "vars:" followed by nothing, or explicit "vars: ~"/"vars: null").
 // Top-level vars:/modules:/tasks: blocks tolerate this as "no entries".

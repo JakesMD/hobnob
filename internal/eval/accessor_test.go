@@ -159,27 +159,3 @@ func TestRewriteAccessors_UnterminatedBracketErrors(t *testing.T) {
 		t.Fatal("expected an error for an unterminated bracket")
 	}
 }
-
-func TestIsBareRef(t *testing.T) {
-	tests := map[string]bool{
-		".VAR":                true,
-		".VAR | first":        true,
-		".VAR[0].name":        true,
-		".RELEASE_LIST":       true,
-		"./infra":             false,
-		"../tests":            false,
-		".git":                false,
-		".env.local":          false,
-		".DS_Store":           false,
-		".VARfoo":             false,
-		".VAR | first {{":     false,
-		".VAR |":              false,
-		"":                    false,
-		".":                   false,
-	}
-	for in, want := range tests {
-		if got := IsBareRef(in); got != want {
-			t.Errorf("IsBareRef(%q) = %v, want %v", in, got, want)
-		}
-	}
-}

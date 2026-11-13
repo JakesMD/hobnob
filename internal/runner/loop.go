@@ -17,8 +17,8 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	// Only the bare-var-reference form (loop: .MY_VAR) can resolve to an
 	// Object — a literal YAML sequence in loop: can never be a map.
-	if len(step.ForList) == 0 && step.ForTarget != "" {
-		rendered, err := eval.EvalValue(step.ForTarget, scope.Vars())
+	if len(step.ForList) == 0 && !step.ForTarget.IsZero() {
+		rendered, err := step.ForTarget.Value(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("loop from template: %w", err)
 		}
@@ -28,7 +28,7 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return execForList(execState, eval.ItemsFromValue(rendered), step.ForSteps, scope)
 	}
 
-	items, err := eval.ResolveItems(step.ForList, step.ForTarget, scope.Vars(), "loop")
+	items, err := eval.ResolveItems(step.ForList, step.ForTarget.Value, scope.Vars(), "loop")
 	if err != nil {
 		return err
 	}
@@ -74,7 +74,7 @@ func execForMatrix(execState execCtx, matrix []config.ForMatrixEntry, steps []co
 	varNames := make([]string, len(matrix))
 	itemLists := make([][]value.Value, len(matrix))
 	for i, entry := range matrix {
-		items, err := eval.ResolveItems(entry.List, entry.ListTmpl, scope.Vars(), "loop")
+		items, err := eval.ResolveItems(entry.List, entry.ListTmpl.Value, scope.Vars(), "loop")
 		if err != nil {
 			return err
 		}

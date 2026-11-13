@@ -11,7 +11,6 @@ import (
 	"sync/atomic"
 
 	"hobnob/internal/config"
-	"hobnob/internal/eval"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
@@ -20,15 +19,15 @@ import (
 func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var shellCmd *osExec.Cmd
 	var displayCmd string
-	if len(step.Argv) > 0 {
-		argv, err := eval.ResolveArgv(step.Argv, scope.Vars())
+	if !step.Argv.IsZero() {
+		argv, err := step.Argv.Resolve(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run argv: %w", err)
 		}
 		shellCmd = osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
 		displayCmd = displayArgv(argv)
 	} else {
-		cmd, err := eval.EvalTemplate(step.Command, scope.Vars())
+		cmd, err := step.Command.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run template: %w", err)
 		}
@@ -38,8 +37,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	runDir := execState.dir
 	displayDir := ""
-	if step.DirTmpl != "" {
-		resolved, err := eval.EvalTemplate(step.DirTmpl, scope.Vars())
+	if !step.DirTmpl.IsZero() {
+		resolved, err := step.DirTmpl.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("run dir template: %w", err)
 		}
@@ -52,7 +51,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		fmt.Println(displayLine)
 	}
 	if step.Quiet {
-		quietMsg, err := eval.EvalTemplate(step.QuietMsg, scope.Vars())
+		quietMsg, err := step.QuietMsg.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("quiet template: %w", err)
 		}

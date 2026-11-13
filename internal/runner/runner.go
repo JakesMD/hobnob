@@ -10,6 +10,7 @@ import (
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/literal"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
@@ -128,19 +129,19 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer.
 func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, "", scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, literal.Expr{}, scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
 // and every call:. It owns the whole sequence — resolve the task and its
 // owning file, apply that file's file scope, resolve the working directory,
 // evaluate the task's own if:, then run its steps — so no caller can skip a
-// part of it. callDirTmpl is a call: step's own dir: ("" for none), resolved
+// part of it. callDirTmpl is a call: step's own dir: (zero for none), resolved
 // against the caller's taskfile dir; the priority chain is call-site dir:
 // (Priority A) > task dir: (B) > inherited execState.dir (C). It runs within
 // an already-established execCtx, carrying its memo forward, so a once:
 // task's memoized results survive the sandbox swap at a call: boundary.
-func executeTask(execState execCtx, taskName, callDirTmpl string, scope *scope.Scope) error {
+func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, scope *scope.Scope) error {
 	task, execCfg, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
@@ -150,14 +151,14 @@ func executeTask(execState execCtx, taskName, callDirTmpl string, scope *scope.S
 	}
 	currentDir := execState.dir
 	switch {
-	case callDirTmpl != "":
-		resolved, err := eval.EvalTemplate(callDirTmpl, scope.Vars())
+	case !callDirTmpl.IsZero():
+		resolved, err := callDirTmpl.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("dir template: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
-	case task.Dir != "":
-		resolved, err := eval.EvalTemplate(task.Dir, scope.Vars())
+	case !task.Dir.IsZero():
+		resolved, err := task.Dir.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("task %q dir: %w", taskName, err)
 		}

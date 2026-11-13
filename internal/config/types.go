@@ -1,8 +1,10 @@
 package config
 
+import "hobnob/internal/literal"
+
 type Task struct {
 	Info   string
-	Dir    string // task-level working directory template
+	Dir    literal.Expr // task-level working directory
 	IfExpr string
 	Once   bool // memoize this task's result per hobnob invocation (see runner.execCall)
 	// Results names the vars this task promises exist after any call to it;
@@ -51,23 +53,21 @@ const (
 )
 
 type SetEntry struct {
-	Key     string
-	ValTmpl string
-	ValNode *JSONNode // non-nil for a map/list literal; ValTmpl unused when set
-	Secret  bool
+	Key    string
+	Val    literal.Expr // a single value or a map/list literal
+	Secret bool
 }
 
 type IntoEntry struct {
 	ParentKey string
-	ValueTmpl string
-	ValNode   *JSONNode // non-nil for a nested object/array literal; ValueTmpl unused when set
-	Bare      bool      // written as a bare NAME, short for NAME: .NAME (call: only)
+	Val       literal.Into
+	Bare      bool // written as a bare NAME, short for NAME: .NAME (call: only)
 }
 
 // BareIntoEntry is the entry a bare into: NAME parses to, and what a call:
 // without into: pulls for each of its target's results: NAME: NAME.
 func BareIntoEntry(name string) IntoEntry {
-	return IntoEntry{ParentKey: name, ValueTmpl: name, Bare: true}
+	return IntoEntry{ParentKey: name, Val: literal.IntoLeaf(name), Bare: true}
 }
 
 // DeclaresConst reports whether name is one of this file's own const: names.
@@ -80,50 +80,14 @@ func (cfg *ConfigFile) DeclaresConst(name string) bool {
 	return false
 }
 
-// JSONNodeKind discriminates the shape of a JSONNode.
-type JSONNodeKind int
-
-const (
-	// JSONString is a deferred leaf: a template (set:/with:) or source
-	// expression (into:) evaluated at runtime, not parse time.
-	JSONString JSONNodeKind = iota
-	// JSONLiteral is a non-string scalar (bool/int/float/null) decoded at
-	// parse time and passed through unevaluated — a {{ }} action can only
-	// occur inside a YAML string scalar, so these are never templates.
-	JSONLiteral
-	JSONObject
-	JSONArray
-)
-
-// JSONNode is a parsed literal JSON shape (a set:/with: map or list literal,
-// or a nested into: object/array) whose string leaves are unevaluated
-// template/source-expr text. Evaluating one means walking the tree,
-// evaluating each JSONString leaf, and json.Marshal-ing the assembled
-// result exactly once — never re-serializing text into an already-built
-// JSON string, which is what let unescaped quotes/backslashes in evaluated
-// leaf values corrupt the surrounding JSON.
-type JSONNode struct {
-	Kind     JSONNodeKind
-	Tmpl     string      // JSONString
-	Spread   string      // JSONString: the reference before a trailing ... in a list element, whose items join the list. Empty if not a spread.
-	Literal  any         // JSONLiteral
-	Fields   []JSONField // JSONObject
-	Elements []JSONNode  // JSONArray
-}
-
-type JSONField struct {
-	Key  string
-	Node JSONNode
-}
-
 type GetEntry struct {
 	VarName     string
 	Info        string
 	FromList    []string
-	FromTmpl    string
+	FromTmpl    literal.Expr
 	Multi       bool
 	Check       string
-	DefaultTmpl string
+	DefaultTmpl literal.Expr
 	Secret      bool
 	Optional    bool
 }
@@ -131,7 +95,7 @@ type GetEntry struct {
 type ForMatrixEntry struct {
 	VarName  string
 	List     []string
-	ListTmpl string
+	ListTmpl literal.Expr
 }
 
 // Step is one step of any kind. Which fields a kind may fill, and which
@@ -144,12 +108,12 @@ type Step struct {
 	SetEntries []SetEntry
 
 	// KindRun
-	Command  string
-	Argv     []string // run: list form; element templates, mutually exclusive with Command
-	DirTmpl  string   // working directory template (run: and call:)
-	Soft     bool     // continue past a non-zero exit instead of halting the timeline (run: and call:)
-	Quiet    bool     // suppress run: output on success; replayed in full on failure
-	QuietMsg string   // template shown in place of suppressed output; empty is valid (run: only)
+	Command  literal.Expr
+	Argv     literal.Argv // run: list form, mutually exclusive with Command
+	DirTmpl  literal.Expr // working directory (run: and call:)
+	Soft     bool         // continue past a non-zero exit instead of halting the timeline (run: and call:)
+	Quiet    bool         // suppress run: output on success; replayed in full on failure
+	QuietMsg literal.Expr // shown in place of suppressed output; empty is valid (run: only)
 
 	// KindCall
 	CallTarget  string // call: target
@@ -158,7 +122,7 @@ type Step struct {
 	HasInto     bool // into: was written, even as []; a call: without it takes the target's results:
 
 	// KindFor
-	ForTarget string
+	ForTarget literal.Expr
 	ForList   []string
 	ForMatrix []ForMatrixEntry
 	ForSteps  []Step

@@ -10,7 +10,6 @@ import (
 	"hobnob/internal/eval"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
-	"hobnob/internal/value"
 )
 
 // callMemo is the per-run cache backing once: true tasks. It lives for one
@@ -155,9 +154,7 @@ func summarizeCallDelta(before, after *scope.Scope) string {
 func buildCallScope(scope *scope.Scope, callVars []config.SetEntry) (*scope.Scope, error) {
 	childScope := scope.Copy()
 	for _, callVar := range callVars {
-		val, err := config.EvalSetEntry(callVar, func(tmpl string) (value.Value, error) {
-			return eval.EvalValue(tmpl, childScope.Vars())
-		})
+		val, err := callVar.Val.Value(childScope.Vars())
 		if err != nil {
 			return nil, fmt.Errorf("call var %q: %w", callVar.Key, err)
 		}

@@ -509,8 +509,8 @@ func isStepKeyStart(c byte) bool { return isIdentStart(c) }
 func isStepKeyCont(c byte) bool { return isIdentCont(c) || c == '-' }
 
 // IsBareRef reports whether s is exactly one accessor term optionally
-// followed by "| filter | ..." — the brace-free form config.normalizeTmpl
-// wraps in {{ }}. Mirrors the old bareVarRef regex's head-charset
+// followed by "| filter | ..." — the brace-free reference the literal
+// package wraps in {{ }}. Mirrors the old bareVarRef regex's head-charset
 // restriction (_?[A-Z][A-Z0-9_]*, the _ for private variables) so relative
 // paths (./infra), dotfiles (.git), and lowercase-leading text never match.
 // Only the step grammar (bracket subscripts, dotted keys) is new; a step's
@@ -566,4 +566,23 @@ func isUpperHeadTerm(head string) bool {
 	}
 	consumed, _, err := scanTerm(head, 0)
 	return err == nil && consumed == len(head)
+}
+
+// IsParenRef reports whether s is a parenthesised pipeline used as a value,
+// optionally followed by accessor steps: (.X | json) or (.X | json)[0].name.
+// With IsBareRef, it is the scanner the literal package's reference grammar
+// is built on.
+func IsParenRef(s string) bool {
+	if s == "" || s[0] != '(' {
+		return false
+	}
+	end, err := scanBalanced(s, 0, '(', ')')
+	if err != nil {
+		return false
+	}
+	if end == len(s) {
+		return true
+	}
+	consumed, _, err := scanTerm(s, 0)
+	return err == nil && consumed == len(s)
 }
