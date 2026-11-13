@@ -64,7 +64,7 @@ func TestE2E_Compare_NumericOrderingOnCapturedNumber(t *testing.T) {
 
 func TestE2E_Compare_NumericStringsOrderNumerically(t *testing.T) {
 	// given two CLI args that are numeric text (never structured — see
-	// GUIDE.md Typed values), when compared lt, then ordering is numeric,
+	// guide/structured-data.md), when compared lt, then ordering is numeric,
 	// not lexical (why: "10" < "9" lexically, but 10 is not less than 9)
 	res := Yml(t, `
 		tasks:
@@ -184,7 +184,7 @@ func TestE2E_Compare_NeMirrorsEq(t *testing.T) {
 func TestE2E_Compare_BoolOrderingRejected(t *testing.T) {
 	// given two real Bool vars (from an accessor — a set: scalar literal like
 	// "A: true" is a template, not a bare .VAR ref, so it renders as text,
-	// not a Bool; see GUIDE.md's "Typed values"), when compared lt, then the
+	// not a Bool; see guide/structured-data.md), when compared lt, then the
 	// run fails naming the unorderable kind (why: bools are equality-only,
 	// matching text/template stdlib's own rule — false < true would be an
 	// arbitrary invented ordering, not something JSON/shell semantics define)

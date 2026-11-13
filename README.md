@@ -1,15 +1,21 @@
+<div align="center">
+
+<img src=".github/assets/logo.svg" alt="hobnob logo" width="128">
+
 # hobnob
 
 [![CI](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml/badge.svg)](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jakesmd/hobnob)](https://github.com/jakesmd/hobnob/releases/latest)
 [![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
 
+</div>
+
 Another YAML task runner, except:
 
 - **Tasks return values.** Query an API from any step, use the response for the
   rest of the run.
-- **A form is just a step.** Text, single or multi select, built from an earlier
-  step's output.
+- **Prompts are just steps.** A text box, a menu or a multi-select, built from
+  an earlier step's output.
 - **JSON is data, not text.** Dot into it ten steps later, at any depth.
 - **Nothing to memorize.** Bare `hobnob` opens a menu of tasks, and whatever
   a task needs, it prompts for.
@@ -27,8 +33,6 @@ One static Go binary, nothing else to install.
 ```bash
 hobnob --demo ask-trivia
 ```
-
-![Demo](.github/assets/demo.gif)
 
 That runs this file:
 
@@ -48,10 +52,10 @@ tasks:
               info: Which category?
               options: .CATEGORIES | keys
 
-      # A sub-task, handing back a value.
-      - call: _fetch-question
+      # Look up the chosen category's id by name.
+      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
         into:
-          - TRIVIA: .RESPONSE[0]
+          - TRIVIA: stdout[0]
 
       # Shuffle the answers, so the right one isn't always first.
       - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
@@ -68,21 +72,16 @@ tasks:
         if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
       - run: 'echo "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."'
         if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
-
-  _fetch-question:
-    steps:
-      # Look up the chosen category's id by name.
-      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
-        into:
-          - RESPONSE: stdout
 ```
 
 It reads like a book, and runs like one.
 
 ## 📖 Docs
 
-The [hobnob guide](GUIDE.md) builds a working file from scratch. The
-[reference](REFERENCE.md) has every field, filter and flag.
+The [docs site](https://jakesmd.github.io/hobnob/) has a
+[guide](https://jakesmd.github.io/hobnob/docs/guide/) that builds a working
+file from scratch, and a [reference](https://jakesmd.github.io/hobnob/docs/reference/)
+with every field, filter and flag.
 
 ## 🤖 GitHub Action
 

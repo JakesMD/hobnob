@@ -1,7 +1,7 @@
 // Package e2e drives hobnob end-to-end: a hobnob.yml (or a small set of
 // files) goes in, app.Run executes it for real, and assertions read what the
 // user would actually see — printed output, exit code, prompts asked. See
-// GUIDE.md for the language this suite is a spec of.
+// docs/ for the language this suite is a spec of.
 //
 // Mutation checklist — each line is a one-statement break that some e2e test
 // in this package must catch. Run through this list after any change to the
@@ -78,6 +78,7 @@
 // 58. return only ITEM for a templated source in loopIterators       -> const_test.go (ReservedNameRejectsTemplatedLoopKeyAndValue)
 // 59. skip the loop: body in Step.Writes                             -> const_test.go (ReservedNameCheckedInsideNestedLoopSteps)
 // 60. call scope.checkLoadRules from Load for the root only, not resolve -> modules_test.go (OwnConstReadingImporterConstFailsAtLoad, OwnVarsSelfReferenceFailsAtLoad, OwnEnvPathReferencingOwnVarsNameFailsAtLoad)
+// 61. drop the with: keys from stepKinds' call: writes             -> const_test.go (ReservedNameRejectsWithCollision, WithCollisionCheckedInsideLoopSteps)
 package e2e
 
 import (

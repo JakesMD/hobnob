@@ -5,3 +5,6 @@ CLAUDE.md
 .DS_Store
 TODO.md
 .wayfinder/
+docs/node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/

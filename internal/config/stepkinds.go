@@ -7,7 +7,7 @@ import (
 )
 
 // stepKind is one step kind's rules: the YAML key that selects it, the keys
-// it accepts besides that key and if:, and the caller names it writes.
+// it accepts besides that key and if:, and the names it writes.
 // Parsing (stepKindOf) and the const: shadow check (Step.Writes) both read
 // this table, so a kind's rules live in its row.
 type stepKind struct {
@@ -38,7 +38,11 @@ var stepKinds = [...]stepKind{
 		key:  "call",
 		keys: []string{"dir", "with", "into", "soft"},
 		writes: func(step Step, tasks map[string]Task) []string {
-			return intoNames(CallInto(step, tasks[step.CallTarget]))
+			names := make([]string, len(step.CallVars))
+			for i, entry := range step.CallVars {
+				names[i] = entry.Key
+			}
+			return append(names, intoNames(CallInto(step, tasks[step.CallTarget]))...)
 		},
 	},
 	KindFor: {
@@ -58,7 +62,8 @@ var stepKinds = [...]stepKind{
 	},
 }
 
-// Writes returns every caller name step may write, a loop: body's included.
+// Writes returns every name step may write, a loop: body's included: the
+// caller's, and for a call: the with: names it hands the called task.
 // tasks is the step's own file's tasks: a call: to one of them counts its
 // results: (see CallInto); any other target counts only its into:.
 func (step Step) Writes(tasks map[string]Task) []string {

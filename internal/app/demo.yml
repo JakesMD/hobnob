@@ -1,5 +1,6 @@
 # The taskfile `hobnob --demo` runs, so a fresh install has something to run
-# before you've written one of your own. See GUIDE.md to write yours.
+# before you've written one of your own. See
+# https://jakesmd.github.io/hobnob/docs/guide/ to write yours.
 #
 # Questions from The Trivia API (https://the-trivia-api.com), CC BY-NC 4.0.
 
@@ -19,10 +20,10 @@ tasks:
               info: Which category?
               options: .CATEGORIES | keys
 
-      # A sub-task, handing back a value.
-      - call: _fetch-question
+      # Look up the chosen category's id by name.
+      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
         into:
-          - TRIVIA: .RESPONSE[0]
+          - TRIVIA: stdout[0]
 
       # Shuffle the answers, so the right one isn't always first.
       - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
@@ -39,10 +40,3 @@ tasks:
         if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
       - run: 'echo "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."'
         if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
-
-  _fetch-question:
-    steps:
-      # Look up the chosen category's id by name.
-      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
-        into:
-          - RESPONSE: stdout

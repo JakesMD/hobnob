@@ -4,7 +4,7 @@ import "testing"
 
 // The full scope precedence chain, highest to lowest: timeline (set:/get:
 // default/loop/call:, in execution order) > const: > CLI KEY=VALUE args >
-// env: files > vars: > OS env. See GUIDE.md's "Variables > Precedence" table.
+// env: files > vars: > OS env. See docs/guide/variables.md, "Precedence".
 
 func TestE2E_Scope_SetStepWinsOverCLIArgs(t *testing.T) {
 	// given a set: step and a matching CLI KEY=VALUE arg, when the task

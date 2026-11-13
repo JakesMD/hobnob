@@ -270,3 +270,91 @@ func TestE2E_Const_ReservedNameRejectsTemplatedLoopKeyAndValue(t *testing.T) {
 	res.Fails(t)
 	res.Err(t, "task t sets VALUE, declared in const:")
 }
+
+func TestE2E_Const_ReservedNameRejectsWithCollision(t *testing.T) {
+	// given const: API and a call: whose with: passes API, when the file
+	// loads, then it errors naming API (why: with: lands in the called
+	// task's timeline, which outranks const:, so it would quietly replace
+	// the constant for that task)
+
+	// Arrange
+	yml := `
+		const:
+		  - API: real
+		tasks:
+		  t:
+		    steps:
+		      - call: _show
+		        with:
+		          - API: fake
+		  _show:
+		    steps:
+		      - run: echo "API={{.API}}"
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "task t sets API, declared in const:")
+	res.NotOut(t, "API=fake")
+}
+
+func TestE2E_Const_WithCollisionCheckedInsideLoopSteps(t *testing.T) {
+	// given const: API and a call: nested in a loop: body whose with:
+	// passes API, when the file loads, then it still errors (why: the
+	// check reaches into a loop's own steps, not just a task's top level)
+
+	// Arrange
+	yml := `
+		const:
+		  - API: real
+		tasks:
+		  t:
+		    steps:
+		      - loop: [a, b]
+		        steps:
+		          - call: _show
+		            with:
+		              - API: fake
+		  _show:
+		    steps:
+		      - run: echo "API={{.API}}"
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "task t sets API, declared in const:")
+}
+
+func TestE2E_Const_WithOtherNameStillLoads(t *testing.T) {
+	// given const: API and a call: whose with: passes a different name,
+	// when it runs, then the call sees both (why: the check rejects only an
+	// actual collision, not every with: in a file that has const:)
+
+	// Arrange
+	yml := `
+		const:
+		  - API: real
+		tasks:
+		  t:
+		    steps:
+		      - call: _show
+		        with:
+		          - MODE: fake
+		  _show:
+		    steps:
+		      - run: echo "API={{.API}} MODE={{.MODE}}"
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "API=real MODE=fake")
+}

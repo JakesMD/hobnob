@@ -10,8 +10,8 @@ import (
 
 // DisplayVersion returns version, or "dev" when version is empty (unset by
 // the release build's -ldflags, e.g. a local `go build`/`go run`) — the one
-// place that fallback is decided, shared by --version and usage/docs-link
-// output so they can't drift out of sync with each other.
+// place that fallback is decided, shared by --version and usage output so
+// they can't drift out of sync with each other.
 func DisplayVersion(version string) string {
 	if version == "" {
 		return "dev"
@@ -19,39 +19,18 @@ func DisplayVersion(version string) string {
 	return version
 }
 
-// GuideURL points at the guide on main — the fallback whenever there's no
-// version to pin to. GuideURLFor prefers the running version's own copy.
-const GuideURL = docsBase + "main/GUIDE.md"
+// GuideURL points at the guide on the docs site.
+const GuideURL = docsBase + "guide/"
 
 // ReferenceURL is the reference's equivalent of GuideURL. The guide teaches;
 // the reference is what someone reaching for --help mid-task usually wants, so
 // usage names both rather than making them click through.
-const ReferenceURL = docsBase + "main/REFERENCE.md"
+const ReferenceURL = docsBase + "reference/"
 
-const docsBase = "https://github.com/JakesMD/hobnob/blob/"
-
-// GuideURLFor returns the guide URL for a specific released version, so the
-// docs a user is pointed at match the binary they're running.
-func GuideURLFor(version string) string {
-	return docsURLFor(version, "GUIDE.md", GuideURL)
-}
-
-// ReferenceURLFor is GuideURLFor for the reference.
-func ReferenceURLFor(version string) string {
-	return docsURLFor(version, "REFERENCE.md", ReferenceURL)
-}
-
-func docsURLFor(version, file, fallback string) string {
-	if version == "" {
-		return fallback
-	}
-	return docsBase + version + "/" + file
-}
+const docsBase = "https://jakesmd.github.io/hobnob/docs/"
 
 func PrintUsage(out io.Writer, version string) {
 	displayVersion := DisplayVersion(version)
-	guideURL := GuideURLFor(version)
-	referenceURL := ReferenceURLFor(version)
 	fmt.Fprintf(out, `hobnob %s
 
 Usage:
@@ -77,7 +56,7 @@ Docs:
   Guide      %s
   Reference  %s
 
-`, displayVersion, guideURL, referenceURL)
+`, displayVersion, GuideURL, ReferenceURL)
 }
 
 func PrintHelp(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, version string) error {

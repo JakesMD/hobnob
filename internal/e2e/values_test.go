@@ -3,8 +3,8 @@ package e2e
 import "testing"
 
 // Typed round-trips through the pipeline — value.Capture's sniff-once
-// discipline and the bare-.VAR-keeps-type rule from GUIDE.md's "Typed
-// values" section. Not a second filter-registry test — see
+// discipline and the bare-.VAR-keeps-type rule from
+// docs/guide/structured-data.md. Not a second filter-registry test — see
 // internal/value/filter_test.go for that.
 
 func TestE2E_Values_CapturedValidJSONArrayBecomesLoopableStructure(t *testing.T) {
@@ -80,7 +80,7 @@ func TestE2E_Values_BareVarReferenceKeepsTypeThroughSet(t *testing.T) {
 	// USERS is a real Array, then A keeps that Array type — but set: B:
 	// "{{.USERS}}" (surrounding-text-free but explicitly wrapped) still
 	// renders to its JSON text form, same as any templated field with
-	// surrounding text would (why: GUIDE.md's "a field that's exactly one
+	// surrounding text would (why: the guide's "a field that's exactly one
 	// variable reference keeps that variable's type; any surrounding text
 	// renders it to a plain string" rule)
 	res := Yml(t, `

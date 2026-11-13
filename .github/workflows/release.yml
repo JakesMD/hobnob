@@ -57,8 +57,6 @@ jobs:
           files: |
             *.tar.gz
             install.sh
-            GUIDE.md
-            REFERENCE.md
           generate_release_notes: true
 
   update-major-tag:

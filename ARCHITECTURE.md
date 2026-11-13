@@ -219,9 +219,11 @@ The one load-time rule `config` keeps is about steps:
 
 - `checkConstNamesNotShadowed` (`constvars.go`): no name a step writes
   (`Step.Writes`) may be a `const:` name of its own file. That covers
-  `set:`/`get:`/`into:` targets, `loop:` iterators (a templated source counts
-  `ITEM`, `KEY` and `VALUE`, since its kind is only known at runtime), and
-  what `CallInto` projects for a call to a literal target in the same file.
+  `set:`/`get:`/`into:` targets, a `call:`'s `with:` keys (whatever the
+  target, since they'd outrank `const:` in the called task), `loop:`
+  iterators (a templated source counts `ITEM`, `KEY` and `VALUE`, since its
+  kind is only known at runtime), and what `CallInto` projects for a call to
+  a literal target in the same file.
 
 `use:` and `rerun:` are parse errors naming `call:`/`once:` as the replacement.
 
@@ -405,8 +407,8 @@ Re-applying on a nested call is idempotent.
 
 ### `internal/cli`: presentation
 
-`--list`/`--help` rendering, task-selector data, docs URLs pinned to the
-running version, and the bash/zsh/fish completions embedded from
+`--list`/`--help` rendering, task-selector data, links to the docs site,
+and the bash/zsh/fish completions embedded from
 `internal/cli/completions/`.
 
 ### `internal/runner`: the interpreter

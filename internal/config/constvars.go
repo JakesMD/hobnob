@@ -2,9 +2,9 @@ package config
 
 import "fmt"
 
-// checkConstNamesNotShadowed rejects a set:/get:/into:/loop: target (loop:
-// iterators included) anywhere in cfg's own tasks that collides with one of cfg's own const:
-// names. Without this, const: would only be constant from outside the
+// checkConstNamesNotShadowed rejects a set:/get:/into:/with:/loop: target
+// (loop: iterators included) anywhere in cfg's own tasks that collides with
+// one of cfg's own const: names. Without this, const: would only be constant from outside the
 // file — the timeline still outranks it in the precedence chain, so a
 // task's own set: could quietly overwrite one. Scoped per-file: a module's
 // tasks are checked against the module's own const: block, not the
@@ -26,10 +26,11 @@ func checkConstNamesNotShadowed(cfg *ConfigFile) error {
 	return nil
 }
 
-// checkStepsDontShadow asks each step what it writes (Step.Writes). A call:
-// to a literal target in this same file counts its results: (see
-// CallInto); a templated or module target isn't known at load time, so
-// runner.finishCall checks it when the call runs.
+// checkStepsDontShadow asks each step what it writes (Step.Writes). A call:'s
+// with: keys count whatever its target, since they'd outrank the const: in
+// the called task's scope. A call: to a literal target in this same file
+// counts its results: (see CallInto); a templated or module target isn't
+// known at load time, so runner.finishCall checks it when the call runs.
 func checkStepsDontShadow(taskName string, steps []Step, names map[string]bool, tasks map[string]Task) error {
 	for _, step := range steps {
 		for _, name := range step.Writes(tasks) {

@@ -75,3 +75,17 @@ tasks:
           - ARCH:
               info: Target architecture
               options: [arm64, amd64]
+
+  docs:dev:
+    info: Serves the docs site locally with live reload
+    dir: docs
+    steps:
+      - run: npm install
+      - run: npm run dev
+
+  docs:build:
+    info: Builds the docs site into docs/.vitepress/dist
+    dir: docs
+    steps:
+      - run: npm ci
+      - run: npm run build

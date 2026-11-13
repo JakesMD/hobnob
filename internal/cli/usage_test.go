@@ -18,22 +18,23 @@ func TestPrintUsage(t *testing.T) {
 		wantAbsent []string
 	}{
 		{
-			name:    "given release version, when usage printed, then shows version and versioned docs URL (why: users should see docs matching their binary)",
+			name:    "given release version, when usage printed, then shows version and the docs site links (why: --help is where users look for the docs)",
 			version: "v1.2.3",
 			wantParts: []string{
 				"hobnob v1.2.3",
 				"--version",
-				"https://github.com/JakesMD/hobnob/blob/v1.2.3/GUIDE.md",
+				"https://jakesmd.github.io/hobnob/docs/guide/",
+				"https://jakesmd.github.io/hobnob/docs/reference/",
 			},
 			wantAbsent: []string{"hobnob dev"},
 		},
 		{
-			name:    "given empty version (dev build), when usage printed, then shows dev and main branch docs URL (why: dev builds fall back to main branch docs)",
+			name:    "given empty version (dev build), when usage printed, then shows dev and the docs site links (why: dev builds still need a way to the docs)",
 			version: "",
 			wantParts: []string{
 				"hobnob dev",
 				"--version",
-				"https://github.com/JakesMD/hobnob/blob/main/GUIDE.md",
+				"https://jakesmd.github.io/hobnob/docs/guide/",
 			},
 			wantAbsent: []string{"hobnob v"},
 		},
@@ -90,7 +91,7 @@ func TestPrintHelp(t *testing.T) {
 		"--no-input",
 		"--version",
 		"hobnob v2.0.0",
-		"https://github.com/JakesMD/hobnob/blob/v2.0.0/GUIDE.md",
+		"https://jakesmd.github.io/hobnob/docs/guide/",
 		"adopt",
 	} {
 		if !strings.Contains(output, want) {

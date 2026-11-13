@@ -1,0 +1,329 @@
+.dark {
+  --vp-c-bg: #1a2029;
+  --vp-c-bg-alt: #151a22;
+  --vp-c-bg-soft: #252d38;
+  --vp-c-bg-elv: #1f2630;
+  --vp-c-divider: #2e3744;
+  --vp-c-border: #3a4452;
+  --vp-c-gutter: #2e3744;
+  --vp-c-text-1: #eef1f5;
+  --vp-c-text-2: #aeb7c3;
+  --vp-c-text-3: #768191;
+  --vp-c-default-soft: #2c3542;
+  --vp-c-default-1: #768191;
+  --vp-c-default-2: #3a4452;
+  --vp-c-default-3: #2c3542;
+  --vp-nav-bg-color: #1a2029;
+  --vp-sidebar-bg-color: #151a22;
+  --vp-code-block-bg: #151a22;
+  --vp-button-alt-bg: #2c3542;
+  --vp-button-alt-border: #2c3542;
+  --vp-button-alt-text: #eef1f5;
+  --vp-button-alt-hover-bg: #3a4452;
+  --vp-button-alt-hover-border: #3a4452;
+  --vp-button-alt-hover-text: #eef1f5;
+  --vp-c-brand-1: #f6c27a;
+  --vp-c-brand-2: #e0a050;
+  --vp-c-brand-3: #d98a35;
+  --vp-c-brand-soft: rgba(217, 138, 53, 0.16);
+  --vp-button-brand-bg: #e0a050;
+  --vp-button-brand-border: #e0a050;
+  --vp-button-brand-text: #1a2029;
+  --vp-button-brand-hover-bg: #f6c27a;
+  --vp-button-brand-hover-border: #f6c27a;
+  --vp-button-brand-hover-text: #1a2029;
+}
+
+/* ── Landing ──────────────────────────────────────────────────────────────
+   One centred column: a narrow measure for the words, a wider stage for the
+   demo window, and whitespace rather than bands to separate the sections. */
+
+.VPHome {
+  overflow-x: clip;
+}
+
+.landing {
+  --measure: 720px;
+  --stage: 1080px;
+  padding: 0 24px;
+}
+
+.landing .vp-doc h1,
+.landing h2,
+.landing h3 {
+  border-top: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Hero */
+
+.l-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 64px;
+  max-width: var(--stage);
+  margin: 0 auto;
+  padding: 96px 0 0;
+}
+
+.l-hero-text {
+  max-width: 600px;
+}
+
+.l-logo {
+  position: relative;
+  width: 280px;
+  height: 280px;
+  margin-right: 40px;
+}
+
+.l-logo::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  z-index: -1;
+  border-radius: 50%;
+  background: linear-gradient(-45deg, #d98a35 50%, #3b4654 50%);
+  filter: blur(56px);
+}
+
+.l-logo img {
+  width: 100%;
+  height: 100%;
+}
+
+.l-badge {
+  margin: 0 0 12px !important;
+  color: var(--vp-c-brand-1);
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+
+.landing .l-title {
+  margin: 0;
+  font-size: clamp(40px, 6vw, 64px);
+  line-height: 1.08;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--vp-c-text-1);
+}
+
+.l-accent {
+  background: linear-gradient(120deg, #f6c27a 20%, #d98a35);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.landing .l-tagline {
+  max-width: 560px;
+  margin: 24px 0 0;
+  font-size: 20px;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+}
+
+.l-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 12px;
+  margin-top: 36px;
+}
+
+.landing .l-btn {
+  padding: 0 22px;
+  border-radius: 24px;
+  line-height: 42px;
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.2s;
+}
+
+.landing .l-btn.brand {
+  color: var(--vp-button-brand-text);
+  background: var(--vp-button-brand-bg);
+}
+
+.landing .l-btn.brand:hover {
+  background: var(--vp-button-brand-hover-bg);
+}
+
+.landing .l-btn.alt {
+  color: var(--vp-button-alt-text);
+  background: var(--vp-button-alt-bg);
+}
+
+.landing .l-btn.alt:hover {
+  background: var(--vp-button-alt-hover-bg);
+}
+
+/* Install: a single command, set like a pill under the buttons */
+
+.l-install {
+  max-width: var(--stage);
+  margin: 48px auto 0;
+}
+
+.landing .l-install div[class*='language-'] {
+  max-width: 800px;
+}
+
+.landing .l-install div[class*='language-'] {
+  margin: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-alt);
+  text-align: left;
+}
+
+.landing .l-install pre {
+  padding: 14px 0;
+}
+
+.landing .l-install span.lang {
+  display: none;
+}
+
+.landing .l-install .line::before {
+  content: '$ ';
+  color: var(--vp-c-text-3);
+}
+
+.landing .l-note {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--vp-c-text-3);
+}
+
+.landing .l-note a {
+  color: var(--vp-c-text-2);
+  text-decoration: underline;
+  text-decoration-color: var(--vp-c-divider);
+  text-underline-offset: 3px;
+}
+
+.landing .l-note a:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* Demo: the product shot, on a soft glow */
+
+.l-demo {
+  position: relative;
+  max-width: var(--stage);
+  margin: 120px auto 0;
+}
+
+.l-demo::before {
+  content: '';
+  position: absolute;
+  inset: 8% 10% 20%;
+  z-index: -1;
+  background: radial-gradient(closest-side, rgba(217, 138, 53, 0.28), transparent);
+  filter: blur(40px);
+}
+
+/* Features: quiet columns, no cards */
+
+.l-features {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 40px;
+  max-width: var(--stage);
+  margin: 88px auto 0;
+}
+
+.l-feature {
+  padding-top: 20px;
+  border-top: 1px solid var(--vp-c-divider);
+}
+
+.l-icon {
+  font-size: 22px;
+}
+
+.landing .l-feature h3 {
+  margin: 12px 0 8px;
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 600;
+}
+
+.landing .l-feature p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--vp-c-text-2);
+}
+
+/* Closing call to action */
+
+.l-cta {
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 136px 0 120px;
+  text-align: center;
+}
+
+.landing .l-cta h2 {
+  font-size: 32px;
+  line-height: 40px;
+  letter-spacing: -0.02em;
+}
+
+.landing .l-cta .l-actions {
+  justify-content: center;
+  margin-top: 28px;
+}
+
+@media (max-width: 960px) {
+  .l-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+  }
+
+  .l-logo {
+    order: -1;
+    width: 140px;
+    height: 140px;
+    margin: 0;
+  }
+
+  .l-features {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .landing {
+    padding: 0;
+  }
+
+  .l-hero {
+    padding-top: 48px;
+  }
+
+  .landing .l-tagline {
+    font-size: 17px;
+  }
+
+  .l-demo {
+    margin-top: 88px;
+  }
+
+  .l-features {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+    margin-top: 64px;
+  }
+
+  .l-cta {
+    padding: 96px 0 80px;
+  }
+}

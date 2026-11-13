@@ -128,7 +128,7 @@ func finishCall(callerCfg *config.ConfigFile, taskName string, task config.Task,
 // summarizeCallDelta renders the vars a once: task's first run produced or
 // changed, relative to before it ran, as a masked "KEY=val KEY2=val2"
 // summary for the cache-hit log line — otherwise a replayed call: is
-// invisible, the exact complaint the old use: memo drew (see GUIDE.md's
+// invisible, the exact complaint the old use: memo drew (see the guide's
 // former "Sharp edge" note). Sorted by key for a stable line across runs.
 func summarizeCallDelta(before, after *scope.Scope) string {
 	var keys []string

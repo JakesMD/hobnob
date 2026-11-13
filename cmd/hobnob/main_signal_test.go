@@ -56,7 +56,7 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	// given a run: step that takes time to shut down after receiving SIGTERM,
 	// when SIGINT arrives once, then hobnob prints the shutdown notice and
 	// waits for that cleanup to finish on its own instead of killing it
-	// immediately (why: documented CTRL+C contract in GUIDE.md — "waits for
+	// immediately (why: documented CTRL+C contract in docs/reference/cli.md — "waits for
 	// it to exit on its own, however long that takes")
 	if os.Getenv("hobnob_SUBPROCESS") == "1" {
 		fmt.Fprintln(os.Stderr, childStartedSentinel)

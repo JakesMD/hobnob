@@ -22,7 +22,7 @@ func TestE2E_Demo_FlagSaysItIsTheDemo(t *testing.T) {
 	// Not res.Err: the notice accompanies a successful run, and Err asserts
 	// the run failed. It goes to stderr so it can't contaminate a piped
 	// task's output.
-	for _, sub := range []string{"Running the built-in demo", "GUIDE.md"} {
+	for _, sub := range []string{"Running the built-in demo", "https://jakesmd.github.io/hobnob/docs/guide/"} {
 		if !strings.Contains(res.Stderr, sub) {
 			t.Errorf("expected stderr to contain %q\nstderr:\n%s", sub, res.Stderr)
 		}

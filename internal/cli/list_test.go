@@ -44,7 +44,7 @@ func TestListTasks(t *testing.T) {
 			wantLines: []string{
 				"No tasks found",
 				"hobnob.yml",
-				"GUIDE.md",
+				"https://jakesmd.github.io/hobnob/docs/guide/",
 			},
 		},
 	}
