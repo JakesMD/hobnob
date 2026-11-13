@@ -43,7 +43,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 			return fmt.Errorf("run dir template: %w", err)
 		}
 		runDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
-		displayDir = displayDirPath(runDir, scope.Vars()["HOBNOB_INVOCATION_DIR"].String())
+		displayDir = displayDirPath(runDir, scope.InvocationDir())
 	}
 
 	displayCmd = scope.Mask(displayCmd)

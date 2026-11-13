@@ -28,15 +28,20 @@ Every change must preserve these. Each is explained in the section named.
   out. The load-time const check and `finishCall` both ask `CallInto`. The
   `once:` memo is keyed on `Task.Steps` identity and caches the whole child
   scope. ([runner](#internalrunner-the-interpreter))
-- **Per-file load rules.** `checkConstClosedWorld`,
-  `checkConstNamesNotShadowed`, `checkVarsNoSelfReference` and
-  `checkEnvPathsDontReferenceVars` check each file against its own blocks.
-  A step's keys and writes come only from its row in `config.stepKinds`:
-  parsing rejects a second kind key or a foreign key, and the const check
-  asks `Step.Writes`. ([config](#internalconfig-parsing))
+- **Per-file load rules.** Each file is checked against its own blocks:
+  `scope.checkLoadRules` (`checkConstClosedWorld`, `checkVarsNoSelfReference`,
+  `checkEnvPathsDontReferenceVars`) at the top of `scope.resolve`, before that
+  file's chain evaluates anything, and `config.checkConstNamesNotShadowed` at
+  parse. A step's keys and writes come only from its row in
+  `config.stepKinds`: parsing rejects a second kind key or a foreign key, and
+  the const check asks `Step.Writes`.
+  ([scope](#internalscope-the-runtime-scope-and-file-scopes),
+  [config](#internalconfig-parsing))
 - **One resolution chain.** The ADR-0001 order exists only in `scope.resolve`
   and `Scope.envFileRef` beside it (the same order for `$NAME` inside a
-  dotenv file), for root and modules alike. A module's file scope never leaks to its parent;
+  dotenv file), for root and modules alike. The load rules that follow from
+  that order, and the two built-in names, are defined once beside it
+  (`scope/loadrules.go`). A module's file scope never leaks to its parent;
   `FileScopes.Apply` lands its `const:` with `Set` and its `env:`/`vars:` with
   `SetIfDefault`. Every `Set` claims its name. ([scope](#internalscope-the-runtime-scope-and-file-scopes))
 - **Private scope maps.** Writes go through `Set`/`SetIfDefault`/`MarkSecret`/
@@ -63,10 +68,10 @@ Every change must preserve these. Each is explained in the section named.
 cmd/hobnob/       entry point: signal handling, exit codes
 internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
-internal/scope/   the runtime scope, and loading the root and module file scopes
+internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
 internal/tui/     bubbletea prompts, lipgloss styles, output line writers
-internal/config/  YAML into typed structs, load-time rule checks
+internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
@@ -208,23 +213,15 @@ unevaluated. `const:`/`vars:` are no exception: their values still defer to
 `{ value:, secret: }` form, bare `into:` names, and the wording for a spread
 written as a whole entry, which it gives when `literal.ErrSpread` comes back.
 
-**Load-time rules** (`constvars.go`) run per file after the whole tree is
-parsed, so a module is checked against its own blocks:
+`const:`, `vars:` and `env:` are syntax only here: the rules about what they
+may reference follow from the layer order, so they live beside it in `scope`.
+The one load-time rule `config` keeps is about steps:
 
-- `checkConstClosedWorld`: a `const:` entry references only earlier `const:`
-  entries and the two built-ins. Otherwise a constant could read a lower layer
-  and still call itself fixed.
-- `checkConstNamesNotShadowed`: no name a step writes (`Step.Writes`) may be
-  a `const:` name. That covers `set:`/`get:`/`into:` targets, `loop:`
-  iterators (a templated source counts `ITEM`, `KEY` and `VALUE`, since its
-  kind is only known at runtime), and what `CallInto` projects for a call to a
-  literal target in the same file.
-- `checkVarsNoSelfReference`: a `vars:` entry may not reference its own key;
-  it already is the fallback.
-- `checkEnvPathsDontReferenceVars`: an `env:` path may not reference a `vars:`
-  name. `vars:` reads `env:` files
-  ([ADR-0001](docs/adr/0001-upward-reads-between-scope-layers.md)), so this
-  would be a cycle; rejecting it at load beats a runtime "path not found".
+- `checkConstNamesNotShadowed` (`constvars.go`): no name a step writes
+  (`Step.Writes`) may be a `const:` name of its own file. That covers
+  `set:`/`get:`/`into:` targets, `loop:` iterators (a templated source counts
+  `ITEM`, `KEY` and `VALUE`, since its kind is only known at runtime), and
+  what `CallInto` projects for a call to a literal target in the same file.
 
 `use:` and `rerun:` are parse errors naming `call:`/`once:` as the replacement.
 
@@ -366,14 +363,32 @@ ambient OS env. `const:`/`vars:` go through their entry's
 `literal.Expr` `Value` and stay typed; every other source is `value.Str`,
 unsniffed.
 
+**Load-time rules** (`loadrules.go`). Before `resolve` evaluates a file's
+chain, `checkLoadRules` checks the file against its own blocks, so a module is
+held to its own `const:`/`vars:`/`env:`, never its importer's. Each rule
+follows from the order above, and reads names through `Expr.Refs` (or
+`eval.ReferencedVars` for a raw `env:` path):
+
+- `checkConstClosedWorld`: a `const:` entry references only earlier `const:`
+  entries and the two built-ins (`HOBNOB_FILE_DIR`, `HOBNOB_INVOCATION_DIR`,
+  defined once here and set by `Load` on the base layer). Otherwise a
+  constant could read a lower layer and still call itself fixed. A key
+  declared twice in one block is an error.
+- `checkVarsNoSelfReference`: a `vars:` entry may not reference its own key;
+  it already is the fallback.
+- `checkEnvPathsDontReferenceVars`: an `env:` path may not reference a `vars:`
+  name. `vars:` reads `env:` files
+  ([ADR-0001](docs/adr/0001-upward-reads-between-scope-layers.md)), so this
+  would be a cycle; rejecting it at load beats a runtime "path not found".
+
 **Modules** are walked after the root chain, depth first:
 
 ```mermaid
 flowchart TD
-    root["resolve(root file, base, cliVars)"] --> walk
+    root["resolve(root file, base, cliVars)<br/>checkLoadRules first"] --> walk
     walk["loadModules: for each modules: entry"] --> path["evaluate path: against the importer's resolved scope"]
     path --> parse["config.ParseConfig"]
-    parse --> res["resolve(module, importer scope, no CLI args)"]
+    parse --> res["resolve(module, importer scope, no CLI args)<br/>checkLoadRules first"]
     res --> fs["FileScopes[moduleCfg] = its fileScope,<br/>linked to the importer's"]
     fs --> recurse["loadModules(module), recursively"]
     recurse --> reg["config.RegisterModuleTasks into the importer"]

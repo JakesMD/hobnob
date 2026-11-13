@@ -796,6 +796,69 @@ func TestE2E_Modules_OwnEnvPathReferencingOwnVarsNameFailsAtLoad(t *testing.T) {
 	res.Err(t, `env: "{{.STAGE}}.env" references .STAGE, declared in vars:`)
 }
 
+func TestE2E_Modules_OwnConstReadingImporterConstFailsAtLoad(t *testing.T) {
+	// given a module whose const: reads a const: of the file importing it,
+	// when the file loads, then it errors naming the module (why: a const:
+	// is a closed world over its own file, so a module constant can't
+	// quietly depend on whoever imports it)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				const:
+				  - REGION: eu
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				const:
+				  - HOST: "api-{{ .REGION }}"
+
+				tasks:
+				  show:
+				    steps:
+				      - run: echo hi
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.Fails(t)
+	res.Err(t, `module "mod": const: HOST references .REGION, which is not a file constant`)
+}
+
+func TestE2E_Modules_OwnVarsSelfReferenceFailsAtLoad(t *testing.T) {
+	// given a module whose vars: entry reads its own name, when the file
+	// loads, then it errors naming the module (why: the vars: rules hold
+	// per file, for modules as for the root)
+	res := Run(t, Case{
+		Files: Files{
+			"hobnob.yml": `
+				modules:
+				  - mod: mod.yml
+				tasks:
+				  t:
+				    steps:
+				      - call: mod:show
+			`,
+			"mod.yml": `
+				vars:
+				  - PORT: '{{ .PORT | default "80" }}'
+
+				tasks:
+				  show:
+				    steps:
+				      - run: echo hi
+			`,
+		},
+		Args: []string{"t"},
+	})
+	res.Fails(t)
+	res.Err(t, `module "mod": vars: PORT references itself`)
+}
+
 func TestE2E_Modules_OwnVarsBuildFromTheValueThatWins(t *testing.T) {
 	// given a module whose env: file sets STAGE=dev and whose vars: builds
 	// LABEL from STAGE, when run with a STAGE=prod CLI arg, then LABEL is

@@ -77,8 +77,8 @@ func Load(ctx context.Context, cfg *config.ConfigFile, cliVars map[string]string
 			base.ambient[key] = true
 		}
 	}
-	base.Set("HOBNOB_FILE_DIR", value.Str(cfg.TaskfileDir), false)
-	base.Set("HOBNOB_INVOCATION_DIR", value.Str(invocationDir), false)
+	base.Set(fileDirVar, value.Str(cfg.TaskfileDir), false)
+	base.Set(invocationDirVar, value.Str(invocationDir), false)
 
 	root, _, err := resolve(ctx, cfg, base, cliVars, nil)
 	if err != nil {
@@ -140,10 +140,10 @@ func loadModules(ctx context.Context, cfg *config.ConfigFile, importer *Scope, i
 // resolve is the one copy of the ADR-0001 chain (docs/adr/0001), shared by
 // the root file and every module. It resolves cfg's own layers on a copy of
 // base in the reverse of precedence order, so each layer's templates read the
-// final values of every layer above it: const: first (a closed world, checked
-// at load by config), then cliVars (root only; plain text, never sniffed),
-// then env: files (whose paths may read anything above but never a vars:
-// name, also checked at load), then vars: last. Every layer below const:
+// final values of every layer above it: const: first (a closed world), then
+// cliVars (root only; plain text, never sniffed), then env: files (whose
+// paths may read anything above but never a vars: name), then vars: last.
+// checkLoadRules enforces those rules on cfg before anything evaluates. Every layer below const:
 // writes a name only when it's unclaimed (Scope.claimed), and a claimed vars:
 // entry is skipped without being evaluated, since a template that only makes
 // sense standing alone shouldn't run just because it lost.
@@ -153,6 +153,9 @@ func loadModules(ctx context.Context, cfg *config.ConfigFile, importer *Scope, i
 // including the importer's own vars: defaults. The returned fileScope records
 // what this file itself wrote, for FileScopes.Apply to replay at run time.
 func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars map[string]string, parent *fileScope) (*Scope, *fileScope, error) {
+	if err := checkLoadRules(cfg); err != nil {
+		return nil, nil, err
+	}
 	scope := base.Copy()
 	own := newFileScope(parent)
 

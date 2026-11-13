@@ -103,16 +103,7 @@ func ParseConfigData(data []byte, filePath, dir string) (*ConfigFile, error) {
 		}
 	}
 
-	if err := checkConstClosedWorld(cfg.ConstEntries); err != nil {
-		return nil, err
-	}
-	if err := checkVarsNoSelfReference(cfg.VarEntries); err != nil {
-		return nil, err
-	}
 	if err := checkConstNamesNotShadowed(cfg); err != nil {
-		return nil, err
-	}
-	if err := checkEnvPathsDontReferenceVars(cfg); err != nil {
 		return nil, err
 	}
 

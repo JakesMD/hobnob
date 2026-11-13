@@ -77,6 +77,7 @@
 // 57. drop the foreign-key loop in config.stepKindOf                 -> parse_test.go (KeyForeignToStepKindRejected, UnknownStepKeyRejected)
 // 58. return only ITEM for a templated source in loopIterators       -> const_test.go (ReservedNameRejectsTemplatedLoopKeyAndValue)
 // 59. skip the loop: body in Step.Writes                             -> const_test.go (ReservedNameCheckedInsideNestedLoopSteps)
+// 60. call scope.checkLoadRules from Load for the root only, not resolve -> modules_test.go (OwnConstReadingImporterConstFailsAtLoad, OwnVarsSelfReferenceFailsAtLoad, OwnEnvPathReferencingOwnVarsNameFailsAtLoad)
 package e2e
 
 import (
