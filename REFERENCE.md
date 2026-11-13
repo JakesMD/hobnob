@@ -222,6 +222,8 @@ tasks:
 - **No `const:` names.** A call without `into:` can't pull a result named like
   one of the calling file's `const:` variables. For a task in the same file
   that fails at load; for a module or templated target, when the call runs.
+  A call with `into:` (even `into: []`) writes only what it lists, so it can
+  call such a task; the result inherited from the caller keeps the promise.
 
 ### `once:` (memoized tasks)
 
@@ -275,6 +277,20 @@ Five kinds. Any step takes `if:` to skip itself:
 - run: echo "lab coats on"
   if: '[ "{{.CATEGORY}}" = "science" ]'
 ```
+
+A step names exactly one kind, and takes only that kind's keys:
+
+| Kind    | Keys besides `if:`                     |
+| ------- | -------------------------------------- |
+| `set:`  | none                                   |
+| `run:`  | `into:`, `dir:`, `soft:`, `quiet:`     |
+| `get:`  | none                                   |
+| `call:` | `with:`, `into:`, `dir:`, `soft:`      |
+| `loop:` | `steps:`                               |
+
+Two kind keys on one step (`run:` beside `set:`, or a `loop:` body written
+beside it instead of under `steps:`), a key its kind doesn't take, or no kind
+key at all fails at load.
 
 ### `set`: assign variables
 
@@ -629,7 +645,9 @@ const:
 ```
 
 **A `const:` name is reserved file-wide.** No `set:`/`get:`/`into:`/`loop:`
-may write to it.
+may write to it. A `loop:`'s iterators count: a literal list writes `ITEM`, a
+matrix its own names, and a loop over a variable `ITEM`, `KEY` and `VALUE`,
+since the variable may turn out to be an object.
 
 **`vars:` may not reference its own key.** It is already the fallback, so
 `- CATEGORY: '{{ .CATEGORY | default "general_knowledge" }}'` is an error;

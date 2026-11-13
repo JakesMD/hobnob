@@ -134,6 +134,8 @@ type ForMatrixEntry struct {
 	ListTmpl string
 }
 
+// Step is one step of any kind. Which fields a kind may fill, and which
+// names it writes, are in its row of stepKinds (stepkinds.go).
 type Step struct {
 	Kind   StepKind
 	IfExpr string
@@ -144,7 +146,7 @@ type Step struct {
 	// KindRun
 	Command  string
 	Argv     []string // run: list form; element templates, mutually exclusive with Command
-	DirTmpl  string   // working directory template (run:, call:, and use: steps)
+	DirTmpl  string   // working directory template (run: and call:)
 	Soft     bool     // continue past a non-zero exit instead of halting the timeline (run: and call:)
 	Quiet    bool     // suppress run: output on success; replayed in full on failure
 	QuietMsg string   // template shown in place of suppressed output; empty is valid (run: only)

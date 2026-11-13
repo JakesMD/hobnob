@@ -198,20 +198,18 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 		switch step.Kind {
 		case config.KindRun:
 			err = execRun(execState, step, scope)
-			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
-				err = nil
-			}
 		case config.KindSet:
 			err = execSet(step, scope)
 		case config.KindCall:
 			err = execCall(execState, step, scope)
-			if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
-				err = nil
-			}
 		case config.KindFor:
 			err = execFor(execState, step, scope)
 		case config.KindGet:
 			err = execGet(execState, step, scope)
+		}
+		// Only the kinds that take soft: can have it set (config.stepKinds).
+		if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
+			err = nil
 		}
 		if err != nil {
 			return err

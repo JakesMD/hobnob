@@ -402,3 +402,64 @@ func TestE2E_Results_EmptyIntoTakesNothing(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "disk=mine")
 }
+
+func TestE2E_Results_BareCallClashingWithConstFailsBeforeAnyStepRuns(t *testing.T) {
+	// given a bare call to a same-file task whose results: name a const:,
+	// when the task runs, then loading fails before its first step (why: a
+	// literal same-file target's results are known at load, so the clash
+	// is a file error, not something a run half-completes before finding)
+
+	// Arrange
+	yml := `
+		const:
+		  - DISK: /dev/disk1
+		tasks:
+		  parent:
+		    steps:
+		      - run: echo started
+		      - call: child
+		  child:
+		    results: [DISK]
+		    steps:
+		      - run: echo hi
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "task parent sets DISK, declared in const:")
+	res.NotOut(t, "started")
+}
+
+func TestE2E_Results_EmptyIntoLoadsDespiteConstResult(t *testing.T) {
+	// given a task whose results: name a const: of the file, when a call
+	// takes into: [], then the file loads and the const: keeps its value
+	// (why: into: [] takes nothing, so the call writes no const: name, and
+	// the promise holds because the child inherits the const: from its caller)
+
+	// Arrange
+	yml := `
+		const:
+		  - X: fixed
+		tasks:
+		  pick:
+		    results: [X]
+		    steps:
+		      - set:
+		          - Y: chosen
+		  default:
+		    steps:
+		      - call: pick
+		        into: []
+		      - run: echo $X
+	`
+
+	// Act
+	res := Yml(t, yml, "default")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "fixed")
+}

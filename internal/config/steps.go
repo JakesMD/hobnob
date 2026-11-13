@@ -11,14 +11,18 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		return Step{}, fmt.Errorf("step must be a mapping")
 	}
 
-	var step Step
+	entries := mapEntries(node.Content)
+	kind, err := stepKindOf(entries)
+	if err != nil {
+		return Step{}, err
+	}
+	step := Step{Kind: kind}
 
-	for _, entry := range mapEntries(node.Content) {
+	for _, entry := range entries {
 		fieldKey, fieldVal := entry.Key, entry.Val
 
 		switch fieldKey {
 		case "run":
-			step.Kind = KindRun
 			switch fieldVal.Kind {
 			case yaml.SequenceNode:
 				if len(fieldVal.Content) == 0 {
@@ -38,26 +42,20 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				step.Command = cmd
 			}
 		case "set":
-			step.Kind = KindSet
 			entries, err := parseSetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("set: %w", err)
 			}
 			step.SetEntries = entries
 		case "get":
-			step.Kind = KindGet
 			entries, err := parseGetNode(fieldVal)
 			if err != nil {
 				return Step{}, fmt.Errorf("get: %w", err)
 			}
 			step.GetEntries = entries
 		case "call":
-			step.Kind = KindCall
 			step.CallTarget = fieldVal.Value
-		case "use":
-			return Step{}, fmt.Errorf("use: was removed — use call: with into:, and once: true on the target task")
 		case "loop":
-			step.Kind = KindFor
 			forTarget, forList, forMatrix, err := parseLoopNode(fieldVal)
 			if err != nil {
 				return step, err
@@ -103,8 +101,6 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				}
 				step.QuietMsg = msg
 			}
-		case "rerun":
-			return Step{}, fmt.Errorf("rerun: was removed along with use: — omit once: on the target task instead")
 		case "steps":
 			subSteps, err := parseStepSequence(fieldVal)
 			if err != nil {
@@ -114,10 +110,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 		}
 	}
 
-	if step.Quiet && step.Kind != KindRun {
-		return Step{}, fmt.Errorf("quiet: is only supported on run: steps")
-	}
-	if step.Kind != KindCall {
+	if step.Kind == KindRun {
 		for _, entry := range step.IntoEntries {
 			if entry.Bare {
 				return Step{}, fmt.Errorf("into: bare entry %q only works on call: steps; on run: write %s: stdout", entry.ParentKey, entry.ParentKey)

@@ -46,7 +46,7 @@
 //
 // 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
 // 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
-// 33. return an empty value for an unset name in runner.callSource   -> call_test.go (IntoMissingKeyErrors)
+// 33. return an empty value for an unset name in config.CallSource   -> call_test.go (IntoMissingKeyErrors)
 //
 // 34. drop signalGroupTerm from stepPipes.settle                     -> run_background_test.go (LeftoverGetsSigtermAndItsOutputIsKept)
 // 35. skip the leftoverGrace timeout branch in stepPipes.settle      -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace, hangs)
@@ -59,13 +59,13 @@
 // 41. close ${ at the first } instead of matchingBrace               -> env_test.go (DotenvDefaultAndUnsetReferences)
 // 42. drop the text-after-closing-quote error in parseDotenv         -> env_test.go (DotenvMalformedLineFailsNamingLine)
 //
-// 43. drop the "_" guard in runner.callSource                        -> call_test.go (IntoCannotReadPrivateChildVar)
-// 44. drop the non-call: bare-entry check in parseStepNode           -> call_test.go (IntoBareNameOnRunRejectedAtParseTime)
+// 43. drop the "_" guard in config.CallSource                        -> call_test.go (IntoCannotReadPrivateChildVar)
+// 44. drop the run: bare-entry check in parseStepNode                -> call_test.go (IntoBareNameOnRunRejectedAtParseTime)
 // 45. pull results: even when the call: step has its own into:       -> results_test.go (IntoReplacesResults)
-// 46. drop the results: presence check in runner.finishCall          -> results_test.go (PromiseCheckedEvenWithInto)
-// 47. skip results: in config.checkStepsDontShadow                   -> results_test.go (BareCallClashingWithConstRejected)
+// 46. drop the results: presence check in config.CallSource          -> results_test.go (PromiseCheckedEvenWithInto)
+// 47. use step.IntoEntries, not CallInto, in stepKinds' call: writes -> results_test.go (BareCallClashingWithConstFailsBeforeAnyStepRuns)
 // 48. drop the leading-_ allowance in eval.isUpperHeadTerm           -> accessor_test.go (BraceFreePrivateVarForm)
-// 49. test len(IntoEntries) instead of HasInto in runner.finishCall  -> results_test.go (EmptyIntoTakesNothing)
+// 49. test len(IntoEntries) instead of HasInto in config.CallInto    -> results_test.go (EmptyIntoTakesNothing, EmptyIntoLoadsDespiteConstResult)
 // 50. drop the DeclaresConst check in runner.finishCall              -> results_test.go (ModuleResultClashingWithCallerConstFails)
 //
 // 51. append a spread's list whole in config.evalJSONNodeTree         -> set_test.go (SpreadSplicesListsIntoAListLiteral), call/const/vars/run_into _test.go (ListLiteralSpreads...)
@@ -73,6 +73,10 @@
 // 53. drop the child.Spread check on object fields in parseJSONLiteralNode -> set_test.go (SpreadOutsideAListErrors)
 // 54. wrap run: list elements with eval.IsBareRef alone in config.parseStepNode -> run_test.go (SpreadIsANoOp)
 // 55. let config.singleValue return a spread's template instead of erroring -> loop_test.go (SpreadTargetErrors), set/run_into _test.go (SpreadOutsideAListErrors)
+// 56. let config.stepKindOf keep the last of two kind keys           -> parse_test.go (StepWithRunAndSetRejected, StepWithLoopAndRunRejected)
+// 57. drop the foreign-key loop in config.stepKindOf                 -> parse_test.go (KeyForeignToStepKindRejected, UnknownStepKeyRejected)
+// 58. return only ITEM for a templated source in loopIterators       -> const_test.go (ReservedNameRejectsTemplatedLoopKeyAndValue)
+// 59. skip the loop: body in Step.Writes                             -> const_test.go (ReservedNameCheckedInsideNestedLoopSteps)
 package e2e
 
 import (

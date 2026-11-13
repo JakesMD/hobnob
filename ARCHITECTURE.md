@@ -18,14 +18,19 @@ Every change must preserve these. Each is explained in the section named.
 
 - **Deferred evaluation.** Templates render only at runtime, through
   `EvalTemplate`/`EvalValue`. ([config](#internalconfig-parsing))
-- **Call isolation.** Every `call:` runs in a `Scope.Copy()`; only `into:`
-  brings values back, or with no `into:`, the target's `results:`, checked
-  present on every call. A `_`-prefixed variable never comes back. The `once:` memo is keyed on `Task.Steps` identity and
-  caches the whole child scope. ([runner](#internalrunner-the-interpreter))
+- **Call isolation.** Every `call:` runs in a `Scope.Copy()`; only what the
+  call contract (`config.CallInto`) projects comes back: its `into:` (even
+  `into: []`), or with none, the target's `results:`, checked present on every
+  call by `config.CallSource`, which also keeps every `_`-prefixed variable
+  out. The load-time const check and `finishCall` both ask `CallInto`. The
+  `once:` memo is keyed on `Task.Steps` identity and caches the whole child
+  scope. ([runner](#internalrunner-the-interpreter))
 - **Per-file load rules.** `checkConstClosedWorld`,
   `checkConstNamesNotShadowed`, `checkVarsNoSelfReference` and
   `checkEnvPathsDontReferenceVars` check each file against its own blocks.
-  ([config](#internalconfig-parsing))
+  A step's keys and writes come only from its row in `config.stepKinds`:
+  parsing rejects a second kind key or a foreign key, and the const check
+  asks `Step.Writes`. ([config](#internalconfig-parsing))
 - **One resolution chain.** The ADR-0001 order exists only in `scope.resolve`
   and `Scope.envFileRef` beside it (the same order for `$NAME` inside a
   dotenv file), for root and modules alike. A module's file scope never leaks to its parent;
@@ -204,8 +209,10 @@ parsed, so a module is checked against its own blocks:
 - `checkConstClosedWorld`: a `const:` entry references only earlier `const:`
   entries and the two built-ins. Otherwise a constant could read a lower layer
   and still call itself fixed.
-- `checkConstNamesNotShadowed`: no `set:`/`get:`/`into:`/`loop:` target may be
-  a `const:` name, nor a `results:` name pulled by an `into:`-less call to a
+- `checkConstNamesNotShadowed`: no name a step writes (`Step.Writes`) may be
+  a `const:` name. That covers `set:`/`get:`/`into:` targets, `loop:`
+  iterators (a templated source counts `ITEM`, `KEY` and `VALUE`, since its
+  kind is only known at runtime), and what `CallInto` projects for a call to a
   literal target in the same file.
 - `checkVarsNoSelfReference`: a `vars:` entry may not reference its own key;
   it already is the fallback.
@@ -215,6 +222,25 @@ parsed, so a module is checked against its own blocks:
   would be a cycle; rejecting it at load beats a runtime "path not found".
 
 `use:` and `rerun:` are parse errors naming `call:`/`once:` as the replacement.
+
+**Step kinds** (`stepkinds.go`). `config.Step` stays one flat struct, but each
+kind's rules sit in one row of the `stepKinds` table: the key that selects it,
+the keys it takes besides `if:`, and a `writes` func. `stepKindOf` picks a
+step's kind before any field is parsed, rejecting zero or several kind keys
+and any key the kind doesn't take, so the runner can trust that, say, `soft:`
+only appears on `run:` and `call:`. `Step.Writes(tasks)` returns every caller
+name a step may write, a `loop:` body's included.
+
+**The call contract** (`call.go`) answers what a `call:` hands back, for load
+time and runtime alike:
+
+- `CallInto(step, target)`: the `into:` entries the call applies; their
+  `ParentKey`s are the caller names it writes. A written `into:` (`HasInto`,
+  even `[]`) is taken as is; with none, the target's `results:` as bare
+  entries. A target unknown at load passes as the zero `Task`.
+- `CallSource(target, childVars)`: checks the `results:` promise, then
+  returns the `into:` source over the child's vars: an unset name is
+  `Missing`, a `_`-prefixed one a hard error.
 
 **Literal assembly.** A `set:`/`with:`/`into:`/`const:`/`vars:` map or list
 literal parses into a `JSONNode` tree of raw string leaves. `EvalJSONNode`
@@ -350,8 +376,8 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
    checks the task's `if:`. A false `if:` prints a skip line and succeeds.
 2. `executeSteps` checks each step's `if:`, dispatches on `StepKind`, and
    renders against the _current_ scope, which earlier steps may have mutated.
-3. `soft:` on `run:` or `call:` makes `executeSteps` swallow any error except
-   `ErrInterrupted`.
+3. `soft:` makes `executeSteps` swallow any error except `ErrInterrupted`,
+   whatever the kind; parsing only lets it onto `run:` and `call:`.
 
 `execCtx` bundles what threads through the call graph: context, config,
 `FileScopes`, task name, prompt flag, working dir, `once:` memo.
@@ -401,21 +427,19 @@ because `os/exec` takes the first occurrence and scope must win.
 **`into:` (`capture.go`).** `captureInto` is the one assignment path for both
 step kinds; only the source differs. `runSource` builds `stdout`/`stderr` via
 `value.Capture` only when a leaf names them, and `exit` as `value.Num`; any
-other name errors. `callSource` reads the child's final vars; an unset name is
-`Missing`, and a `_`-prefixed one is a hard error (private variables). A bare
-`into:` entry parses to `NAME: NAME` with `Bare` set, which `parseStepNode`
-rejects off `call:`. For `call:`, every result is `Adopt`ed, and the target name is
+other name errors. A call's source is `config.CallSource` (see the call
+contract under config). A bare `into:` entry parses to `NAME: NAME` with
+`Bare` set, which `parseStepNode` rejects on `run:`. For `call:`, every result is `Adopt`ed, and the target name is
 flagged secret whenever its value carries a child secret, whatever the leaf's
 shape. The name flag matters because `Display`, used by the `once:` cache-hit
 line, reads only it.
 
 **`call:` (`call.go`)** copies scope, evaluates `with:` into the child, runs
-the target, then `finishCall` checks every `results:` name is in the child's
-final scope (a broken promise fails the call, whatever `into:` says) and pulls
-values back through `into:`, or, when the step has no `into:` at all
-(`Step.HasInto`; `into: []` takes nothing), the results as bare entries. A
-result landing on a `const:` name of the caller's own file fails here, which
-covers module and templated targets the load-time check can't see. A `once: true` target is
+the target, then `finishCall` applies the call contract: `CallSource` checks
+every `results:` name is in the child's final scope (a broken promise fails
+the call, whatever `into:` says), and `CallInto`'s projection is captured. A
+projected name landing on a `const:` name of the caller's own file fails here,
+which covers module and templated targets the load-time check can't see. A `once: true` target is
 memoized per invocation in a `callMemo` on `execCtx`, which survives the scope
 swap, so a shared prologue replays into sibling sandboxes:
 

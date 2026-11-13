@@ -217,3 +217,56 @@ func TestE2E_Const_ListLiteralSpreadsEarlierConst(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, `["a","b","c"]`)
 }
+
+func TestE2E_Const_ReservedNameRejectsListLoopIterator(t *testing.T) {
+	// given const: ITEM and a list loop:, when the file loads, then it
+	// errors naming ITEM (why: the loop binds ITEM on every pass, so it
+	// writes the name just as a set: would)
+
+	// Arrange
+	yml := `
+		const:
+		  - ITEM: fixed
+		tasks:
+		  t:
+		    steps:
+		      - loop: [x, y]
+		        steps:
+		          - run: echo {{.ITEM}}
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "task t sets ITEM, declared in const:")
+	res.NotOut(t, "x")
+}
+
+func TestE2E_Const_ReservedNameRejectsTemplatedLoopKeyAndValue(t *testing.T) {
+	// given const: VALUE and a loop: over a variable, when the file loads,
+	// then it errors naming VALUE (why: whether the variable is a list or an
+	// object is only known when it runs, and an object binds KEY and VALUE)
+
+	// Arrange
+	yml := `
+		const:
+		  - VALUE: fixed
+		tasks:
+		  t:
+		    steps:
+		      - set:
+		          - LABELS: [a, b]
+		      - loop: .LABELS
+		        steps:
+		          - run: echo {{.ITEM}}
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "task t sets VALUE, declared in const:")
+}

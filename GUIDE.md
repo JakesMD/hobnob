@@ -49,6 +49,10 @@ tasks:
 `info:` is what `--list` and the picker show. No targets, no dependency
 graph, no phony declarations.
 
+Each step is exactly one of `run:`, `set:`, `get:`, `call:` or `loop:`. A key
+that kind doesn't take, like `soft:` on a `set:`, fails at load rather than
+being ignored. See [Steps](REFERENCE.md#steps).
+
 ## Asking for input
 
 `get:` prompts for a variable:
@@ -260,7 +264,7 @@ vars:
 
 > [!WARNING]
 > `const:` entries can reference only earlier `const:` entries, and no task may
-> write to a `const:` name. An `env:` path cannot reference a `vars:` name;
+> write to a `const:` name, not even as a `loop:`'s `ITEM`, `KEY` or `VALUE`. An `env:` path cannot reference a `vars:` name;
 > select the file with a CLI arg, the OS env or `const:` instead. See
 > [Env files](REFERENCE.md#env-files).
 

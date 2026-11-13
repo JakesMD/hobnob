@@ -55,25 +55,3 @@ func runSource(stdout, stderr string, exitCode int) eval.IntoSource {
 		return value.Value{}, fmt.Errorf("unknown source %q: must be stdout, stderr or exit", name)
 	}
 }
-
-// captureCallInto is captureInto for a call: step, whose source and adopted
-// secrets both come from the child's final scope.
-func captureCallInto(entries []config.IntoEntry, scope, child *scope.Scope) error {
-	return captureInto("call", entries, callSource(child), scope, child)
-}
-
-// callSource is a call: step's into: source: the child's final vars. A name
-// the child never set is a deferred "not found", catchable by | default. A
-// _-prefixed name is private to the child and a hard error, which | default
-// does not catch: privacy is upward only, so nothing else checks it.
-func callSource(child *scope.Scope) eval.IntoSource {
-	return func(name string) (value.Value, error) {
-		if config.IsPrivateVar(name) {
-			return value.Value{}, fmt.Errorf("%q is private to the called task (a _ prefix keeps a variable out of into:)", name)
-		}
-		if val, ok := child.Vars()[name]; ok {
-			return val, nil
-		}
-		return value.Missing(fmt.Sprintf("%q not found", name)), nil
-	}
-}

@@ -142,8 +142,8 @@ func checkEnvPathsDontReferenceVars(cfg *ConfigFile) error {
 	return nil
 }
 
-// checkConstNamesNotShadowed rejects a set:/get:/into:/loop: target
-// anywhere in cfg's own tasks that collides with one of cfg's own const:
+// checkConstNamesNotShadowed rejects a set:/get:/into:/loop: target (loop:
+// iterators included) anywhere in cfg's own tasks that collides with one of cfg's own const:
 // names. Without this, const: would only be constant from outside the
 // file — the timeline still outranks it in the precedence chain, so a
 // task's own set: could quietly overwrite one. Scoped per-file: a module's
@@ -166,47 +166,15 @@ func checkConstNamesNotShadowed(cfg *ConfigFile) error {
 	return nil
 }
 
-// A call: with no into: sets its target's results: in the caller, so those
-// count as set too. Only a literal target in this same file can be checked
-// here: a templated or module target isn't known at load time.
+// checkStepsDontShadow asks each step what it writes (Step.Writes). A call:
+// to a literal target in this same file counts its results: (see
+// CallInto); a templated or module target isn't known at load time, so
+// runner.finishCall checks it when the call runs.
 func checkStepsDontShadow(taskName string, steps []Step, names map[string]bool, tasks map[string]Task) error {
-	shadow := func(target string) error {
-		if names[target] {
-			return fmt.Errorf("task %s sets %s, declared in const: — pick another name", taskName, target)
-		}
-		return nil
-	}
 	for _, step := range steps {
-		for _, entry := range step.SetEntries {
-			if err := shadow(entry.Key); err != nil {
-				return err
-			}
-		}
-		for _, entry := range step.GetEntries {
-			if err := shadow(entry.VarName); err != nil {
-				return err
-			}
-		}
-		for _, entry := range step.IntoEntries {
-			if err := shadow(entry.ParentKey); err != nil {
-				return err
-			}
-		}
-		if step.Kind == KindCall && len(step.IntoEntries) == 0 {
-			for _, result := range tasks[step.CallTarget].Results {
-				if err := shadow(result); err != nil {
-					return err
-				}
-			}
-		}
-		for _, entry := range step.ForMatrix {
-			if err := shadow(entry.VarName); err != nil {
-				return err
-			}
-		}
-		if len(step.ForSteps) > 0 {
-			if err := checkStepsDontShadow(taskName, step.ForSteps, names, tasks); err != nil {
-				return err
+		for _, name := range step.Writes(tasks) {
+			if names[name] {
+				return fmt.Errorf("task %s sets %s, declared in const: — pick another name", taskName, name)
 			}
 		}
 	}
