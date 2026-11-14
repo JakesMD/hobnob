@@ -196,7 +196,7 @@ function shuffle<T>(items: T[]): T[] {
 
 async function trivia() {
   const task = 'ask-trivia'
-  print({ t: 'Running the built-in demo. Write your own: https://jakesmd.github.io/hobnob/docs/guide/', c: 'a8' })
+  print({ t: 'Running the built-in demo. Write your own: https://hobnob.jakesmd.dev/docs/guide/', c: 'a8' })
 
   highlight('the-trivia-api.com/v2/categories')
   const categoriesUrl = `${TRIVIA_API}/categories`

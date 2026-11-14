@@ -1,5 +1,5 @@
 <div align="center">
-  <a href="https://jakesmd.github.io/hobnob/">
+  <a href="https://hobnob.jakesmd.dev/">
     <img src=".github/assets/logo.svg" alt="hobnob logo" width="128">
   </a>
 
@@ -10,10 +10,10 @@
   </p>
 
   <p>
-    <a href="https://jakesmd.github.io/hobnob/docs/installation">Installation</a> &bullet;
-    <a href="https://jakesmd.github.io/hobnob/docs/quick-start">Quick start</a> &bullet;
-    <a href="https://jakesmd.github.io/hobnob/docs/guide/">Guide</a> &bullet;
-    <a href="https://jakesmd.github.io/hobnob/docs/reference/">Reference</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/docs/installation">Installation</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/docs/quick-start">Quick start</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/docs/guide/">Guide</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/docs/reference/">Reference</a> &bullet;
     <a href="https://github.com/jakesmd/hobnob/releases">Releases</a>
   </p>
 
@@ -34,7 +34,7 @@ Another YAML task runner, except:
 - **Nothing to memorize.** Bare `hobnob` opens a menu of tasks, and whatever
   a task needs, it prompts for.
 
-[See it in action →](https://jakesmd.github.io/hobnob/)
+[See it in action →](https://hobnob.jakesmd.dev/)
 
 ## 📦 Install
 

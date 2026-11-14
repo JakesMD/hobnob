@@ -5,11 +5,11 @@ const repo = 'https://github.com/jakesmd/hobnob'
 export default defineConfig({
   title: 'hobnob',
   description: 'A YAML task runner where tasks return values, prompts are steps and JSON is data.',
-  base: '/hobnob/',
+  base: '/',
   cleanUrls: true,
   lastUpdated: true,
   appearance: 'force-dark',
-  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/hobnob/logo.svg' }]],
+  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   srcExclude: ['adr/**', 'agents/**'],
 
   rewrites: {
