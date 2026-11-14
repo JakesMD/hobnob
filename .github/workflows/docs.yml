@@ -1,8 +1,12 @@
 name: Docs
 
+# Publish only released docs: a version tag deploys the site as it stood at that
+# tag, so unreleased changes on main never reach the live docs. To republish a
+# release by hand, run this workflow and pick the tag under "Use workflow from".
 on:
   push:
-    branches: [main]
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
@@ -17,6 +21,7 @@ concurrency:
 jobs:
   build:
     name: Build
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

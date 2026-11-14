@@ -1,13 +1,27 @@
 <div align="center">
+  <a href="https://jakesmd.github.io/hobnob/">
+    <img src=".github/assets/logo.svg" alt="hobnob logo" width="128">
+  </a>
 
-<img src=".github/assets/logo.svg" alt="hobnob logo" width="128">
+  <h1>hobnob</h1>
 
-# hobnob
+  <p>
+    A YAML task runner that reads like a book, and runs like one.
+  </p>
 
-[![CI](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml/badge.svg)](https://github.com/jakesmd/hobnob/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/jakesmd/hobnob)](https://github.com/jakesmd/hobnob/releases/latest)
-[![License](https://img.shields.io/badge/license-BSD--3--Clause-blue)](LICENSE)
+  <p>
+    <a href="https://jakesmd.github.io/hobnob/docs/installation">Installation</a> &bullet;
+    <a href="https://jakesmd.github.io/hobnob/docs/quick-start">Quick start</a> &bullet;
+    <a href="https://jakesmd.github.io/hobnob/docs/guide/">Guide</a> &bullet;
+    <a href="https://jakesmd.github.io/hobnob/docs/reference/">Reference</a> &bullet;
+    <a href="https://github.com/jakesmd/hobnob/releases">Releases</a>
+  </p>
 
+  <p>
+    <a href="https://github.com/jakesmd/hobnob/actions/workflows/ci.yml"><img src="https://github.com/jakesmd/hobnob/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/jakesmd/hobnob/releases/latest"><img src="https://img.shields.io/github/v/release/jakesmd/hobnob" alt="Release"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue" alt="License"></a>
+  </p>
 </div>
 
 Another YAML task runner, except:
@@ -20,6 +34,8 @@ Another YAML task runner, except:
 - **Nothing to memorize.** Bare `hobnob` opens a menu of tasks, and whatever
   a task needs, it prompts for.
 
+[See it in action →](https://jakesmd.github.io/hobnob/)
+
 ## 📦 Install
 
 ```bash
@@ -27,61 +43,6 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 ```
 
 One static Go binary, nothing else to install.
-
-## 👀 Try it
-
-```bash
-hobnob --demo ask-trivia
-```
-
-That runs this file:
-
-```yaml
-tasks:
-  ask-trivia:
-    info: Answer a trivia question from a category you pick.
-    steps:
-      # Query an API. The response is a value now.
-      - run: curl -fsS https://the-trivia-api.com/v2/categories
-        into:
-          - CATEGORIES: stdout
-
-      # The menu is built from what that step returned.
-      - get:
-          - CATEGORY:
-              info: Which category?
-              options: .CATEGORIES | keys
-
-      # Look up the chosen category's id by name.
-      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
-        into:
-          - TRIVIA: stdout[0]
-
-      # Shuffle the answers, so the right one isn't always first.
-      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
-        into:
-          - ANSWERS: stdout | lines
-
-      # Dot straight into the JSON. No parsing step.
-      - get:
-          - GUESS:
-              info: "{{ .TRIVIA.question.text }}"
-              options: .ANSWERS
-
-      - run: echo "Correct!"
-        if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
-      - run: 'echo "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."'
-        if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
-```
-
-It reads like a book, and runs like one.
-
-## 📖 Docs
-
-The [docs site](https://jakesmd.github.io/hobnob/) has a
-[guide](https://jakesmd.github.io/hobnob/docs/guide/) that builds a working
-file from scratch, and a [reference](https://jakesmd.github.io/hobnob/docs/reference/)
-with every field, filter and flag.
 
 ## 🤖 GitHub Action
 
