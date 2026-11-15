@@ -60,7 +60,7 @@ tasks:
           - TOKEN:
               info: Cluster token
               secret: true
-      - loop: .SERVICES | json
+      - loop: .SERVICES
         steps:
           - run: docker build -t ghcr.io/acme/{{.ITEM}}:{{.ENV}} services/{{.ITEM}}
           - run: kubectl --token {{.TOKEN}} -n {{.ENV}} rollout restart deploy/{{.ITEM}}

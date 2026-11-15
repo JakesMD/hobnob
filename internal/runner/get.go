@@ -2,7 +2,6 @@ package runner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"hobnob/internal/config"
@@ -28,13 +27,7 @@ func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if existing, exists := scope.Vars()[getEntry.VarName]; exists {
-		// Accepting the value in scope as the answer claims it, so a later
-		// module vars: default can't swap it out from under the task.
-		scope.Set(getEntry.VarName, existing, getEntry.Secret)
-		if getEntry.Optional && existing.IsEmpty() {
-			return nil
-		}
-		return validateGetValue(execState, getEntry, scope.Vars())
+		return acceptAnswer(execState, getEntry, scope, existing)
 	}
 	if execState.noPrompts {
 		return getFromNoPrompts(execState, getEntry, scope)
@@ -44,12 +37,7 @@ func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scop
 
 func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if getEntry.Optional {
-		if getEntry.Multi {
-			scope.Set(getEntry.VarName, value.Of([]any{}), getEntry.Secret)
-		} else {
-			scope.Set(getEntry.VarName, value.Nil(), getEntry.Secret)
-		}
-		return nil
+		return acceptAnswer(execState, getEntry, scope, value.Nil())
 	}
 	if getEntry.DefaultTmpl.IsZero() {
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
@@ -58,7 +46,25 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 	if err != nil {
 		return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 	}
+	return acceptAnswer(execState, getEntry, scope, val)
+}
+
+// acceptAnswer takes an answer nobody typed at a prompt (a value already in
+// scope, a default, or no answer to an optional entry), sets it and
+// validates it. Setting a value already in scope claims it, so a later
+// module vars: default can't swap it out from under the task.
+func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value) error {
+	if getEntry.Multi {
+		list, err := multiList(getEntry.VarName, val)
+		if err != nil {
+			return err
+		}
+		val = list
+	}
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
+	if getEntry.Optional && val.IsEmpty() {
+		return nil
+	}
 	return validateGetValue(execState, getEntry, scope.Vars())
 }
 
@@ -147,11 +153,9 @@ func validateGetValue(execState execCtx, getEntry config.GetEntry, vars map[stri
 			optSet[opt] = true
 		}
 		if getEntry.Multi {
-			selected, err := multiSelectedStrings(vars[getEntry.VarName])
-			if err != nil {
-				return fmt.Errorf("--no-input: %s value is not a valid JSON array: %w", getEntry.VarName, err)
-			}
+			selected, _ := vars[getEntry.VarName].Any().([]any) // a list after multiList
 			for _, sel := range selected {
+				sel := value.Of(sel).String()
 				if !optSet[sel] {
 					return fmt.Errorf("--no-input: %s value %q not in options", getEntry.VarName, sel)
 				}
@@ -175,21 +179,21 @@ func validateGetValue(execState execCtx, getEntry config.GetEntry, vars map[stri
 	return nil
 }
 
-// multiSelectedStrings reads a multi: get value's selections as strings — an
-// Array (the typed shape a real select produces) is read directly; a String
-// falls back to strict JSON-array decoding, since that's how a CI caller
-// passes multi: values on the command line (KEY=["a","b"]), which are always
-// plain strings, never sniffed into structure.
-func multiSelectedStrings(v value.Value) ([]string, error) {
-	if v.Kind() == value.KindArray {
-		arr := v.Any().([]any)
-		selected := make([]string, len(arr))
-		for i, elem := range arr {
-			selected[i] = value.Of(elem).String()
+// multiList returns a multi: answer that nobody picked at a prompt as a
+// list. A list is taken as is, empty is no picks, and text must parse
+// strictly as a JSON list: env files and the shell's environment only give
+// text, and multi: already declares a list, so this is no guess. Any other
+// value is an error rather than quietly becoming a list of one.
+func multiList(name string, v value.Value) (value.Value, error) {
+	switch {
+	case v.Kind() == value.KindArray:
+		return v, nil
+	case v.IsEmpty():
+		return value.Of([]any{}), nil
+	case v.Kind() == value.KindString:
+		if parsed, err := value.Parse(v.String()); err == nil && parsed.Kind() == value.KindArray {
+			return parsed, nil
 		}
-		return selected, nil
 	}
-	var selected []string
-	err := json.Unmarshal([]byte(v.String()), &selected)
-	return selected, err
+	return value.Value{}, fmt.Errorf("get %s: multi: %s must be a JSON list, like %s='[\"a\",\"b\"]', got %q", name, name, name, v.String())
 }

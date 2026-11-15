@@ -115,6 +115,10 @@ tells you which variable to pass.
 
 - **A value that's already set still has to pass `check:`**, or the step
   fails. When prompts are off, it must also be one of the `options:`.
+- **A `multi:` value that's already set or comes from `default:` must be a
+  list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
+  on the command line or in your shell. Other text, like `CATEGORIES=history`,
+  stops the task. An empty value means no picks.
 - **With `optional: true` and no answer**, the variable is set but empty
   (`[]` with `multi:`), and `check:` is skipped.
 - **Put `get:` steps early**, so nobody waits on a slow command before

@@ -80,14 +80,7 @@ tasks:
           - TRIVIA: stdout[0]
 
       # Shuffle the answers, so the right one isn't always first.
-      - run: [
-          sh,
-          -c,
-          'printf "%s\n" "$@" | sort -R',
-          answers,
-          .TRIVIA.correctAnswer,
-          .TRIVIA.incorrectAnswers,
-        ]
+      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
         into:
           - ANSWERS: stdout | lines
 
@@ -130,7 +123,7 @@ tasks:
               secret: true
 
       # Once per service you picked. The token never shows.
-      - loop: .SERVICES | json
+      - loop: .SERVICES
         steps:
           - run: docker build -t ghcr.io/acme/{{.ITEM}}:{{.ENV}} services/{{.ITEM}}
           - run: kubectl --token {{.TOKEN}} -n {{.ENV}} rollout restart deploy/{{.ITEM}}
@@ -165,6 +158,7 @@ tasks:
       - run: sudo dd if=output/{{.IMAGE}}.img of=/dev/{{.DISK}} bs=4M status=progress conv=fsync
 
   _pick-image:
+    once: true
     results: [IMAGE]
     steps:
       - run: ls images

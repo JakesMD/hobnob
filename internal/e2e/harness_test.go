@@ -79,6 +79,9 @@
 // 59. skip the loop: body in Step.Writes                             -> const_test.go (ReservedNameCheckedInsideNestedLoopSteps)
 // 60. call scope.checkLoadRules from Load for the root only, not resolve -> modules_test.go (OwnConstReadingImporterConstFailsAtLoad, OwnVarsSelfReferenceFailsAtLoad, OwnEnvPathReferencingOwnVarsNameFailsAtLoad)
 // 61. drop the with: keys from stepKinds' call: writes             -> const_test.go (ReservedNameRejectsWithCollision, WithCollisionCheckedInsideLoopSteps)
+// 62. write cliVars with value.Str, not value.Capture, in scope.resolve -> values_test.go (CLIArgThatIsJSONBecomesStructure)
+// 63. return a String multi: preset as is in runner.multiList        -> get_test.go (MultiPresetNotAJSONListFails, MultiPresetEmptyTextIsEmptyList)
+// 64. drop the JSON-text case from runner.multiList                  -> get_test.go (MultiPresetFromShellJSONTextBecomesAList, MultiDefaultAsJSONTextBecomesAList)
 package e2e
 
 import (

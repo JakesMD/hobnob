@@ -54,9 +54,10 @@ Every change must preserve these. Each is explained in the section named.
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
   (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`.
-- **One sniff point.** Only `value.Capture` turns text into structure. `keys`,
-  `join` and accessors error on a String, naming `| json`, rather than parse
-  it.
+- **One sniff point.** Only `value.Capture` turns text into structure, and
+  only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
+  `keys`, `join` and accessors error on a String, naming `| json`, rather
+  than parse it.
   ([value](#internalvalue-the-typed-scope-value))
 - **Absence defers; wrong kind fails.** A missing path is a `value.Missing`
   sentinel that only `| default` catches; every other consumer raises it. A
@@ -127,9 +128,9 @@ Numbers are `json.Number`, never `float64`: no precision loss, no stray `.0`.
 A seventh kind, `KindMissing`, lives only inside one accessor evaluation.
 
 **`Capture(text)` is the one sniff point.** Text becomes structure only if it
-decodes cleanly as a JSON array or object. Its only caller is `run: into:`.
-Env vars, CLI args, env-file values and prompt answers go through `Str`,
-unsniffed. The `json` filter is the explicit way in.
+decodes cleanly as a JSON array or object. Its callers are `run: into:` and
+`scope.resolve` for CLI args. Env vars, env-file values and prompt answers go
+through `Str`, unsniffed. The `json` filter is the explicit way in.
 
 **`Filters` is the one filter registry**, serving text/template (as a
 `FuncMap`, adapted in `eval`), the type-preserving evaluator, and `into:`
@@ -362,8 +363,8 @@ order plus the claimed rule. `resolve` hands `envFileRef` to the env file
 loader, so a `$NAME` inside a dotenv file (`dotenv.go`) follows it too: a
 claimed name reads its final value, then the latest env file value, then the
 ambient OS env. `const:`/`vars:` go through their entry's
-`literal.Expr` `Value` and stay typed; every other source is `value.Str`,
-unsniffed.
+`literal.Expr` `Value` and stay typed, CLI args go through `value.Capture`,
+and env and env-file values are `value.Str`, unsniffed.
 
 **Load-time rules** (`loadrules.go`). Before `resolve` evaluates a file's
 chain, `checkLoadRules` checks the file against its own blocks, so a module is
@@ -533,7 +534,12 @@ A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
 `KEY=VALUE` satisfies a prompt. Otherwise it uses `default:`, aborts, or
-prompts through `promptTextFn`/`promptSelectFn`.
+prompts through `promptTextFn`/`promptSelectFn`. A preset, a default and an
+optional entry's missing answer all go through `acceptAnswer`; for `multi:`
+it runs `multiList` first: an Array as is, empty as `[]`, a String that
+strictly parses as a JSON array as that array, anything else an error. So a
+`multi:` variable is always an Array. Parsing there isn't sniffing: `multi:`
+declares the type.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian

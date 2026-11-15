@@ -61,7 +61,7 @@ tasks:
           - TOKEN:
               info: Cluster token
               secret: true
-      - loop: .SERVICES | json
+      - loop: .SERVICES
         steps:
           - run: docker build -t ghcr.io/acme/{{.ITEM}}:{{.ENV}} services/{{.ITEM}}
           - run: kubectl --token {{.TOKEN}} -n {{.ENV}} rollout restart deploy/{{.ITEM}}
@@ -191,8 +191,8 @@ The differences:
   on `set -x` to see the commands, and the token is printed too.
 - **The answers are a list.** gum prints one service per line, so the script
   joins them with commas and splits them again to loop. hobnob's `SERVICES`
-  is a list. On the command line it's written as JSON, and arrives as text,
-  so the loop reads it with [`| json`](../guide/structured-data.md#text-that-looks-like-json).
+  is a list, whether it's picked in the menu or passed on the command line
+  as JSON (see [Text that looks like JSON](../guide/structured-data.md#text-that-looks-like-json)).
 - **gum has to be installed** on every machine where someone answers the
   questions. In CI, with every answer passed, neither needs anything but the
   commands themselves and, for hobnob, its binary.

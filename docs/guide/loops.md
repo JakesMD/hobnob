@@ -108,7 +108,8 @@ loop.
 
 - **An empty list runs the steps zero times.**
 - **Looping over text doesn't split it.** The steps run once, with `ITEM` as
-  the whole text. Turn JSON text into a list with `| json` first (see
+  the whole text. Turn JSON text from an env file or your shell into a list
+  with `| json` first (see
   [Text that looks like JSON](./structured-data.md#text-that-looks-like-json)).
 - **In a loop inside a loop, the inner `ITEM` hides the outer one** until
   the inner loop ends. To use both values at once, give the loops their own

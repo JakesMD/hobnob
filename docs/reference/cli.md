@@ -21,8 +21,9 @@ A `_`-prefixed task is internal: only `call:` can reach it.
 
 Sets a variable for the run, above `vars:` and env files, below `const:` (see
 [Precedence](../guide/variables.md#which-value-wins)). Repeatable. It also answers a `get:` for the same
-name, which is what makes an interactive task scriptable. Values are always
-text; see [Text that looks like JSON](../guide/structured-data.md#text-that-looks-like-json).
+name, which is what makes an interactive task scriptable. A value that's a
+valid JSON list or object is data, anything else text; see
+[Text that looks like JSON](../guide/structured-data.md#text-that-looks-like-json).
 
 ```bash
 hobnob ask-trivia CATEGORY=science COUNT=3

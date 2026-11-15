@@ -168,6 +168,141 @@ func TestE2E_Get_MultiSelectValidatesEachElement(t *testing.T) {
 	bad.Err(t, `TAGS value "nope" not in options`)
 }
 
+func TestE2E_Get_MultiPresetFromCLIBecomesAList(t *testing.T) {
+	// given multi: true and a JSON array passed on the command line, when a
+	// loop: reads the var without | json, then it runs once per element (why:
+	// a multi: answer is a list however it arrives, typed or passed in)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - TAGS:
+		              multi: true
+		              options: [alpha, beta, gamma]
+		      - loop: .TAGS
+		        steps:
+		          - run: echo tag={{.ITEM}}
+	`, "t", `TAGS=["alpha","gamma"]`)
+	res.OK(t)
+	res.Lines(t, "tag=alpha", "tag=gamma")
+}
+
+func TestE2E_Get_MultiPresetBecomesAListWithPromptsOn(t *testing.T) {
+	// given multi: true and a terminal, when the value is passed on the
+	// command line, then the var is still a list (why: the options check
+	// only runs with prompts off, the parse must not depend on it)
+	res := Run(t, Case{
+		Yml: `
+			tasks:
+			  t:
+			    steps:
+			      - get:
+			          - TAGS:
+			              multi: true
+			              options: [x, y]
+			      - loop: .TAGS
+			        steps:
+			          - run: echo tag={{.ITEM}}
+		`,
+		Args: []string{"t", `TAGS=["x","y"]`},
+		TTY:  true,
+	})
+	res.OK(t)
+	res.Lines(t, "tag=x", "tag=y")
+}
+
+func TestE2E_Get_MultiPresetFromShellJSONTextBecomesAList(t *testing.T) {
+	// given multi: true and a JSON list in the shell's environment, which
+	// arrives as text, when a loop: reads the var, then it runs once per
+	// element (why: multi: declares a list, so its text is parsed without
+	// | json, as it was before CLI args became data)
+	res := Run(t, Case{
+		Yml: `
+			tasks:
+			  t:
+			    steps:
+			      - get:
+			          - TAGS:
+			              multi: true
+			              options: [alpha, beta]
+			      - loop: .TAGS
+			        steps:
+			          - run: echo tag={{.ITEM}}
+		`,
+		Args: []string{"t", "--no-input"},
+		Env:  map[string]string{"TAGS": `["alpha","beta"]`},
+	})
+	res.OK(t)
+	res.Lines(t, "tag=alpha", "tag=beta")
+}
+
+func TestE2E_Get_MultiDefaultAsJSONTextBecomesAList(t *testing.T) {
+	// given multi: true with a default: written as JSON text, when run
+	// --no-input, then the default is used as a list (why: a quoted default
+	// worked before multi: answers were always lists, and must keep working)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - TAGS:
+		              multi: true
+		              options: [alpha, beta]
+		              default: '["beta"]'
+		      - loop: .TAGS
+		        steps:
+		          - run: echo tag={{.ITEM}}
+	`, "t", "--no-input")
+	res.OK(t)
+	res.Lines(t, "tag=beta")
+}
+
+func TestE2E_Get_MultiPresetNotAJSONListFails(t *testing.T) {
+	// given multi: true, when the value passed in isn't a JSON list, then
+	// the step fails showing the expected form, with prompts on or off (why:
+	// text isn't quietly turned into a list of one)
+	for _, args := range [][]string{
+		{"t", "TAGS=alpha,beta"},
+		{"t", "--no-input", "TAGS=alpha,beta"},
+	} {
+		res := Run(t, Case{
+			Yml: `
+				tasks:
+				  t:
+				    steps:
+				      - get:
+				          - TAGS:
+				              multi: true
+				              options: [alpha, beta]
+			`,
+			Args: args,
+			TTY:  true,
+		})
+		res.Fails(t)
+		res.Err(t, `TAGS must be a JSON list, like TAGS='["a","b"]'`)
+	}
+}
+
+func TestE2E_Get_MultiPresetEmptyTextIsEmptyList(t *testing.T) {
+	// given multi: true optional: true, when passed an empty value, then the
+	// var is an empty list, the same as no answer at all (why: a later
+	// loop: over it must simply run zero times)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - TAGS:
+		              multi: true
+		              optional: true
+		              options: [a, b]
+		      - run: echo 'tags={{.TAGS}}'
+	`, "t", "TAGS=")
+	res.OK(t)
+	res.Lines(t, "tags=[]")
+}
+
 func TestE2E_Get_TwoVarsResolveInOrder(t *testing.T) {
 	// given two get: entries in one step, when run --no-input, then each
 	// resolves independently in declaration order
@@ -388,4 +523,3 @@ func TestE2E_Get_CLIArgSatisfiesPromptWithoutAsking(t *testing.T) {
 	res.Lines(t, "hi-cli-value")
 	res.Prompted(t /* none */)
 }
-

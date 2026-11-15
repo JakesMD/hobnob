@@ -38,7 +38,8 @@ A value passed this way:
 - **answers a prompt** for the same name, so the prompt is skipped. That's
   how a task that asks questions can run in a script (see
   [Running without prompts](./prompts.md#running-without-prompts)).
-- **is always text**, even when it looks like JSON (see
+- **is a list or map when it's valid JSON**, such as
+  `CATEGORIES='["history","science"]'`, and text otherwise (see
   [Text that looks like JSON](./structured-data.md#text-that-looks-like-json)).
 
 ## Using another taskfile

@@ -26,13 +26,15 @@ numbers, however many steps later you write it.
 
 ## Where data comes from
 
-A variable holds a list or a map in only three cases:
+A variable holds a list or a map in only four cases:
 
 1. **You wrote one in YAML**, in `set:`, `vars:`, `const:`, `with:` or
    `into:`, such as `[history, science]` or `{ easy: 1, hard: 3 }`.
 2. **A command printed a JSON list or object**, and you kept it with
    [`into:`](./capturing-output.md).
-3. **You used the `json` filter** to turn text into data.
+3. **You passed a JSON list or map as a
+   [command-line argument](./running-tasks.md#passing-variables)**.
+4. **You used the `json` filter** to turn text into data.
 
 Everything else is text, even when it looks like JSON (see
 [Text that looks like JSON](#text-that-looks-like-json)).
@@ -151,12 +153,29 @@ tasks:
 
 ## Text that looks like JSON
 
-Command-line arguments, env files and your shell's environment only ever
-give text, however much it looks like JSON. Turn it into data with `| json`:
+A command-line argument that's a JSON list or map becomes data, just like
+a command's output:
 
-```bash
-hobnob report CATEGORIES='["history","science"]'
+```yaml
+tasks:
+  report:
+    steps:
+      - loop: .CATEGORIES
+        steps:
+          - run: echo "{{.ITEM}}"
 ```
+
+```
+$ hobnob report CATEGORIES='["history","science"]'
+run: [report] echo "history"
+[report] history
+run: [report] echo "science"
+[report] science
+✓ [report] done
+```
+
+Env files and your shell's environment only ever give text, however much it
+looks like JSON. Turn it into data with `| json`:
 
 ```yaml
 tasks:
@@ -167,7 +186,17 @@ tasks:
           - run: echo "{{.ITEM}}"
 ```
 
-Without `| json`, `.CATEGORIES` is 21 characters of text, not a list of two.
+```
+$ CATEGORIES='["history","science"]' hobnob report
+run: [report] echo "history"
+[report] history
+run: [report] echo "science"
+[report] science
+✓ [report] done
+```
+
+Without `| json`, `.CATEGORIES` from your shell is 21 characters of text, not
+a list of two.
 
 ## Rules
 
@@ -183,9 +212,19 @@ Without `| json`, `.CATEGORIES` is 21 characters of text, not a list of two.
   `keys`.
 - **Treating text as data is always an error**, even with `default`. Indexing
   text, or spreading it with `...`, means it needs `| json` first.
-- **Data is only detected once**, when it's captured or written. A later
-  filter never reads text as a list, which is why `keys`, `join` and `[0]`
-  fail on text.
+- **Data is only detected once**, when it's captured, passed on the command
+  line or written. A later filter never reads text as a list, which is why
+  `keys`, `join` and `[0]` fail on text.
+
+### Command-line arguments
+
+- **Only a whole, valid JSON list or map becomes data.** `MSG='[WIP] fix'`
+  and `PATTERN='[0-9]'` aren't valid JSON, and `1.0` or `true` isn't a list
+  or map, so all of them stay text.
+- **A list or map passed in prints exactly as you typed it**, spacing and
+  key order included, so you can hand JSON straight on to another command.
+- **`| json` on data changes nothing**, so `.CATEGORIES | json` works
+  whether the value came from the command line or your shell.
 
 ### Combining lists
 

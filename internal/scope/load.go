@@ -141,8 +141,9 @@ func loadModules(ctx context.Context, cfg *config.ConfigFile, importer *Scope, i
 // the root file and every module. It resolves cfg's own layers on a copy of
 // base in the reverse of precedence order, so each layer's templates read the
 // final values of every layer above it: const: first (a closed world), then
-// cliVars (root only; plain text, never sniffed), then env: files (whose
-// paths may read anything above but never a vars: name), then vars: last.
+// cliVars (root only; sniffed by value.Capture, like run: into:), then env:
+// files (whose paths may read anything above but never a vars: name), then
+// vars: last.
 // checkLoadRules enforces those rules on cfg before anything evaluates. Every layer below const:
 // writes a name only when it's unclaimed (Scope.claimed), and a claimed vars:
 // entry is skipped without being evaluated, since a template that only makes
@@ -170,7 +171,7 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 	}
 
 	for key, val := range cliVars {
-		scope.SetIfDefault(key, value.Str(val), false)
+		scope.SetIfDefault(key, value.Capture(val), false)
 	}
 
 	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.vars, scope.envFileRef)

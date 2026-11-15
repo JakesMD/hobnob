@@ -3,7 +3,7 @@ package e2e
 import "testing"
 
 // Typed round-trips through the pipeline — value.Capture's sniff-once
-// discipline and the bare-.VAR-keeps-type rule from
+// discipline (run: into: and CLI args) and the bare-.VAR-keeps-type rule from
 // docs/guide/structured-data.md. Not a second filter-registry test — see
 // internal/value/filter_test.go for that.
 
@@ -46,31 +46,100 @@ func TestE2E_Values_CapturedTextThatMerelyStartsWithBraceStaysString(t *testing.
 	res.Lines(t, "{not valid json", "resp={not valid json")
 }
 
-func TestE2E_Values_CLIArgStaysTextEvenWhenJSONShaped(t *testing.T) {
-	// given a CLI KEY=VALUE arg whose value looks like a JSON array, when
-	// used directly, then it stays plain text — indexing it errors naming
-	// | json rather than silently treating it as structure (why: only set:/
-	// with: literals, into: capture, and the explicit | json filter
-	// ever introduce structure — CLI args never do)
+func TestE2E_Values_CLIArgThatIsJSONBecomesStructure(t *testing.T) {
+	// given a CLI KEY=VALUE arg that decodes cleanly as a JSON array, when
+	// looped over and indexed, then it behaves as a real Array (why: CLI
+	// args go through value.Capture, the same rule as run: into:)
 	res := Yml(t, `
 		tasks:
 		  t:
 		    steps:
-		      - run: echo {{.TAGS[0]}}
+		      - loop: .TAGS
+		        steps:
+		          - run: echo item={{.ITEM}}
+		      - run: echo first={{.TAGS[0]}}
 	`, "t", `TAGS=["a","b"]`)
+	res.OK(t)
+	res.Lines(t, "item=a", "item=b", "first=a")
+}
+
+func TestE2E_Values_CLIArgThatIsJSONObjectBecomesAMap(t *testing.T) {
+	// given a CLI arg that decodes cleanly as a JSON object, when reached
+	// into, then it behaves as a real map (why: lists and objects follow
+	// the same rule)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo easy={{.LEVELS.easy}} keys={{.LEVELS | keys | join ","}}
+	`, "t", `LEVELS={"easy":1,"hard":3}`)
+	res.OK(t)
+	res.Lines(t, "easy=1 keys=easy,hard")
+}
+
+func TestE2E_Values_CLIArgThatIsJSONRendersAsTyped(t *testing.T) {
+	// given a CLI arg that's JSON with spacing and key order of its own,
+	// when rendered into a command, then the text comes out exactly as typed
+	// (why: a captured value keeps its raw text, so passing JSON through to
+	// another tool is untouched)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          echo 'body={{.BODY}}'
+	`, "t", `BODY={"z": 1, "a": [ 2 ]}`)
+	res.OK(t)
+	res.Lines(t, `body={"z": 1, "a": [ 2 ]}`)
+}
+
+func TestE2E_Values_CLIArgThatIsNotJSONStaysText(t *testing.T) {
+	// given CLI args that start with [ or { but aren't valid JSON, or are
+	// JSON scalars, when used, then they stay plain text (why: only a
+	// cleanly decoding list or object becomes structure)
+	res := Yml(t, `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          echo 'msg={{.MSG}} pat={{.PAT}} ver={{.VER}} len={{len .MSG}}'
+	`, "t", "MSG=[WIP] fix", "PAT=[0-9]", "VER=1.0")
+	res.OK(t)
+	res.Lines(t, "msg=[WIP] fix pat=[0-9] ver=1.0 len=9")
+}
+
+func TestE2E_Values_EnvVarStaysTextEvenWhenJSONShaped(t *testing.T) {
+	// given an OS environment variable whose value looks like a JSON array,
+	// when indexed, then it stays plain text and the error names | json
+	// (why: the shell environment holds names nobody set for hobnob, so
+	// only CLI args are sniffed)
+	res := Run(t, Case{
+		Yml: `
+			tasks:
+			  t:
+			    steps:
+			      - run: echo {{.TAGS[0]}}
+		`,
+		Args: []string{"t"},
+		Env:  map[string]string{"TAGS": `["a","b"]`},
+	})
 	res.Fails(t)
 	res.Err(t, "json")
 }
 
 func TestE2E_Values_JSONFilterParsesPlainStringExplicitly(t *testing.T) {
-	// given a CLI arg that's JSON-shaped text, when explicitly piped through
-	// | json, then it becomes real structure usable by an accessor/loop
-	res := Yml(t, `
-		tasks:
-		  t:
-		    steps:
-		      - run: echo first={{(.TAGS | json)[0]}}
-	`, "t", `TAGS=["a","b"]`)
+	// given an env var that's JSON-shaped text, when explicitly piped
+	// through | json, then it becomes real structure usable by an accessor
+	res := Run(t, Case{
+		Yml: `
+			tasks:
+			  t:
+			    steps:
+			      - run: echo first={{(.TAGS | json)[0]}}
+		`,
+		Args: []string{"t"},
+		Env:  map[string]string{"TAGS": `["a","b"]`},
+	})
 	res.OK(t)
 	res.Lines(t, "first=a")
 }
