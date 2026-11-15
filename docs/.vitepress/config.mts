@@ -8,6 +8,7 @@ export default defineConfig({
   base: '/',
   cleanUrls: true,
   lastUpdated: true,
+  sitemap: { hostname: 'https://hobnob.jakesmd.dev' },
   appearance: 'force-dark',
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   srcExclude: ['adr/**', 'agents/**'],
@@ -17,6 +18,7 @@ export default defineConfig({
     'quick-start.md': 'docs/quick-start.md',
     'guide/:page': 'docs/guide/:page',
     'reference/:page': 'docs/reference/:page',
+    'compare/:page': 'docs/compare/:page',
   },
 
   markdown: {
@@ -36,9 +38,7 @@ export default defineConfig({
   themeConfig: {
     logo: '/logo.svg',
     nav: [
-      { text: 'Get started', link: '/docs/installation', activeMatch: '^/docs/(installation|quick-start)' },
-      { text: 'Guide', link: '/docs/guide/', activeMatch: '^/docs/guide/' },
-      { text: 'Reference', link: '/docs/reference/', activeMatch: '^/docs/reference/' },
+      { text: 'Docs', link: '/docs/installation', activeMatch: '^/docs/' },
       { text: 'Releases', link: `${repo}/releases` },
     ],
 
@@ -109,6 +109,17 @@ export default defineConfig({
             { text: 'CLI', link: '/docs/reference/cli' },
             { text: 'Taskfile schema', link: '/docs/reference/schema' },
             { text: 'Templating', link: '/docs/reference/templating' },
+          ],
+        },
+        {
+          text: 'Compared',
+          link: '/docs/compare/',
+          items: [
+            { text: 'hobnob vs a bash script', link: '/docs/compare/bash' },
+            { text: 'hobnob vs a custom CLI', link: '/docs/compare/cli' },
+            { text: 'hobnob vs Task', link: '/docs/compare/task' },
+            { text: 'hobnob vs just', link: '/docs/compare/just' },
+            { text: 'hobnob vs make', link: '/docs/compare/make' },
           ],
         },
         {

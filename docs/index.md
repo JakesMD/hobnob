@@ -1,7 +1,7 @@
 ---
 layout: home
 title: hobnob
-titleTemplate: Another YAML task runner, except…
+titleTemplate: Build wizards in YAML
 ---
 
 <div class="landing">
@@ -9,8 +9,8 @@ titleTemplate: Another YAML task runner, except…
 <header class="l-hero">
   <div class="l-hero-text">
     <p class="l-badge">hobnob</p>
-    <h1 class="l-title">Another YAML task runner, <span class="l-accent">except…</span></h1>
-    <p class="l-tagline">Tasks return values, prompts are steps and JSON stays data. It reads like a book, and runs like one.</p>
+    <h1 class="l-title">Build <span class="l-accent">wizards</span> in YAML</h1>
+    <p class="l-tagline">A task runner where prompts are steps, JSON stays data and tasks return values. It reads like a book, and runs like one.</p>
     <div class="l-actions">
       <a class="l-btn brand" href="./docs/quick-start">Get started</a>
       <a class="l-btn alt" href="./docs/reference/">Reference</a>
@@ -32,24 +32,24 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 
 <section class="l-features">
   <div class="l-feature">
-    <span class="l-icon">↩️</span>
-    <h3>Tasks return values</h3>
-    <p>Query an API from any step, then use the response for the rest of the run.</p>
-  </div>
-  <div class="l-feature">
     <span class="l-icon">📝</span>
     <h3>Prompts are just steps</h3>
-    <p>A text box, a menu or a multi-select, built from an earlier step's output.</p>
+    <p>Ask anywhere in a task: a text box, a menu or a multi-select, built from an earlier step's output.</p>
   </div>
   <div class="l-feature">
     <span class="l-icon">🧬</span>
-    <h3>JSON is data, not text</h3>
-    <p>Dot into it ten steps later, at any depth. No parsing step.</p>
+    <h3>JSON stays data</h3>
+    <p>Dot into it ten steps later, at any depth. No <code>jq</code>, no parsing step.</p>
   </div>
   <div class="l-feature">
-    <span class="l-icon">🧭</span>
-    <h3>Nothing to memorize</h3>
-    <p>Bare <code>hobnob</code> opens a menu of tasks, and whatever a task needs, it prompts for.</p>
+    <span class="l-icon">↩️</span>
+    <h3>Tasks return values</h3>
+    <p>Call a helper and use what it returns in the next step, like a function.</p>
+  </div>
+  <div class="l-feature">
+    <span class="l-icon">🤖</span>
+    <h3>Runs in CI too</h3>
+    <p>Pass the answers as <code>NAME=value</code> and the same wizard runs straight through.</p>
   </div>
 </section>
 
@@ -80,7 +80,14 @@ tasks:
           - TRIVIA: stdout[0]
 
       # Shuffle the answers, so the right one isn't always first.
-      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
+      - run: [
+          sh,
+          -c,
+          'printf "%s\n" "$@" | sort -R',
+          answers,
+          .TRIVIA.correctAnswer,
+          .TRIVIA.incorrectAnswers,
+        ]
         into:
           - ANSWERS: stdout | lines
 
@@ -123,7 +130,7 @@ tasks:
               secret: true
 
       # Once per service you picked. The token never shows.
-      - loop: .SERVICES
+      - loop: .SERVICES | json
         steps:
           - run: docker build -t ghcr.io/acme/{{.ITEM}}:{{.ENV}} services/{{.ITEM}}
           - run: kubectl --token {{.TOKEN}} -n {{.ENV}} rollout restart deploy/{{.ITEM}}
