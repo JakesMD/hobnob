@@ -142,3 +142,32 @@ func TestInstall_RC_RecognisesCRLFMarkers(t *testing.T) {
 	// Assert
 	assertRC(t, got, block)
 }
+
+func TestInstall_RC_RerunWorksWithoutCmp(t *testing.T) {
+	// given cmp missing from PATH, when the installer reruns on a configured
+	// rc, then it reports the rc as already configured (why: minimal RHEL
+	// ships without diffutils)
+
+	// Arrange
+	rc := filepath.Join(t.TempDir(), "rc")
+	if err := os.WriteFile(rc, []byte(block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	stubs := t.TempDir()
+	if err := os.WriteFile(filepath.Join(stubs, "cmp"), []byte("#!/bin/sh\nexit 127\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("bash", "-c", `source ./install.sh && _write_hobnob_block "$1" "$2"`, "_", rc, body)
+	cmd.Env = append(os.Environ(), "HOBNOB_INSTALL_SOURCE_ONLY=1", "PATH="+stubs+":"+os.Getenv("PATH"))
+
+	// Act
+	out, err := cmd.CombinedOutput()
+
+	// Assert
+	if err != nil {
+		t.Fatalf("install.sh failed: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "already configured") {
+		t.Errorf("expected 'already configured', got: %s", out)
+	}
+}

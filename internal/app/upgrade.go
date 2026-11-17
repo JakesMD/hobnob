@@ -1,24 +1,21 @@
 package app
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 )
 
+// selfUpgrade runs the latest release's install.sh, so an upgrade also gets
+// the installer's PATH and completion setup, not just a new binary.
 func selfUpgrade() error {
 	url := os.Getenv("HOBNOB_UPGRADE_URL")
 	if url == "" {
-		url = fmt.Sprintf(
-			"https://github.com/jakesmd/hobnob/releases/latest/download/hobnob_%s_%s.tar.gz",
-			runtime.GOOS, runtime.GOARCH,
-		)
+		url = "https://github.com/jakesmd/hobnob/releases/latest/download/install.sh"
 	}
 
 	executablePath := os.Getenv("HOBNOB_UPGRADE_EXE")
@@ -34,96 +31,60 @@ func selfUpgrade() error {
 		}
 	}
 
-	return downloadAndInstall(url, executablePath, os.Stdout)
+	return runInstaller(url, filepath.Dir(executablePath), os.Stdout, os.Stderr)
 }
 
-func versionFromPath(path string) string {
-	parts := strings.Split(path, "/")
-	for i, part := range parts {
-		if part == "download" && i+1 < len(parts) {
-			return parts[i+1]
-		}
-	}
-	return ""
-}
+func runInstaller(url, installDir string, stdout, stderr io.Writer) error {
+	fmt.Fprintln(stdout, "Downloading latest hobnob installer...")
 
-func downloadAndInstall(url, executablePath string, out io.Writer) error {
-	fmt.Fprintln(out, "Downloading latest hobnob...")
-
-	// GitHub redirects latest → /releases/download/v1.2.3/... → CDN.
-	// Capture version from the intermediate GitHub-domain redirect.
-	var newVersion string
-	client := &http.Client{
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if newVersion == "" {
-				newVersion = versionFromPath(req.URL.Path)
-			}
-			return nil
-		},
-	}
-
-	resp, err := client.Get(url) //nolint:noctx
+	resp, err := http.Get(url) //nolint:noctx
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed: HTTP %d (no release for %s/%s?)", resp.StatusCode, runtime.GOOS, runtime.GOARCH)
+		return fmt.Errorf("download failed: HTTP %d", resp.StatusCode)
 	}
 
-	gzipReader, err := gzip.NewReader(resp.Body)
+	workDir, err := os.MkdirTemp("", "hobnob-upgrade-*")
 	if err != nil {
-		return fmt.Errorf("decompress failed: %w", err)
+		return fmt.Errorf("create temp dir: %w", err)
 	}
-	defer gzipReader.Close()
+	defer os.RemoveAll(workDir)
 
-	tarReader := tar.NewReader(gzipReader)
-	for {
-		header, err := tarReader.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("extract failed: %w", err)
-		}
-		if filepath.Base(header.Name) != "hobnob" {
-			continue
-		}
-
-		tempFile, err := os.CreateTemp(filepath.Dir(executablePath), "hobnob-upgrade-*")
-		if err != nil {
-			return fmt.Errorf("create temp file: %w", err)
-		}
-		tempFileName := tempFile.Name()
-
-		if _, err := io.Copy(tempFile, tarReader); err != nil {
-			tempFile.Close()
-			os.Remove(tempFileName)
-			return fmt.Errorf("write upgrade: %w", err)
-		}
-		tempFile.Close()
-
-		if err := os.Chmod(tempFileName, 0755); err != nil {
-			os.Remove(tempFileName)
-			return fmt.Errorf("chmod: %w", err)
-		}
-
-		if err := os.Rename(tempFileName, executablePath); err != nil {
-			os.Remove(tempFileName)
-			return fmt.Errorf("replace binary: %w", err)
-		}
-
-		if newVersion == "" {
-			newVersion = versionFromPath(resp.Request.URL.Path)
-		}
-		if newVersion != "" {
-			fmt.Fprintf(out, "Upgraded to hobnob %s\n", newVersion)
-		} else {
-			fmt.Fprintln(out, "Upgraded successfully.")
-		}
-		return nil
+	scriptPath := filepath.Join(workDir, "install.sh")
+	script, err := os.Create(scriptPath)
+	if err != nil {
+		return fmt.Errorf("create installer: %w", err)
 	}
+	if _, err := io.Copy(script, resp.Body); err != nil {
+		script.Close()
+		return fmt.Errorf("save installer: %w", err)
+	}
+	script.Close()
 
-	return fmt.Errorf("hobnob binary not found in release archive")
+	// Run from the temp dir: inside a hobnob checkout the installer would
+	// build from source instead of fetching the release.
+	cmd := exec.Command("bash", scriptPath)
+	cmd.Dir = workDir
+	cmd.Env = append(installerEnv(), "HOBNOB_INSTALL_DIR="+installDir)
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("installer failed: %w", err)
+	}
+	return nil
+}
+
+// installerEnv drops HOBNOB_VERSION, which would pin the installer to that
+// release instead of the one it was stamped with.
+func installerEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "HOBNOB_VERSION=") {
+			env = append(env, kv)
+		}
+	}
+	return env
 }

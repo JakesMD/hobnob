@@ -136,7 +136,8 @@ _write_hobnob_block() {
         exit 1
     fi
 
-    if cmp -s "$tmp" "$rc"; then
+    # cksum rather than cmp: minimal RHEL images ship without diffutils.
+    if [[ "$(cksum < "$tmp")" == "$(cksum < "$rc")" ]]; then
         rm -f "$tmp"
         echo "PATH and completion already configured in $rc"
         return

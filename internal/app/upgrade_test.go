@@ -1,9 +1,7 @@
 package app
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -13,25 +11,6 @@ import (
 	"strings"
 	"testing"
 )
-
-func makeTarGz(t *testing.T, files map[string][]byte) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	gw := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(gw)
-	for name, content := range files {
-		hdr := &tar.Header{Name: name, Mode: 0755, Size: int64(len(content))}
-		if err := tw.WriteHeader(hdr); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tw.Write(content); err != nil {
-			t.Fatal(err)
-		}
-	}
-	tw.Close()
-	gw.Close()
-	return buf.Bytes()
-}
 
 // captureStdout swaps os.Stdout for the duration of f and returns everything
 // written to it. Unlike the old internal/runner helper this drains
@@ -58,21 +37,26 @@ func captureStdout(t *testing.T, f func()) string {
 	return <-done
 }
 
-func TestUpgradeFlagPrintsVersion(t *testing.T) {
-	// given --upgrade flag, when Run called, then downloads the new binary and
-	// prints its version (why: --upgrade is the self-update entry point)
-	// Arrange
-	newBinary := []byte("new-binary-content")
-	archive := makeTarGz(t, map[string][]byte{"hobnob": newBinary})
+func serveScript(t *testing.T, status int, script string) string {
+	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write(archive)
+		w.WriteHeader(status)
+		w.Write([]byte(script))
 	}))
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv.URL + "/install.sh"
+}
+
+func TestUpgradeFlagRunsInstaller(t *testing.T) {
+	// given --upgrade flag, when Run called, then runs the release installer
+	// against the running binary's directory (why: upgrading must also set up
+	// PATH and completion, which only the installer does)
+	// Arrange
 	exe := filepath.Join(t.TempDir(), "hobnob")
 	if err := os.WriteFile(exe, []byte("old"), 0755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOBNOB_UPGRADE_URL", srv.URL+"/jakesmd/hobnob/releases/download/v9.9.9/hobnob_os_arch.tar.gz")
+	t.Setenv("HOBNOB_UPGRADE_URL", serveScript(t, http.StatusOK, `echo "install dir: $HOBNOB_INSTALL_DIR"`))
 	t.Setenv("HOBNOB_UPGRADE_EXE", exe)
 
 	// Act
@@ -85,23 +69,18 @@ func TestUpgradeFlagPrintsVersion(t *testing.T) {
 	if runErr != nil {
 		t.Fatalf("expected success, got: %v", runErr)
 	}
-	if !strings.Contains(out, "v9.9.9") {
-		t.Errorf("expected output to contain 'v9.9.9', got: %s", out)
+	if !strings.Contains(out, "install dir: "+filepath.Dir(exe)) {
+		t.Errorf("expected installer to target %s, got: %s", filepath.Dir(exe), out)
 	}
 }
 
-func TestDownloadAndInstall(t *testing.T) {
-	t.Run("given HTTP 404, when upgrading, then returns error (why: no release for this platform)", func(t *testing.T) {
+func TestRunInstaller(t *testing.T) {
+	t.Run("given HTTP 404, when upgrading, then returns error (why: a missing installer must not look like success)", func(t *testing.T) {
 		// Arrange
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-		}))
-		defer srv.Close()
-		exe := filepath.Join(t.TempDir(), "hobnob")
-		os.WriteFile(exe, []byte("old"), 0755)
+		url := serveScript(t, http.StatusNotFound, "")
 
 		// Act
-		err := downloadAndInstall(srv.URL+"/hobnob.tar.gz", exe, &bytes.Buffer{})
+		err := runInstaller(url, t.TempDir(), &bytes.Buffer{}, &bytes.Buffer{})
 
 		// Assert
 		if err == nil {
@@ -112,108 +91,60 @@ func TestDownloadAndInstall(t *testing.T) {
 		}
 	})
 
-	t.Run("given corrupt gzip body, when upgrading, then returns decompress error (why: malformed download must not replace binary)", func(t *testing.T) {
+	t.Run("given installer exits non-zero, when upgrading, then returns error with its stderr passed through (why: a failed install must fail the upgrade)", func(t *testing.T) {
 		// Arrange
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte("not a gzip"))
-		}))
-		defer srv.Close()
-		exe := filepath.Join(t.TempDir(), "hobnob")
-		os.WriteFile(exe, []byte("old"), 0755)
+		url := serveScript(t, http.StatusOK, "echo 'error: unsupported arch' >&2; exit 1")
+		var stderr bytes.Buffer
 
 		// Act
-		err := downloadAndInstall(srv.URL+"/hobnob.tar.gz", exe, &bytes.Buffer{})
+		err := runInstaller(url, t.TempDir(), &bytes.Buffer{}, &stderr)
 
 		// Assert
 		if err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if !strings.Contains(err.Error(), "decompress failed") {
-			t.Errorf("expected decompress error, got: %v", err)
+		if !strings.Contains(stderr.String(), "unsupported arch") {
+			t.Errorf("expected installer stderr passed through, got: %s", stderr.String())
 		}
 	})
 
-	t.Run("given tarball without hobnob binary, when upgrading, then returns error and leaves original intact (why: incomplete release must not silently succeed)", func(t *testing.T) {
+	t.Run("given upgrade run inside a hobnob checkout, when upgrading, then installer runs outside it (why: the installer builds from source when run in a checkout)", func(t *testing.T) {
 		// Arrange
-		archive := makeTarGz(t, map[string][]byte{"README.md": []byte("readme")})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(archive)
-		}))
-		defer srv.Close()
-		exe := filepath.Join(t.TempDir(), "hobnob")
-		os.WriteFile(exe, []byte("old"), 0755)
-
-		// Act
-		err := downloadAndInstall(srv.URL+"/hobnob.tar.gz", exe, &bytes.Buffer{})
-
-		// Assert
-		if err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if !strings.Contains(err.Error(), "not found in release archive") {
-			t.Errorf("expected 'not found in release archive', got: %v", err)
-		}
-		content, _ := os.ReadFile(exe)
-		if string(content) != "old" {
-			t.Errorf("original binary must be untouched, got: %s", content)
-		}
-	})
-
-	t.Run("given valid tarball with hobnob binary served at versioned URL, when upgrading, then replaces binary and prints new version (why: successful upgrade should confirm with version)", func(t *testing.T) {
-		// Arrange
-		newBinary := []byte("new-binary-content")
-		archive := makeTarGz(t, map[string][]byte{"hobnob": newBinary})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Write(archive)
-		}))
-		defer srv.Close()
-		exe := filepath.Join(t.TempDir(), "hobnob")
-		os.WriteFile(exe, []byte("old"), 0755)
-
+		checkout := t.TempDir()
+		os.WriteFile(filepath.Join(checkout, "go.mod"), []byte("module hobnob\n"), 0o644)
+		os.MkdirAll(filepath.Join(checkout, "cmd", "hobnob"), 0o755)
+		os.WriteFile(filepath.Join(checkout, "cmd", "hobnob", "main.go"), []byte("package main\n"), 0o644)
+		t.Chdir(checkout)
+		url := serveScript(t, http.StatusOK, `[[ -f go.mod ]] && echo "in checkout" || echo "outside checkout"`)
 		var out bytes.Buffer
 
 		// Act
-		err := downloadAndInstall(srv.URL+"/jakesmd/hobnob/releases/download/v9.9.9/hobnob_linux_amd64.tar.gz", exe, &out)
+		err := runInstaller(url, t.TempDir(), &out, &bytes.Buffer{})
 
 		// Assert
 		if err != nil {
 			t.Fatalf("expected success, got: %v", err)
 		}
-		content, _ := os.ReadFile(exe)
-		if !bytes.Equal(content, newBinary) {
-			t.Errorf("expected binary to be replaced with new content")
-		}
-		if !strings.Contains(out.String(), "v9.9.9") {
-			t.Errorf("expected output to contain 'v9.9.9', got: %s", out.String())
+		if !strings.Contains(out.String(), "outside checkout") {
+			t.Errorf("expected installer to run outside the checkout, got: %s", out.String())
 		}
 	})
 
-	t.Run("given GitHub-style redirect through versioned URL to CDN, when upgrading, then prints new version (why: real GitHub redirects end at CDN so version must be captured from intermediate redirect)", func(t *testing.T) {
+	t.Run("given HOBNOB_VERSION set, when upgrading, then installer does not see it (why: it would pin the upgrade to that version instead of the latest)", func(t *testing.T) {
 		// Arrange
-		newBinary := []byte("new-binary-content")
-		archive := makeTarGz(t, map[string][]byte{"hobnob": newBinary})
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if strings.Contains(r.URL.Path, "latest") {
-				http.Redirect(w, r, "/jakesmd/hobnob/releases/download/v9.9.9/hobnob_linux_amd64.tar.gz", http.StatusFound)
-				return
-			}
-			w.Write(archive)
-		}))
-		defer srv.Close()
-		exe := filepath.Join(t.TempDir(), "hobnob")
-		os.WriteFile(exe, []byte("old"), 0755)
-
+		t.Setenv("HOBNOB_VERSION", "v0.1.0")
+		url := serveScript(t, http.StatusOK, `echo "version: ${HOBNOB_VERSION:-unset}"`)
 		var out bytes.Buffer
 
 		// Act
-		err := downloadAndInstall(srv.URL+"/jakesmd/hobnob/releases/latest/download/hobnob_linux_amd64.tar.gz", exe, &out)
+		err := runInstaller(url, t.TempDir(), &out, &bytes.Buffer{})
 
 		// Assert
 		if err != nil {
 			t.Fatalf("expected success, got: %v", err)
 		}
-		if !strings.Contains(out.String(), "v9.9.9") {
-			t.Errorf("expected output to contain 'v9.9.9', got: %s", out.String())
+		if !strings.Contains(out.String(), "version: unset") {
+			t.Errorf("expected HOBNOB_VERSION hidden from installer, got: %s", out.String())
 		}
 	})
 }

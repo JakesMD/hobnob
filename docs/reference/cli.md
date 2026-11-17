@@ -81,8 +81,7 @@ Prints the version. Works outside any taskfile.
 
 ## `--upgrade`
 
-Replaces the running binary with the latest release. Works outside any
-taskfile.
+Reruns the latest installer; see [Upgrading](../installation.md#upgrading).
 
 ## `completion <shell>`
 

@@ -15,8 +15,9 @@ binary.
 hobnob --upgrade
 ```
 
-Replaces the running binary with the latest release. Works outside any
-taskfile.
+Reruns the latest installer into the running binary's directory, so PATH and
+completion get set up even if hobnob got there another way. Needs `bash` and
+`curl`, like the installer. Works outside any taskfile.
 
 ## GitHub Actions
 

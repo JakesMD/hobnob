@@ -631,7 +631,8 @@ With no task and no `default` task, `selectAndRun` opens the picker, or prints
 the task list when there is no terminal, `CI` is set, or `--no-input` was
 passed. `defaultNoPrompts` is the one place that decides this.
 
-`upgrade.go` replaces the binary from the latest release tarball.
+`upgrade.go` runs the latest release's `install.sh` against the running
+binary's directory, so upgrades get the installer's PATH and completion setup.
 
 ### `cmd/hobnob`
 
@@ -673,7 +674,7 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
 
 - signals and process groups (`cmd/hobnob/main_signal_test.go`, `runner`'s
   kill and cancellation tests)
-- `--upgrade` networking and tarballs (`internal/app/upgrade_test.go`)
+- `--upgrade` download and installer hand-off (`internal/app/upgrade_test.go`)
 - bubbletea `Update`/`View` (`internal/tui`)
 - combinatorial pure functions: `internal/value/path_test.go`,
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
