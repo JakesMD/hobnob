@@ -114,8 +114,29 @@ what went wrong.
 
 ## Background jobs
 
-A command can start jobs in the background with `&`. hobnob stops those jobs
-when the step ends. To let them finish first, end the step with `wait`:
+A command can start a job in the background with `&`, such as a server or an
+app you want open while the task goes on. The job keeps running while later
+steps run, and what it prints still shows under the task's name. When hobnob
+finishes, it stops the job.
+
+```yaml
+tasks:
+  play:
+    steps:
+      - run: ./quiz-server.sh &
+      - run: ./play.sh
+```
+
+```
+$ hobnob play
+run: [play] ./quiz-server.sh &
+run: [play] ./play.sh
+[play] quiz server listening on :8000
+[play] question 1 of 10
+✓ [play] done
+```
+
+To let jobs finish within their step, end it with `wait`:
 
 ```yaml
 tasks:
@@ -160,15 +181,16 @@ yourself.
 
 ### Background jobs
 
-- **When a step ends, hobnob sends its background jobs `SIGTERM`.** What
-  they print on the way out still shows, and still reaches `into:`. A job
-  still holding the step's output 2 seconds later is killed.
+- **When hobnob finishes, it sends its background jobs `SIGTERM`**, whether
+  the task succeeded, failed or was stopped with CTRL+C or by closing the
+  terminal. CTRL+C sends it at once, not when the running step ends. What they
+  print on the way out still shows. A job still running 2 seconds later is
+  killed. A second CTRL+C kills them at once.
+- **What a job prints after its step ends doesn't reach `into:`**, and a
+  `quiet:` step's jobs stay hidden.
 - **`set -m` needs `bash`.** It does nothing under `dash`, which is `sh` on
   Debian and Ubuntu.
-- **`setsid cmd &` doesn't work instead.** The step can end before the job
+- **`setsid cmd &` doesn't work instead.** hobnob can finish before the job
   leaves, so it may be stopped anyway.
-- **A job that sends its own output elsewhere and ignores `SIGTERM` keeps
-  running.**
 - **On systems other than Linux and macOS, nothing is signalled.** Background
-  jobs keep running, and the step stops waiting for their output after 2
-  seconds.
+  jobs keep running after hobnob exits, and their output stops showing.

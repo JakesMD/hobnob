@@ -66,10 +66,9 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	// scripts, pipelines, background jobs) running. No-op on windows, which
 	// has no process groups in this sense.
 	setProcAttr(shellCmd)
-	// Once the process has exited, a first CTRL+C leaves it alone: settle
-	// SIGTERMs the leftovers itself, and signalling the zombie would make
-	// Wait misreport a finished step as interrupted. termSent tells settle
-	// whether the group already got its SIGTERM.
+	// Once the process has exited, a first CTRL+C leaves it alone: signalling
+	// the zombie would make Wait misreport a finished step as interrupted.
+	// termSent tells stopLeftovers whether the group already got its SIGTERM.
 	var exited, termSent atomic.Bool
 	cancelGroup := cancelFunc(shellCmd)
 	shellCmd.Cancel = func() error {
@@ -113,30 +112,52 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	pipes.startCopying(stdoutDest, stderrDest)
 	pid := shellCmd.Process.Pid
 	setRunningPID(pid)
+	// Output arriving after the shell exits is a backgrounded job's: it still
+	// shows under the step's prefix, but goes into neither into: nor a quiet
+	// step's buffers.
+	var lateStdout, lateStderr io.Writer = stdoutLineWriter, stderrLineWriter
+	if step.Quiet {
+		lateStdout, lateStderr = io.Discard, io.Discard
+	}
+	kept := &leftover{reap: shellCmd.Wait, pipes: pipes, flush: func() {
+		stdoutLineWriter.Flush()
+		stderrLineWriter.Flush()
+	}}
 	var waitErr error
 	if waitExitUnreaped(pid) {
-		// The exited process stays a zombie through settle, so its PID and
-		// process group ID can't be reused yet: settle and a 2nd CTRL+C can
-		// both safely signal the leftovers. The PID is cleared before Wait
-		// reaps it.
 		exited.Store(true)
-		pipes.settle(pid, termSent.Load())
-		clearRunningPID()
-		waitErr = shellCmd.Wait()
+		pipes.handoff(lateStdout, lateStderr)
+		status, ok := shellStatus(pid)
+		if ok && groupHasOthers(pid) {
+			// Jobs are still running in the step's process group. The shell
+			// stays a zombie until the run ends, so the group ID can't be
+			// reused while stopLeftovers or a 2nd CTRL+C may signal it.
+			waitErr = status
+			kept.group, kept.termSent = pid, termSent.Load()
+			keepLeftover(kept)
+			clearRunningPID()
+		} else {
+			clearRunningPID()
+			waitErr = shellCmd.Wait()
+		}
 	} else {
 		// No way to hold the PID here, so it's reaped and released first,
 		// and the leftovers can't be signalled.
 		waitErr = shellCmd.Wait()
 		clearRunningPID()
-		pipes.settle(0, false)
+		pipes.handoff(lateStdout, lateStderr)
+	}
+	if kept.group == 0 && !pipes.closed() {
+		keepLeftover(kept)
 	}
 
-	if step.Quiet && waitErr != nil {
-		stdoutLineWriter.Write(stdoutBuf.Bytes())
-		stderrLineWriter.Write(stderrBuf.Bytes())
-	}
-	stdoutLineWriter.Flush()
-	stderrLineWriter.Flush()
+	pipes.withLock(func() {
+		if step.Quiet && waitErr != nil {
+			stdoutLineWriter.Write(stdoutBuf.Bytes())
+			stderrLineWriter.Write(stderrBuf.Bytes())
+		}
+		kept.flush()
+	})
 	if waitErr != nil && execState.ctx.Err() != nil {
 		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
 	}
@@ -152,7 +173,7 @@ func exitCodeOf(waitErr error) int {
 	if waitErr == nil {
 		return 0
 	}
-	var exitErr *osExec.ExitError
+	var exitErr interface{ ExitCode() int }
 	if errors.As(waitErr, &exitErr) {
 		return exitErr.ExitCode()
 	}

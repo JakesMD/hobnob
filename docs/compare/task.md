@@ -22,7 +22,7 @@ wizards in hobnob.
 | ----------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
 | Skipping work that's already done   | No                                                      | `sources:`, `generates:` and `status:`                               |
 | Watching files                      | No                                                      | `task --watch`                                                       |
-| Running tasks at once               | Only background jobs inside one command                 | `deps:`, with grouped or prefixed output                             |
+| Running tasks at once               | Only background jobs                                    | `deps:`, with grouped or prefixed output                             |
 | Cleaning up after a failure         | `soft:`, then a step that reacts                        | `defer:`                                                             |
 | Taskfiles from elsewhere            | Local files only                                        | From a URL or a Git repository                                       |
 | Windows                             | No, macOS and Linux                                     | Yes, with a shell built in                                           |
@@ -183,7 +183,8 @@ any [wizard written as a script](./bash.md).
 - **Running tasks at the same time.** Task runs a task's `deps:` in parallel,
   and can group or prefix each task's output to keep it readable. hobnob runs
   steps one after another, and overlaps work only through
-  [background jobs](../guide/commands.md#background-jobs) inside one command.
+  [background jobs](../guide/commands.md#background-jobs), which keep running
+  while later steps run.
 - **Cleaning up after a failure.** A `defer:` command runs when the task
   ends, even if it failed.
 - **Windows.** Task runs on Windows and has a shell built in. hobnob is

@@ -20,7 +20,7 @@ they go. Keep make for building, and write the wizards in hobnob.
 |                                   | hobnob                                                  | make                                                         |
 | --------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------ |
 | Skipping work that's up to date   | No, every task runs every time                          | Yes, by comparing files' timestamps                          |
-| Running things at once            | Only background jobs inside one command                 | `make -j`                                                    |
+| Running things at once            | Only background jobs                                    | `make -j`                                                    |
 | Already installed                 | No, one binary to add                                   | With macOS's developer tools and almost every Linux          |
 | Asking for a value                | A `get:` step: text box, menu or multi-select           | `read` in a command, by hand                                 |
 | Checking a value                  | `check:`, which asks again until it passes              | A shell test that fails the target                           |
@@ -130,8 +130,8 @@ The differences:
   every time.
 - **Running things at the same time.** `make -j` builds independent targets
   in parallel. hobnob runs steps one after another, and overlaps work only
-  through [background jobs](../guide/commands.md#background-jobs) inside one
-  command.
+  through [background jobs](../guide/commands.md#background-jobs), which keep
+  running while later steps run.
 - **Already installed.** make comes with macOS's developer tools and almost
   every Linux. hobnob is one more binary to install, though it's one
   command (see [Installation](../installation.md)).

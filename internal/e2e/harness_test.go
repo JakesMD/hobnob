@@ -48,11 +48,11 @@
 // 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
 // 33. return an empty value for an unset name in config.CallSource   -> call_test.go (IntoMissingKeyErrors)
 //
-// 34. drop signalGroupTerm from stepPipes.settle                     -> run_background_test.go (LeftoverGetsSigtermAndItsOutputIsKept)
-// 35. skip the leftoverGrace timeout branch in stepPipes.settle      -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace, hangs)
+// 34. drop signalGroupTerm from stopLeftovers                       -> run_background_test.go (JobGetsSigtermWhenHobnobExitsAndItsOutputIsKept)
+// 35. skip the groupHasOthers check in execRun                       -> run_background_test.go (JobNotHoldingTheOutputIsKilledWhenHobnobExits, JobIsKilledWhenHobnobExits)
 // 36. hand os/exec the LineWriters instead of attachPipes' files     -> run_background_test.go (StepFinishesWhenShellExits)
-// 37. clearRunningPID before settle in execRun                       -> run_background_test.go (SecondCtrlCReachesLeftoverDuringGrace)
-// 38. drop signalGroupKill from stepPipes.settle                     -> run_background_test.go (LeftoverIgnoringSigtermIsKilledAfterGrace)
+// 37. drop killLeftovers from KillRunningStep                        -> run_background_test.go (SecondCtrlCKillsJobsHobnobIsWaitingOn, waits a minute)
+// 38. drop the defer stopLeftovers from ExecuteTask                  -> run_background_test.go (JobIsKilledWhenHobnobExits, JobIsKilledWhenALaterStepFails)
 //
 // 39. check envSoFar before scope.claimed in Scope.envFileRef        -> env_test.go (DotenvReferenceReadsFinalValueOfCLIArg)
 // 40. drop the unterminated-quote error in scope.parseDotenv         -> env_test.go (DotenvUnterminatedQuoteFailsNamingFileAndLine)
@@ -82,6 +82,8 @@
 // 62. write cliVars with value.Str, not value.Capture, in scope.resolve -> values_test.go (CLIArgThatIsJSONBecomesStructure)
 // 63. return a String multi: preset as is in runner.multiList        -> get_test.go (MultiPresetNotAJSONListFails, MultiPresetEmptyTextIsEmptyList)
 // 64. drop the JSON-text case from runner.multiList                  -> get_test.go (MultiPresetFromShellJSONTextBecomesAList, MultiDefaultAsJSONTextBecomesAList)
+// 65. signal the group as soon as the shell exits, in execRun         -> run_background_test.go (JobKeepsRunningAfterItsStepEnds, JobNotHoldingTheOutputKeepsRunningAfterItsStepEnds)
+// 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
 package e2e
 
 import (

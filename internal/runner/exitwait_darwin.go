@@ -2,7 +2,11 @@
 
 package runner
 
-import "syscall"
+import (
+	"syscall"
+
+	"golang.org/x/sys/unix"
+)
 
 // waitExitUnreaped blocks until pid exits but leaves it a zombie, so its PID
 // (and process group ID) can't be reused until os/exec's Wait reaps it.
@@ -33,3 +37,30 @@ func waitExitUnreaped(pid int) bool {
 		return true
 	}
 }
+
+// shellStatus reads the wait status of pid, an exited but unreaped child, as
+// the error Wait would report for it. Reports false if it can't be read.
+func shellStatus(pid int) (error, bool) {
+	kinfo, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil || kinfo.Proc.P_stat != sZomb {
+		return nil, false
+	}
+	return exitErrorOf(syscall.WaitStatus(kinfo.Proc.P_xstat)), true
+}
+
+// groupHasOthers reports whether process group pgid has a live member other
+// than the exited shell that leads it.
+func groupHasOthers(pgid int) bool {
+	members, err := unix.SysctlKinfoProcSlice("kern.proc.pgrp", pgid)
+	if err != nil {
+		return false
+	}
+	for _, member := range members {
+		if int(member.Proc.P_pid) != pgid && member.Proc.P_stat != sZomb {
+			return true
+		}
+	}
+	return false
+}
+
+const sZomb = 5 // SZOMB in <sys/proc.h>

@@ -45,12 +45,14 @@ func signalGroupTerm(pid int) { _ = syscall.Kill(-pid, syscall.SIGTERM) }
 func signalGroupKill(pid int) { _ = syscall.Kill(-pid, syscall.SIGKILL) }
 
 // KillRunningStep force-kills the process group of the currently executing
-// run: step, if any. It exists for a 2nd CTRL+C: the graceful path
-// (cancelFunc, above) already SIGTERMs that group, but a step that ignores
-// SIGTERM needs something stronger than signaling hobnob's own process
-// group — hobnob's group is a different one, since the step was deliberately
-// Setpgid'd out of it. Reports whether a step was actually running.
+// run: step, if any, and those of the jobs earlier steps left running. It
+// exists for a 2nd CTRL+C: the graceful path (cancelFunc, above) already
+// SIGTERMs that group, but a step that ignores SIGTERM needs something
+// stronger than signaling hobnob's own process group — hobnob's group is a
+// different one, since the step was deliberately Setpgid'd out of it.
+// Reports whether a step was actually running.
 func KillRunningStep() bool {
+	killLeftovers()
 	runningStepMu.Lock()
 	defer runningStepMu.Unlock()
 	pid := runningStepPID

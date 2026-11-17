@@ -23,7 +23,7 @@ wizards in hobnob.
 | A file of short shortcuts       | YAML, a few lines longer                                      | Terse, one line per command                               |
 | Arguments                       | `NAME=value`, or asked for when missing                       | Positional, with defaults                                 |
 | Recipes in other languages      | Through a script file or `python3 -c`                         | Any `#!` interpreter                                      |
-| Running things at once          | Only background jobs inside one command                       | `[parallel]` dependencies                                 |
+| Running things at once          | Only background jobs                                          | `[parallel]` dependencies                                 |
 | Windows                         | No, macOS and Linux                                           | Yes                                                       |
 | Asking for a value              | A `get:` step: text box, menu or multi-select, anywhere        | `[confirm]` asks yes or no. Anything else is bash         |
 | A menu built from live data     | `options:` from an earlier step's output                      | A pipe into gum or `fzf`, if it's installed               |
@@ -143,7 +143,8 @@ same costs.
 - **Running things at the same time.** `[parallel]` runs a recipe's
   dependencies at once. hobnob runs steps one after another, and overlaps
   work only through
-  [background jobs](../guide/commands.md#background-jobs) inside one command.
+  [background jobs](../guide/commands.md#background-jobs), which keep running
+  while later steps run.
 - **Windows.** just runs on Windows. hobnob is released for macOS and Linux.
 
 ## Running both

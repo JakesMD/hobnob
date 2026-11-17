@@ -127,8 +127,12 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // For CLI invocations pass invocationDir; call: goes through executeTask.
 // This is the entry point for one whole run: it owns the once: memo cache,
 // which lives for the lifetime of this call (and everything it recursively
-// executes) and no longer.
+// executes) and no longer, and the jobs its run: steps leave running, which
+// get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
 func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+	defer stopLeftovers()
+	stopTerm := context.AfterFunc(ctx, termLeftovers)
+	defer stopTerm()
 	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, literal.Expr{}, scope)
 }
 

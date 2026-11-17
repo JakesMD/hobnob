@@ -46,10 +46,13 @@ Every change must preserve these. Each is explained in the section named.
   `SetIfDefault`. Every `Set` claims its name. ([scope](#internalscope-the-runtime-scope-and-file-scopes))
 - **Private scope maps.** Writes go through `Set`/`SetIfDefault`/`MarkSecret`/
   `Bind`; output masking reads secrets only through `Mask`/`Display`.
-- **A step owns its process group.** A `run:` step ends only after `settle`
-  has SIGTERMed what it left running and drained or abandoned its pipes, so
-  `&` never hangs the run. The step's PID stays registered, and its process
-  unreaped, until then. ([runner](#internalrunner-the-interpreter))
+- **A run owns its steps' process groups.** A `run:` step ends when its
+  shell exits; jobs it left running keep going, and `ExecuteTask` stops them
+  (`stopLeftovers`) before it returns, on every exit path. A step's shell
+  stays unreaped while its group may be signalled, so the group ID can't be
+  reused: its PID stays registered until then, and a leftover's shell until
+  its group is empty or the run ends. Output after the shell exits never
+  reaches `into:` or a `quiet:` buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
@@ -449,8 +452,11 @@ flowchart TD
     live --> startp
     startp -- fails --> nocap["error, no capture<br/>(no process ran)"]
     startp -- ok --> wait["Wait for the process"]
-    wait --> settle["settle: SIGTERM the group,<br/>drain the pipes"]
-    settle --> replay{"quiet: and failed?"}
+    wait --> handoff["handoff: drain the pipes,<br/>later output to LineWriters only"]
+    handoff --> keep{"jobs still in the group<br/>or holding the pipes?"}
+    keep -- yes --> kl["keepLeftover<br/>(shell stays unreaped)"]
+    keep -- no --> replay
+    kl --> replay{"quiet: and failed?"}
     replay -- yes --> rp["replay both buffers<br/>through the LineWriters"]
     replay -- no --> intr
     rp --> intr{"failed and ctx cancelled?"}
@@ -548,28 +554,43 @@ values on exit.
 
 **`set:` (`set.go`)** evaluates entries top to bottom, each seeing the last.
 
-**Signals.** `runner_unix.go`/`runner_windows.go` manage process groups. The
-first CTRL+C signals the whole group, catching children a single-PID signal
-would miss, and waits. The second force-kills via `KillRunningStep`. A mutex
-guards the running PID, and on Linux and macOS it is cleared before the process
-is reaped, so a racing second CTRL+C never hits a reused PID.
+**Signals.** `main.go` treats `SIGHUP` and `SIGTERM` like a first CTRL+C.
+`runner_unix.go`/`runner_windows.go` manage process groups. The first CTRL+C
+signals the whole group, catching children a single-PID signal would miss, and
+waits; a `context.AfterFunc` in `ExecuteTask` (`termLeftovers`) SIGTERMs every
+leftover group at the same moment. The second force-kills via `KillRunningStep`, which
+also SIGKILLs every leftover group. A mutex guards the running PID, and on
+Linux and macOS it is cleared before the process is reaped, so a racing
+second CTRL+C never hits a reused PID.
 
-**Leftovers (`stepio.go`).** A `run:` step gets real OS pipes, copied by
-hobnob's own goroutines. With os/exec's pipes, `Wait` would block until EOF,
-which never comes while a backgrounded job holds them. `waitExitUnreaped`
-(`exitwait_*.go`: `waitid` with `WNOWAIT` on Linux, kqueue `NOTE_EXIT` on
-macOS) waits for the process to exit without reaping it. The zombie keeps its
-PID and process group ID from being reused, so `settle` and a second CTRL+C
-can signal the group safely until `Wait` reaps it.
+**Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
+copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block
+until EOF, which never comes while a backgrounded job holds them.
+`waitExitUnreaped` (`exitwait_*.go`: `waitid` with `WNOWAIT` on Linux, kqueue
+`NOTE_EXIT` on macOS) waits for the shell to exit without reaping it. The
+zombie keeps its PID and process group ID from being reused, so hobnob can
+signal the group safely until it is reaped.
 
-Once the process has exited, a first CTRL+C no longer signals it (`Cancel`
-returns `os.ErrProcessDone`), so `Wait` still reports the step's own exit
-status. `settle` SIGTERMs the group (unless a first CTRL+C already did) and drains
-until the pipes close. After `leftoverGrace` it SIGKILLs the group, drains for
-`killDrain`, then abandons the pipes: late writes are dropped and the read ends
-closed in the background. That frees hobnob even from a process that left the
-group. Where `waitExitUnreaped` is unsupported, the process is reaped and its
-PID cleared first, and `settle` signals nothing.
+Once the shell has exited, a first CTRL+C no longer signals it (`Cancel`
+returns `os.ErrProcessDone`). `handoff` then reads what the step left in the
+pipes (non-blocking, `stepio_unix.go`) into the step's writers and switches
+the pipes to the LineWriters alone (`io.Discard` for `quiet:`). Each copy
+goroutine reads and writes under the same lock, so nothing the shell wrote
+lands after the switch. If `groupHasOthers` finds a live process in the group
+(`/proc` on Linux, `kern.proc.pgrp` on macOS), the shell stays a zombie: the
+step's error comes from its status (`shellStatus`, as a `shellExitError`
+worded like `ExitError`), and `keepLeftover` registers it. Otherwise the shell
+is reaped, and pipes still held (by a job that left the group) are kept with
+no group to signal. Each `keepLeftover` reaps earlier leftovers whose group
+has emptied.
+
+`stopLeftovers`, deferred in `ExecuteTask`, SIGTERMs every leftover group
+(unless `termLeftovers` or the step's own cancel already did), polls up to
+`leftoverGrace` for them to empty, SIGKILLs, drains for `killDrain`, then
+abandons the pipes (late writes dropped, read ends closed in the background)
+and reaps the shells. Where `waitExitUnreaped` is unsupported, the shell is
+reaped first, nothing is signalled, and held pipes are only abandoned at the
+end of the run.
 
 ### `internal/tui`
 

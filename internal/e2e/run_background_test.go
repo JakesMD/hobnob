@@ -39,7 +39,21 @@ func waitGone(t *testing.T, pid int) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	syscall.Kill(pid, syscall.SIGKILL)
-	t.Fatalf("leftover %d still running after the step", pid)
+	t.Fatalf("job %d still running after the run", pid)
+}
+
+// readPid reads the PID a fixture wrote to name in dir.
+func readPid(t *testing.T, dir, name string) int {
+	t.Helper()
+	text, err := os.ReadFile(filepath.Join(dir, name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	return pid
 }
 
 func TestE2E_RunBackground_StepFinishesWhenShellExits(t *testing.T) {
@@ -67,11 +81,104 @@ func TestE2E_RunBackground_StepFinishesWhenShellExits(t *testing.T) {
 	res.Lines(t, "started", "next")
 }
 
-func TestE2E_RunBackground_LeftoverGetsSigtermAndItsOutputIsKept(t *testing.T) {
+func TestE2E_RunBackground_JobKeepsRunningAfterItsStepEnds(t *testing.T) {
+	// given a step that backgrounds a job, when the step ends and a later
+	// step runs, then the job is still running and can do its work (why:
+	// `cmd &` is how a step launches an app, such as a GUI, that must stay
+	// open while the rest of the run goes on)
+
+	// Arrange
+	// The job blocks on the fifo until the next step opens it with <>
+	// (read-write, so the open never blocks). The next step then spins until
+	// the job has either touched alive or is gone, so a job stopped when its
+	// step ended shows as "job gone" instead of hanging the run.
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          mkfifo gate
+		          (trap '' TERM; read _ < gate; touch alive) &
+		          echo $! > job.pid
+		      - run: |
+		          echo 1<> gate
+		          while [ ! -f alive ] && kill -0 "$(cat job.pid)" 2>/dev/null; do :; done
+		          if [ -f alive ]; then echo "job alive"; else echo "job gone"; fi
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "job alive")
+}
+
+func TestE2E_RunBackground_JobNotHoldingTheOutputKeepsRunningAfterItsStepEnds(t *testing.T) {
+	// given a step that backgrounds a job which sends its output elsewhere,
+	// when the step ends and a later step runs, then the job is still running
+	// (why: an app launched with `app >/dev/null 2>&1 &` must stay open too,
+	// though nothing ties it to the step's pipes)
+
+	// Arrange
+	// As in JobKeepsRunningAfterItsStepEnds, but the job leaves SIGTERM's
+	// default alone, so even a SIGTERM at step end would show as "job gone".
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          mkfifo gate
+		          (read _ < gate; touch alive) >/dev/null 2>&1 &
+		          echo $! > job.pid
+		      - run: |
+		          echo 1<> gate
+		          while [ ! -f alive ] && kill -0 "$(cat job.pid)" 2>/dev/null; do :; done
+		          if [ -f alive ]; then echo "job alive"; else echo "job gone"; fi
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "job alive")
+}
+
+func TestE2E_RunBackground_JobIsKilledWhenHobnobExits(t *testing.T) {
+	// given a step that backgrounds a job which ignores SIGTERM, when the
+	// job is still running at the last step and hobnob then exits, then the
+	// job is gone (why: a run cleans up what its steps left running, even a
+	// job that won't stop politely)
+	skipWithoutProcessGroups(t)
+
+	// Arrange
+	restore := runner.SetLeftoverGrace(50 * time.Millisecond)
+	defer restore()
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          (trap '' TERM; exec tail -f /dev/null) &
+		          echo $! > job.pid
+		      - run: kill -0 "$(cat job.pid)" && echo "job alive"
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "job alive")
+	waitGone(t, readPid(t, res.Dir, "job.pid"))
+}
+
+func TestE2E_RunBackground_JobGetsSigtermWhenHobnobExitsAndItsOutputIsKept(t *testing.T) {
 	// given a backgrounded job that traps SIGTERM and prints on it, when the
-	// step's shell exits, then the job is signalled and what it prints on
-	// the way out still shows under the step (why: the step owns its
-	// process group, and output drains until the leftovers are gone)
+	// run ends, then the job is signalled and what it prints on the way out
+	// still shows under its step's prefix (why: a job's output keeps showing
+	// after its step, until the run has stopped it)
 	skipWithoutProcessGroups(t)
 
 	// Arrange
@@ -94,14 +201,13 @@ func TestE2E_RunBackground_LeftoverGetsSigtermAndItsOutputIsKept(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Lines(t, "shell done", "stopped", "next")
+	res.Lines(t, "shell done", "next", "stopped")
 }
 
-func TestE2E_RunBackground_LeftoverIgnoringSigtermIsKilledAfterGrace(t *testing.T) {
-	// given a backgrounded job that ignores SIGTERM and keeps the output pipe
-	// open, when the grace period runs out, then it's killed and the run
-	// carries on (why: a job that won't stop must neither hang the run nor
-	// outlive it)
+func TestE2E_RunBackground_JobNotHoldingTheOutputIsKilledWhenHobnobExits(t *testing.T) {
+	// given a backgrounded job that ignores SIGTERM and sends its output
+	// elsewhere, when the run ends, then the job is gone (why: hobnob finds
+	// leftovers by the step's process group, not only by its open pipes)
 	skipWithoutProcessGroups(t)
 
 	// Arrange
@@ -112,11 +218,8 @@ func TestE2E_RunBackground_LeftoverIgnoringSigtermIsKilledAfterGrace(t *testing.
 		  t:
 		    steps:
 		      - run: |
-		          mkfifo armed
-		          (trap '' TERM; echo > armed; exec tail -f /dev/null) &
-		          echo $! > leftover.pid
-		          read _ < armed
-		      - run: echo next
+		          (trap '' TERM; exec tail -f /dev/null) >/dev/null 2>&1 &
+		          echo $! > job.pid
 	`
 
 	// Act
@@ -124,16 +227,34 @@ func TestE2E_RunBackground_LeftoverIgnoringSigtermIsKilledAfterGrace(t *testing.
 
 	// Assert
 	res.OK(t)
-	res.Lines(t, "next")
-	pidText, err := os.ReadFile(filepath.Join(res.Dir, "leftover.pid"))
-	if err != nil {
-		t.Fatalf("read leftover.pid: %v", err)
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(pidText)))
-	if err != nil {
-		t.Fatalf("parse leftover.pid: %v", err)
-	}
-	waitGone(t, pid)
+	waitGone(t, readPid(t, res.Dir, "job.pid"))
+}
+
+func TestE2E_RunBackground_JobIsKilledWhenALaterStepFails(t *testing.T) {
+	// given a step that backgrounds a job ignoring SIGTERM, when a later step
+	// fails, then the job is gone once the run has failed (why: a failing run
+	// cleans up what its steps left running, like a finished one)
+	skipWithoutProcessGroups(t)
+
+	// Arrange
+	restore := runner.SetLeftoverGrace(50 * time.Millisecond)
+	defer restore()
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: |
+		          (trap '' TERM; exec tail -f /dev/null) &
+		          echo $! > job.pid
+		      - run: exit 1
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.Fails(t)
+	waitGone(t, readPid(t, res.Dir, "job.pid"))
 }
 
 func TestE2E_RunBackground_IntoCapturesOutputAlongsideLeftover(t *testing.T) {
@@ -165,8 +286,9 @@ func TestE2E_RunBackground_IntoCapturesOutputAlongsideLeftover(t *testing.T) {
 
 func TestE2E_RunBackground_ExitCodeIsTheShellsNotTheLeftovers(t *testing.T) {
 	// given a step that backgrounds a job and then exits non-zero, when the
-	// leftover is signalled, then into: exit is the shell's own code (why:
-	// ending a leftover must not change how the step itself went)
+	// step ends with the job still running, then into: exit is the shell's
+	// own code (why: the status is read from the shell while hobnob holds it
+	// unreaped for the job's sake)
 	skipWithoutProcessGroups(t)
 
 	// Arrange
@@ -218,10 +340,10 @@ func TestE2E_RunBackground_WaitLetsJobsFinish(t *testing.T) {
 	res.Lines(t, "job done", "next")
 }
 
-func TestE2E_RunBackground_QuietStepWithLeftoverStaysQuiet(t *testing.T) {
-	// given quiet: on a step that leaves a job running, when the step
-	// succeeds, then its output stays hidden and the run carries on (why:
-	// quiet: buffers the same pipes the leftover holds)
+func TestE2E_RunBackground_QuietStepsJobStaysQuiet(t *testing.T) {
+	// given quiet: on a step that leaves a job running, when the job prints
+	// after the step has succeeded, then that output stays hidden too (why:
+	// a quiet step's job writes to the same pipes as the step)
 	skipWithoutProcessGroups(t)
 
 	// Arrange
@@ -230,10 +352,13 @@ func TestE2E_RunBackground_QuietStepWithLeftoverStaysQuiet(t *testing.T) {
 		  t:
 		    steps:
 		      - run: |
+		          mkfifo gate
 		          echo hidden
-		          tail -f /dev/null &
+		          (read _ < gate; echo late) &
 		        quiet: true
-		      - run: echo next
+		      - run: |
+		          echo 1<> gate
+		          echo next
 	`
 
 	// Act
@@ -244,11 +369,11 @@ func TestE2E_RunBackground_QuietStepWithLeftoverStaysQuiet(t *testing.T) {
 	res.Lines(t, "next")
 }
 
-func TestE2E_RunBackground_SecondCtrlCReachesLeftoverDuringGrace(t *testing.T) {
-	// given a leftover that ignores SIGTERM and holds the step's output, when
-	// a 2nd CTRL+C (KillRunningStep) arrives after the shell has exited, then
-	// it kills the leftover at once instead of waiting out the grace (why:
-	// the step stays registered until its leftovers are dealt with)
+func TestE2E_RunBackground_SecondCtrlCKillsJobsHobnobIsWaitingOn(t *testing.T) {
+	// given a job that ignores SIGTERM, left running by an earlier step, when
+	// a 2nd CTRL+C (KillRunningStep) arrives as the run ends, then it kills
+	// the job at once instead of waiting out the grace (why: the 2nd CTRL+C
+	// reaches every job the run has left, not only the running step)
 	skipWithoutProcessGroups(t)
 
 	// Arrange
@@ -262,10 +387,10 @@ func TestE2E_RunBackground_SecondCtrlCReachesLeftoverDuringGrace(t *testing.T) {
 			}
 			time.Sleep(5 * time.Millisecond)
 		}
-		// Give the shell time to exit after writing the marker. If the kill
-		// lands first anyway, it ends the shell too and soft: lets the run
-		// carry on, so the test can't flake; only a kill that can't reach
-		// the leftover makes the run wait out the minute and fail.
+		// Give the last step time to exit after writing the marker. If the
+		// kill lands first anyway, it ends that step too and soft: lets the
+		// run finish, so the test can't flake; only a kill that can't reach
+		// the job makes the run wait out the minute and fail.
 		time.Sleep(100 * time.Millisecond)
 		runner.KillRunningStep()
 	}()
@@ -274,12 +399,10 @@ func TestE2E_RunBackground_SecondCtrlCReachesLeftoverDuringGrace(t *testing.T) {
 		  t:
 		    steps:
 		      - run: |
-		          mkfifo armed
-		          (trap '' TERM; echo > armed; exec tail -f /dev/null) &
-		          read _ < armed
-		          touch "$MARKER"
+		          (trap '' TERM; exec tail -f /dev/null) &
+		          echo $! > job.pid
+		      - run: touch "$MARKER"
 		        soft: true
-		      - run: echo next
 	`
 
 	// Act
@@ -288,8 +411,8 @@ func TestE2E_RunBackground_SecondCtrlCReachesLeftoverDuringGrace(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "next")
 	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Fatalf("run took %s: the 2nd CTRL+C didn't reach the leftover", elapsed)
+		t.Fatalf("run took %s: the 2nd CTRL+C didn't reach the job", elapsed)
 	}
+	waitGone(t, readPid(t, res.Dir, "job.pid"))
 }

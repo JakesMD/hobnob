@@ -3,11 +3,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -173,5 +175,158 @@ func TestSigint_SecondPress_ForceKillsImmediately(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), childStartedSentinel) {
 		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
+	}
+}
+
+// readPidFile reads the PID a fixture wrote to path.
+func readPidFile(t *testing.T, path string) int {
+	t.Helper()
+	text, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(text)))
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	return pid
+}
+
+// waitPidGone fails the test unless pid is gone within 5s, killing it first
+// so a failing test leaves nothing behind.
+func waitPidGone(t *testing.T, pid int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	_ = syscall.Kill(pid, syscall.SIGKILL)
+	t.Fatalf("background job %d outlived hobnob", pid)
+}
+
+func TestSighup_KillsBackgroundJobs(t *testing.T) {
+	// given a job ignoring SIGTERM that an earlier step left running, when
+	// hobnob gets SIGHUP (its terminal closed), then hobnob exits and the
+	// job is gone (why: background jobs never outlive hobnob, and closing
+	// the terminal is a way hobnob exits)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		fmt.Fprintln(os.Stderr, childStartedSentinel)
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "t"}
+		main()
+		return
+	}
+
+	// Arrange
+	dir := t.TempDir()
+	taskYAML := `tasks:
+  t:
+    steps:
+      - run: |
+          (trap '' TERM; exec tail -f /dev/null) &
+          echo $! > job.pid
+      - run: |
+          touch started
+          exec tail -f /dev/null
+`
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte(taskYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := reExecSelf(t)
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	waitForFile(t, filepath.Join(dir, "started"))
+	jobPid := readPidFile(t, filepath.Join(dir, "job.pid"))
+
+	// Act
+	if err := cmd.Process.Signal(syscall.SIGHUP); err != nil {
+		t.Fatalf("signal: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	// Assert
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Signal(syscall.SIGKILL)
+		t.Fatal("hobnob did not exit after SIGHUP")
+	}
+	if !strings.Contains(stderr.String(), childStartedSentinel) {
+		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
+	}
+	waitPidGone(t, jobPid)
+}
+
+func TestSigint_FirstPress_StopsEarlierStepsJobs(t *testing.T) {
+	// given a job that an earlier step left running and a step that ignores
+	// SIGTERM, when SIGINT arrives once, then the job gets its SIGTERM while
+	// that step is still running (why: CTRL+C stops the whole run, not just
+	// the step in front of it)
+	if os.Getenv("hobnob_SUBPROCESS") == "1" {
+		fmt.Fprintln(os.Stderr, childStartedSentinel)
+		dir := os.Getenv("HOBNOB_TEST_DIR")
+		os.Args = []string{"hobnob", "--file", filepath.Join(dir, "hobnob.yml"), "t"}
+		main()
+		return
+	}
+
+	// Arrange
+	// The fifo holds the first step until the job's trap is armed. The second
+	// step waits up to 3s for the job to be stopped, and records whether it was.
+	dir := t.TempDir()
+	taskYAML := `tasks:
+  t:
+    steps:
+      - run: |
+          mkfifo armed
+          (trap 'touch stopped; exit 0' TERM; tail -f /dev/null & echo > armed; wait) &
+          read _ < armed
+      - run: |
+          trap '' TERM
+          touch started
+          for _ in $(seq 300); do
+            [ -f stopped ] && touch seen && exit 0
+            sleep 0.01
+          done
+`
+	if err := os.WriteFile(filepath.Join(dir, "hobnob.yml"), []byte(taskYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := reExecSelf(t)
+	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	waitForFile(t, filepath.Join(dir, "started"))
+
+	// Act
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatalf("signal: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	// Assert
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Signal(syscall.SIGKILL)
+		t.Fatal("hobnob did not exit after a 1st SIGINT")
+	}
+	if !strings.Contains(stderr.String(), childStartedSentinel) {
+		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "seen")); err != nil {
+		t.Fatal("the earlier step's job wasn't stopped until the running step ended")
 	}
 }

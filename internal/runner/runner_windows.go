@@ -18,8 +18,8 @@ func cancelFunc(cmd *osExec.Cmd) func() error {
 }
 
 // signalGroupTerm and signalGroupKill are no-ops on windows: there's no
-// process group to signal. settle is never asked to signal here anyway, since
-// waitExitUnreaped is unsupported.
+// process group to signal. No leftover has a group to signal here anyway,
+// since waitExitUnreaped is unsupported.
 func signalGroupTerm(pid int) {}
 func signalGroupKill(pid int) {}
 

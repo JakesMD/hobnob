@@ -95,5 +95,8 @@ hobnob completion zsh > ~/.zsh/completions/_hobnob
 
 ## Stopping a run
 
-CTRL+C signals the running command and waits for it to exit; no further steps
-start. A second CTRL+C kills it immediately.
+CTRL+C signals the running command and any
+[background jobs](../guide/commands.md#background-jobs), then waits for the
+command to exit; no further steps start. Jobs still running 2 seconds after
+that are killed. A second CTRL+C kills the command and the jobs immediately.
+Closing the terminal (`SIGHUP`) or sending `SIGTERM` stops a run like CTRL+C.

@@ -23,9 +23,10 @@ func main() {
 	// that's ignoring the graceful SIGTERM needs a harder signal sent to its
 	// process group first. Track both presses explicitly instead: the 1st
 	// cancels ctx for a graceful shutdown, the 2nd force-kills any stuck
-	// step's process group before exiting.
+	// step's process group before exiting. SIGHUP (the terminal closing) is
+	// handled like a CTRL+C, so the run still stops what its steps left running.
 	sigCh := make(chan os.Signal, 2)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-sigCh
