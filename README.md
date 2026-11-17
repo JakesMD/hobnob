@@ -10,9 +10,9 @@
   </p>
 
 <p>
-    <a href="https://hobnob.jakesmd.dev/docs/installation">Installation</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/">Home</a> &bullet;
     <a href="https://hobnob.jakesmd.dev/docs/quick-start">Quick start</a> &bullet;
-    <a href="https://hobnob.jakesmd.dev/docs/">Docs</a> &bullet;
+    <a href="https://hobnob.jakesmd.dev/docs/guide/">Docs</a> &bullet;
     <a href="https://github.com/jakesmd/hobnob/releases">Releases</a>
   </p>
 
