@@ -11,7 +11,7 @@
 //  1. reverse matrix nesting order in internal/runner/loop.go        -> loop_test.go (.Lines)
 //  2. drop the raw-value ReplaceAll in Scope.Mask                    -> secrets_test.go (.Masked)
 //  3. drop the JSON-escaped ReplaceAll in Scope.Mask                 -> secrets_test.go (into: leaf)
-//  4. write cliVars with Set, not SetIfDefault, in scope.resolve     -> scope_test.go (ConstWinsOverCLIArgs)
+//  4. drop the claimed guard on cliVars in scope.resolve             -> scope_test.go (ConstWinsOverCLIArgs)
 //  5. remove the "_" guard in internal/app/app.go Run                -> cli_test.go
 //  6. make Task.Hidden not suppress from --list                      -> cli_test.go (.NotOut)
 //  7. make module flatten override a native task                    -> modules_test.go

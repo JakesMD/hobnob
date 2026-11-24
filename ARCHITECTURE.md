@@ -79,6 +79,7 @@ internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
+internal/glob/    match: path patterns compiled to a matcher (doublestar)
 internal/e2e/     end-to-end CLI suite (test files only)
 tools/testconventions/  golangci-lint plugin enforcing the test shape (its own Go module)
 ```
@@ -102,6 +103,7 @@ flowchart TD
     runner --> config
     runner --> tui
     runner --> literal
+    runner --> glob
     scope --> config
     scope --> tui
     config --> literal
@@ -316,7 +318,7 @@ Writes go through four methods:
 - `Bind(key, val) (restore func())` sets a `loop:` iterator; `restore` puts
   back the prior value and flags, or removes the key.
 
-`resolve` sets `fromCLI` for the root's `cliVars`; `Copy` carries it. The one
+`resolve` sets `fromCLI` for the root's `cliVars`; `Copy` carries it and `Bind`'s `restore` puts it back. The one
 query, `FromInvocation(key)`, is true for a `fromCLI` or `ambient` name: the
 value still comes from where hobnob was run, so a relative path in it resolves
 against `HOBNOB_INVOCATION_DIR` (see `get:`'s path checks).
