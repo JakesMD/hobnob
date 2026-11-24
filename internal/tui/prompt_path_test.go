@@ -562,7 +562,7 @@ func TestPathModel_Multi_TabTogglesPicksAndEnterConfirmsAll(t *testing.T) {
 	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
 
 	// Act
-	m = press(m, keyDown, keyTab, keyUp, keyTab)
+	m = press(m, keyDown, keyTab, keyUp, keyUp, keyTab)
 	view := m.View()
 	m = press(m, keyEnter)
 
@@ -585,7 +585,7 @@ func TestPathModel_Multi_TabAgainUnpicks(t *testing.T) {
 	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
 
 	// Act
-	m = press(m, keyTab, keyTab)
+	m = press(m, keyTab, keyUp, keyTab)
 
 	// Assert
 	if len(m.picks) != 0 {
@@ -816,5 +816,138 @@ func TestPathModel_Open_NoDefaultStartsInInvokeDirectory(t *testing.T) {
 	// Assert
 	if m.cwd != root {
 		t.Errorf("cwd=%s, want %s", m.cwd, root)
+	}
+}
+
+func TestPathModel_Multi_BadDefaultsAreNotMarked(t *testing.T) {
+	// given multi defaults that are missing, of the wrong kind or a directory in a file picker, when the picker opens, then none is marked
+	// (why: a default is only a pre-made answer when it is a valid one)
+
+	// Arrange
+	root := tree(t, "a.txt", "d/")
+
+	// Act
+	missing := newPathModel(PathPrompt{Type: "file", Invoke: root, Multi: true, Default: []string{"gone.txt"}})
+	dirInFile := newPathModel(PathPrompt{Type: "file", Invoke: root, Multi: true, Default: []string{"d"}})
+	fileInDir := newPathModel(PathPrompt{Type: "dir", Invoke: root, Multi: true, Default: []string{"a.txt"}})
+	mixed := newPathModel(PathPrompt{Type: "file", Invoke: root, Multi: true, Default: []string{"gone.txt", "a.txt"}})
+
+	// Assert
+	for name, m := range map[string]pathModel{"missing": missing, "dir in file picker": dirInFile, "file in dir picker": fileInDir} {
+		if len(m.picks) != 0 {
+			t.Errorf("%s: picks %v, want none", name, m.picks)
+		}
+	}
+	if !equal(mixed.picks, []string{filepath.Join(root, "a.txt")}) {
+		t.Errorf("mixed: picks %v, want only a.txt", mixed.picks)
+	}
+}
+
+func TestPathModel_Multi_ViewUsesMenuMarkers(t *testing.T) {
+	// given a multi picker with one pick, when it renders, then the pick has a filled marker and others an empty one, with no check mark
+	// (why: multi pickers match the select menu's markers)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
+
+	// Act
+	m = press(m, keyTab)
+	view := m.View()
+
+	// Assert
+	if !strings.Contains(view, "◉ ") || !strings.Contains(view, "○ ") || strings.Contains(view, "✓") {
+		t.Errorf("view should use ◉/○ and no ✓, got:\n%s", view)
+	}
+}
+
+func TestPathModel_Multi_TabMovesCursorDown(t *testing.T) {
+	// given a multi picker, when tab toggles a row, then the cursor moves to the next row
+	// (why: lets the user pick a run of rows quickly)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
+
+	// Act
+	m = press(m, keyTab)
+
+	// Assert
+	if m.cursor != 1 {
+		t.Errorf("cursor: got %d, want 1", m.cursor)
+	}
+}
+
+func TestPathModel_DirPicker_ThisDirectoryRowNotPickableInExcludedDirectory(t *testing.T) {
+	// given a dir picker inside .git with !.* excluded, when it lists, then ./ can't be picked
+	// (why: an excluded directory is never an answer)
+
+	// Arrange
+	root := tree(t, ".git/")
+	excluded := func(p string, isDir bool) bool { return strings.HasPrefix(filepath.Base(p), ".") }
+	m := newPathModel(PathPrompt{Type: "dir", Invoke: root, Start: ".git", Excluded: excluded})
+
+	// Act
+	row, ok := m.highlighted()
+	m = press(m, keyEnter)
+
+	// Assert
+	if !ok || !row.here || row.pickable || m.done {
+		t.Errorf("here row: %+v ok=%v done=%v, want unpickable and not done", row, ok, m.done)
+	}
+}
+
+func TestPathModel_DirPicker_ThisDirectoryRowNotPickableInJunkDirectory(t *testing.T) {
+	// given a dir picker inside a junk-named directory, when it lists, then ./ can't be picked
+	// (why: junk names are never offered)
+
+	// Arrange
+	root := tree(t, "Thumbs.db/")
+	m := newPathModel(PathPrompt{Type: "dir", Invoke: root, Start: "Thumbs.db"})
+
+	// Act
+	row, _ := m.highlighted()
+
+	// Assert
+	if !row.here || row.pickable {
+		t.Errorf("here row: %+v, want unpickable", row)
+	}
+}
+
+func TestPathModel_SlashDoesNotStepIntoJunkOrExcludedNames(t *testing.T) {
+	// given a junk directory and an excluded directory, when their exact names are typed with a slash, then the picker stays put with an error
+	// (why: names that would not be listed can't be reached by typing)
+
+	// Arrange
+	root := tree(t, "Thumbs.db/", "skip/", "ok/")
+	excluded := func(p string, isDir bool) bool { return filepath.Base(p) == "skip" }
+	m := newPathModel(PathPrompt{Type: "dir", Invoke: root, Excluded: excluded})
+
+	// Act
+	junk := typed(m, "Thumbs.db/")
+	skip := typed(m, "skip/")
+
+	// Assert
+	for name, got := range map[string]pathModel{"junk": junk, "excluded": skip} {
+		if got.cwd != root || got.errMsg == "" {
+			t.Errorf("%s: cwd=%s err=%q, want cwd unchanged and an error", name, got.cwd, got.errMsg)
+		}
+	}
+}
+
+func TestPathModel_SortingIgnoresCase(t *testing.T) {
+	// given mixed-case names, when listed, then directories lead and each group is ordered ignoring case
+	// (why: Zed should not sort before alpha)
+
+	// Arrange
+	root := tree(t, "b.txt", "A.txt", "Zed/", "alpha/")
+
+	// Act
+	got := names(newTestPath(root, "file"))
+
+	// Assert
+	want := []string{"alpha/", "Zed/", "A.txt", "b.txt"}
+	if !equal(got, want) {
+		t.Errorf("rows: got %v, want %v", got, want)
 	}
 }
