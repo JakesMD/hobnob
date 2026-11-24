@@ -8,6 +8,10 @@ import (
 )
 
 func TestEvalValue_AccessorPreservesType(t *testing.T) {
+	// given a parsed object, when fields and elements are accessed, then each
+	// keeps its own kind (why: numbers and bools must stay typed for
+	// comparisons and later accessors)
+	// Arrange
 	resp, err := value.Parse(`{"count":3,"active":true,"items":["a","b","c"]}`)
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
@@ -27,7 +31,10 @@ func TestEvalValue_AccessorPreservesType(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Act
 			got, err := EvalValue(tc.expr, vars)
+
+			// Assert
 			if err != nil {
 				t.Fatalf("EvalValue(%q): %v", tc.expr, err)
 			}
@@ -42,8 +49,16 @@ func TestEvalValue_AccessorPreservesType(t *testing.T) {
 }
 
 func TestEvalValue_ParenHeadPreservesType(t *testing.T) {
+	// given an accessor on a parsed pipeline, when evaluated, then the
+	// element keeps its own kind (why: values must stay typed through
+	// accessors, not collapse to text)
+	// Arrange
 	vars := map[string]value.Value{"TAGS": value.Str(`["a","b"]`)}
+
+	// Act
 	got, err := EvalValue("{{ (.TAGS | json)[0] }}", vars)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("EvalValue: %v", err)
 	}
@@ -53,8 +68,16 @@ func TestEvalValue_ParenHeadPreservesType(t *testing.T) {
 }
 
 func TestEvalValue_DefaultCatchesMissingPath(t *testing.T) {
+	// given a missing path, when piped through | default, then the fallback
+	// is returned (why: default is the sanctioned way to make a path
+	// optional)
+	// Arrange
 	vars := map[string]value.Value{"RESP": mustParseVal(t, `{"a":1}`)}
+
+	// Act
 	got, err := EvalValue(`{{ .RESP.b | default "fallback" }}`, vars)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("EvalValue: %v", err)
 	}
@@ -64,18 +87,32 @@ func TestEvalValue_DefaultCatchesMissingPath(t *testing.T) {
 }
 
 func TestEvalValue_MissingPathWithoutDefaultErrors(t *testing.T) {
+	// given a missing path, when evaluated with no default, then it errors
+	// (why: a typo in a path must not become an empty value)
+	// Arrange
 	vars := map[string]value.Value{"RESP": mustParseVal(t, `{"a":1}`)}
-	if _, err := EvalValue("{{ .RESP.b }}", vars); err == nil {
+
+	// Act
+	_, err := EvalValue("{{ .RESP.b }}", vars)
+
+	// Assert
+	if err == nil {
 		t.Fatal("expected an error for a missing path with no default")
 	}
 }
 
 func TestEvalValue_WrongKindNotCaughtByDefault(t *testing.T) {
-	// given a plain (uncaptured) string masquerading as JSON
+	// given a plain (uncaptured) string masquerading as JSON, when accessed
+	// with a default fallback, then it still errors naming | json (why:
+	// wrong-kind is never catchable by default, so a missing | json can't
+	// hide behind a fallback)
+	// Arrange
 	vars := map[string]value.Value{"STR": value.Str(`{"a":1}`)}
-	// when accessed with a default fallback
+
+	// Act
 	_, err := EvalValue(`{{ .STR.a | default "x" }}`, vars)
-	// then it still errors -- wrong-kind is never catchable by default
+
+	// Assert
 	if err == nil {
 		t.Fatal("expected wrong-kind access to error even with | default")
 	}
@@ -85,15 +122,31 @@ func TestEvalValue_WrongKindNotCaughtByDefault(t *testing.T) {
 }
 
 func TestEvalTemplate_MissingPathAtBareRenderErrors(t *testing.T) {
+	// given a missing path rendered inside text, when evaluated, then it
+	// errors (why: the missing marker must never leak into rendered output)
+	// Arrange
 	vars := map[string]value.Value{"RESP": mustParseVal(t, `{"a":1}`)}
-	if _, err := EvalTemplate("value: {{ .RESP.b }}", vars); err == nil {
+
+	// Act
+	_, err := EvalTemplate("value: {{ .RESP.b }}", vars)
+
+	// Assert
+	if err == nil {
 		t.Fatal("expected an error rendering a missing path with no filter")
 	}
 }
 
 func TestEvalTemplate_EqOnMissingPathErrors(t *testing.T) {
+	// given a missing path compared with eq, when evaluated, then it errors
+	// (why: comparing the marker text would silently answer false)
+	// Arrange
 	vars := map[string]value.Value{"RESP": mustParseVal(t, `{"a":1}`)}
-	if _, err := EvalTemplate(`{{ eq .RESP.b "x" }}`, vars); err == nil {
+
+	// Act
+	_, err := EvalTemplate(`{{ eq .RESP.b "x" }}`, vars)
+
+	// Assert
+	if err == nil {
 		t.Fatal("expected eq on a missing path to error rather than compare the marker text")
 	}
 }

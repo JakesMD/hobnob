@@ -80,6 +80,7 @@ internal/literal/ references, literals and argv: parsed at load, evaluated at ru
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
 internal/e2e/     end-to-end CLI suite (test files only)
+tools/testconventions/  golangci-lint plugin enforcing the test shape (its own Go module)
 ```
 
 Imports run one way. An arrow means "imports":
@@ -662,6 +663,9 @@ Matchers live on `e2e.Result` (`.OK`, `.Fails`, `.Out`, `.Lines`, `.Masked`,
   working directory, all process-global.
 - **Real prompts.** Drive interactive paths through `runner.SetPrompts`, not
   `--no-input`, so `get:`'s prompt mechanics stay covered.
+- **Linted shape.** `hobnob go:lint` fails any test without a
+  given/when/then (why: …) comment or the `// Arrange`, `// Act`, `// Assert`
+  markers. The rules live in `tools/testconventions`.
 
 The **mutation checklist** atop `internal/e2e/harness_test.go` lists
 one-statement breaks some test must catch. Walk it after changing the harness,

@@ -6,6 +6,9 @@ import (
 )
 
 func TestRunDisplayLines(t *testing.T) {
+	// given commands with and without dir and line breaks, when rendered,
+	// then the first line carries run:, the task prefix and any dir (why:
+	// each step's header must say what runs and where)
 	tests := []struct {
 		name           string
 		cmd            string

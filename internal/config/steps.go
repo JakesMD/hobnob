@@ -132,7 +132,7 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 func rejectSecretCallVars(entries []SetEntry) error {
 	for _, entry := range entries {
 		if entry.Secret {
-			return fmt.Errorf("with entry %q: secret: is not supported here; mark the variable secret where it's defined (set:, get: or env:) — it stays masked when passed through with:", entry.Key)
+			return fmt.Errorf("with entry %q: secret: is not supported here; mark the variable secret where it's defined (set:, get: or env:) and it stays masked through a with: entry", entry.Key)
 		}
 	}
 	return nil

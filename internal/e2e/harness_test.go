@@ -290,12 +290,16 @@ func Run(t *testing.T, c Case) *Result {
 // exactly what env specifies, and returns a func restoring the original
 // environment. scope.Load reads os.Environ() wholesale, so anything left
 // over from the host (CI, USER, a stray VERSION) would otherwise leak into
-// scope and silently change a test's result — the existing subprocess-based
-// tests each hand-scrubbed CI= slightly differently, which this replaces.
+// scope and silently change a test's result.
 // CI is deliberately not restored: defaultNoPrompts() must be driven solely
 // by Case.TTY.
 func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 	t.Helper()
+	setenv := func(key, val string) {
+		if err := os.Setenv(key, val); err != nil {
+			t.Fatalf("setenv %s: %v", key, err)
+		}
+	}
 	for _, forbidden := range []string{"PATH", "HOME"} {
 		if _, ok := env[forbidden]; ok {
 			t.Fatalf("Case.Env must not set %s — every scope var is exported into the child shell (see envWithScopeOverrides), so overriding it breaks sh -c itself, not hobnob", forbidden)
@@ -306,29 +310,27 @@ func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 	origPath, origHome, origTmp := os.Getenv("PATH"), os.Getenv("HOME"), os.Getenv("TMPDIR")
 
 	os.Clearenv()
-	os.Setenv("PATH", origPath)
-	os.Setenv("HOME", origHome)
+	setenv("PATH", origPath)
+	setenv("HOME", origHome)
 	if origTmp != "" {
-		os.Setenv("TMPDIR", origTmp)
+		setenv("TMPDIR", origTmp)
 	}
 	for k, v := range env {
-		os.Setenv(k, v)
+		setenv(k, v)
 	}
 
 	return func() {
 		os.Clearenv()
 		for _, kv := range orig {
 			if key, val, ok := strings.Cut(kv, "="); ok {
-				os.Setenv(key, val)
+				setenv(key, val)
 			}
 		}
 	}
 }
 
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining
-// both concurrently so output past the ~64KB pipe buffer can't deadlock (the
-// bug in the harness this replaces, internal/runner/runner_test.go's old
-// captureStdout, closed the pipe before draining it).
+// both concurrently so output past the ~64KB pipe buffer can't deadlock.
 func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
 	t.Helper()
 	rOut, wOut, err := os.Pipe()

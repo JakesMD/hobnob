@@ -6,6 +6,10 @@ import (
 )
 
 func TestReferencedVars(t *testing.T) {
+	// given template expressions, when scanned, then each referenced var is
+	// named once (why: load-time rules such as upward reads depend on knowing
+	// every reference)
+	// Arrange
 	tests := []struct {
 		name string
 		expr string
@@ -23,7 +27,10 @@ func TestReferencedVars(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			// Act
 			got, err := ReferencedVars(tc.expr)
+
+			// Assert
 			if err != nil {
 				t.Fatalf("ReferencedVars(%q): %v", tc.expr, err)
 			}

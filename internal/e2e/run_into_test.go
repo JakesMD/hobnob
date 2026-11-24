@@ -4,8 +4,10 @@ import "testing"
 
 func TestE2E_RunInto_StdoutCapture(t *testing.T) {
 	// given into: stdout, when a command prints to stdout, then the raw
-	// output is captured into the named var
-	res := Yml(t, `
+	// output is captured into the named var (why: capturing a command's
+	// output is into:'s core job)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -13,15 +15,22 @@ func TestE2E_RunInto_StdoutCapture(t *testing.T) {
 		        into:
 		          - OUT: stdout
 		      - run: echo captured={{.OUT}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "hello", "captured=hello")
 }
 
 func TestE2E_RunInto_StderrCapture(t *testing.T) {
 	// given into: stderr, when a command prints to stderr, then the raw
-	// stderr is captured separately from stdout
-	res := Yml(t, `
+	// stderr is captured separately from stdout (why: tools often report what
+	// matters on stderr)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -29,16 +38,21 @@ func TestE2E_RunInto_StderrCapture(t *testing.T) {
 		        into:
 		          - ERR: stderr
 		      - run: echo captured={{.ERR}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "captured=err msg")
 }
 
 func TestE2E_RunInto_FilterChain(t *testing.T) {
 	// given into: sources piped through filters, when captured, then each
-	// filter applies left to right — trim, lines (JSON array), upper, lower,
-	// and a two-stage chain — exercising the same filter registry {{ }}
-	// templates use, not a separate hand-rolled pipe grammar
+	// filter applies left to right (why: into: uses the same filter registry
+	// as {{ }} templates, not a separate hand-rolled pipe grammar)
+	// Arrange
 	tests := []struct {
 		name     string
 		command  string
@@ -54,10 +68,13 @@ func TestE2E_RunInto_FilterChain(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// Act
 			res := Run(t, Case{
 				Files: Files{"hobnob.yml": "tasks:\n  t:\n    steps:\n      - run: " + test.command + "\n        into:\n          - OUT: " + test.filter + "\n      - run: echo out={{.OUT}}\n"},
 				Args:  []string{"t"},
 			})
+
+			// Assert
 			res.OK(t)
 			res.Lines(t, append(append([]string{}, test.rawLines...), test.wantEcho)...)
 		})
@@ -68,7 +85,8 @@ func TestE2E_RunInto_LinesProducesRealArray(t *testing.T) {
 	// given into: stdout | lines on multi-line output, when the result is
 	// looped over, then it behaves as a real array, not text that merely
 	// looks like a JSON array (why: loop: only iterates a typed Array)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -78,15 +96,22 @@ func TestE2E_RunInto_LinesProducesRealArray(t *testing.T) {
 		      - loop: .ITEMS
 		        steps:
 		          - run: echo item={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "alpha", "beta", "gamma", "item=alpha", "item=beta", "item=gamma")
 }
 
 func TestE2E_RunInto_TwoEntriesCaptureIndependently(t *testing.T) {
 	// given two into: entries on one step, when the command writes to both
-	// streams, then each is captured into its own var without cross-talk
-	res := Yml(t, `
+	// streams, then each is captured into its own var (why: the streams must
+	// not cross-talk)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -95,37 +120,56 @@ func TestE2E_RunInto_TwoEntriesCaptureIndependently(t *testing.T) {
 		          - OUT: stdout
 		          - ERR: stderr
 		      - run: echo out={{.OUT}} err={{.ERR}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "out", "out=out err=err")
 }
 
 func TestE2E_RunInto_UnknownFilterErrors(t *testing.T) {
 	// given into: piped through a filter that doesn't exist, when executed,
-	// then fails naming the bad filter rather than silently no-op'ing
-	res := Yml(t, `
+	// then fails naming the bad filter (why: a typo'd filter must not
+	// silently no-op)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: printf 'hello'
 		        into:
 		          - OUT: stdout | nope
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "run into")
 }
 
 func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
 	// given into: from a source that isn't stdout or stderr, when executed,
-	// then fails naming the bad source
-	res := Yml(t, `
+	// then fails naming the bad source (why: a typo'd source must not
+	// silently capture nothing)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: printf 'hello'
 		        into:
 		          - OUT: stdin
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "run into")
 	res.Err(t, "must be stdout, stderr or exit")
@@ -136,7 +180,8 @@ func TestE2E_RunInto_NestedObjectAssemblesTypedFields(t *testing.T) {
 	// response, when executed, then it assembles a single JSON var with
 	// numbers kept as real numbers, not stringified (why: the tree is built
 	// typed and marshaled once, not string-concatenated)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -146,7 +191,12 @@ func TestE2E_RunInto_NestedObjectAssemblesTypedFields(t *testing.T) {
 		              id: stdout.id
 		              name: stdout.profile.name
 		      - run: echo id={{.CUSTOM.id}} name={{.CUSTOM.name}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"id":42,"profile":{"name":"Ada"}}`, "id=42 name=Ada")
 }
@@ -156,7 +206,8 @@ func TestE2E_RunInto_NestedObjectQuoteEscaped(t *testing.T) {
 	// quote, when assembled, then the quote is escaped rather than
 	// corrupting the resulting JSON (why: same injection-bug regression as
 	// set:/with: — marshal happens once, after every leaf evaluates)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -167,7 +218,12 @@ func TestE2E_RunInto_NestedObjectQuoteEscaped(t *testing.T) {
 		              msg: stdout.msg
 		      - run: |
 		          echo '{{.OUT.msg}}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"msg":"he said \"hi\""}`, `he said "hi"`)
 }
@@ -177,7 +233,8 @@ func TestE2E_Run_ScopeVarOverridesInheritedEnv(t *testing.T) {
 	// reads it, then the scope value wins (why: exec's first-occurrence
 	// semantics means a naive append-only env build would silently lose the
 	// override)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -191,15 +248,22 @@ func TestE2E_Run_ScopeVarOverridesInheritedEnv(t *testing.T) {
 		`,
 		Args: []string{"t"},
 		Env:  map[string]string{"FOO": "from-env"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "from-scope", "result=from-scope")
 }
 
 func TestE2E_Run_EnvVarNotInScopeStillVisible(t *testing.T) {
 	// given an env var never referenced by scope, when a run: command reads
-	// it, then it still passes through to the child process
-	res := Run(t, Case{
+	// it, then it still passes through to the child process (why: commands
+	// rely on the inherited environment, e.g. PATH and tokens)
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -211,21 +275,33 @@ func TestE2E_Run_EnvVarNotInScopeStillVisible(t *testing.T) {
 		`,
 		Args: []string{"t"},
 		Env:  map[string]string{"BAR": "from-env"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "from-env", "result=from-env")
 }
 
 func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 	// given a run: step whose if: evaluates false, when executed, then the
-	// command doesn't run and a skip line explains why, rather than silence
-	res := Yml(t, `
+	// command doesn't run and a skip line explains why (why: a silently
+	// skipped step looks like a bug)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: echo should-not-run
 		        if: '[ "{{.ENABLED}}" = "true" ]'
-	`, "t", "ENABLED=false")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "ENABLED=false")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "run:", "[t]", "skipped")
 	res.NotOut(t, "should-not-run")
@@ -234,14 +310,21 @@ func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 func TestE2E_Run_SoftSwallowsFailure(t *testing.T) {
 	// given a soft: true run: step whose command exits non-zero, when
 	// executed, then the error is swallowed and execution continues past it
-	res := Yml(t, `
+	// (why: soft: marks a step whose failure is acceptable)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: exit 1
 		        soft: true
 		      - run: echo after
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "after")
 }
@@ -251,7 +334,8 @@ func TestE2E_RunInto_DynamicKeyReadsCallerScope(t *testing.T) {
 	// key resolves against the caller's scope, even when nested inside one of
 	// the caller's objects (why: the captured stream is the leaf's source,
 	// not the whole scope the leaf's expressions see)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -263,7 +347,12 @@ func TestE2E_RunInto_DynamicKeyReadsCallerScope(t *testing.T) {
 		          - NAME: stdout[.KEY]
 		          - TITLE: stdout[.JIRA.field]
 		      - run: echo "{{.NAME}} / {{.TITLE}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"name":"Ada","customfield_1":"Fix login"}`, "Ada / Fix login")
 }
@@ -272,7 +361,8 @@ func TestE2E_RunInto_UnspacedPipeAppliesFilter(t *testing.T) {
 	// given a run: into: leaf with a filter chain written without spaces
 	// around the pipe, when executed, then the filter applies exactly as it
 	// does with spaces (why: same leaf grammar as call: into:)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -280,7 +370,12 @@ func TestE2E_RunInto_UnspacedPipeAppliesFilter(t *testing.T) {
 		        into:
 		          - OUT: stdout|trim
 		      - run: echo "out=[{{.OUT}}]"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "  padded  ", "out=[padded]")
 }
@@ -290,7 +385,8 @@ func TestE2E_RunInto_TemplateLeafReadsCallerScope(t *testing.T) {
 	// then it renders against the caller's scope, including an entry mapped
 	// just above it (why: one into: grammar for run: and call:, where a
 	// template leaf builds on earlier entries)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -299,7 +395,12 @@ func TestE2E_RunInto_TemplateLeafReadsCallerScope(t *testing.T) {
 		          - LOG: stdout
 		          - ARCHIVE: "/var/{{.LOG}}.old"
 		      - run: echo "{{.ARCHIVE}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "app.log", "/var/app.log.old")
 }
@@ -308,7 +409,8 @@ func TestE2E_RunInto_DynamicKeyNamedSRCReadsCallerScope(t *testing.T) {
 	// given a caller var named SRC used as a dynamic key in a run: into:
 	// leaf, when executed, then the key is the caller's value (why: no user
 	// var name may collide with how the leaf binds its source internally)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -318,7 +420,12 @@ func TestE2E_RunInto_DynamicKeyNamedSRCReadsCallerScope(t *testing.T) {
 		        into:
 		          - OUT: stdout[.SRC]
 		      - run: echo "out={{.OUT}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"a":"from-caller-key"}`, "out=from-caller-key")
 }
@@ -349,6 +456,10 @@ func TestE2E_RunInto_ListLiteralSpreadsCapturedList(t *testing.T) {
 }
 
 func TestE2E_RunInto_SpreadOutsideAListErrors(t *testing.T) {
+	// given a spread (...) in into: anywhere but a list, when the file loads,
+	// then it errors (why: a spread splices items into a list, so elsewhere
+	// it has nothing to splice into)
+	// Arrange
 	tests := []struct {
 		name    string
 		yml     string
@@ -387,7 +498,8 @@ func TestE2E_RunInto_JoinFilterTurnsCapturedListIntoSeparatedText(t *testing.T) 
 	// given stdout that captures as a JSON array, when piped through
 	// | join "," in into:, then the var holds one comma-separated string
 	// (why: the inverse of | split, for building a query param from a list)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -395,7 +507,12 @@ func TestE2E_RunInto_JoinFilterTurnsCapturedListIntoSeparatedText(t *testing.T) 
 		        into:
 		          - CATEGORIES: stdout | join ","
 		      - run: [echo, 'categories={{ .CATEGORIES }}']
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `["history","science"]`, "categories=history,science")
 }

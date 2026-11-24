@@ -8,7 +8,8 @@ func TestE2E_Const_ClosedWorldRejectsOutsideReference(t *testing.T) {
 	// as the fix (why: this is the check that keeps const: from rotting
 	// back into the old pre-v0.3 vars: block, where an entry could silently
 	// read a lower-priority layer disguised as a fixed value)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		const:
 		  - HOST: '{{ .HOST | default "x" }}'
 
@@ -16,15 +17,22 @@ func TestE2E_Const_ClosedWorldRejectsOutsideReference(t *testing.T) {
 		  t:
 		    steps:
 		      - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "const: HOST references .HOST", "use vars:")
 }
 
 func TestE2E_Const_ClosedWorldAllowsBuiltins(t *testing.T) {
 	// given a const: entry referencing HOBNOB_FILE_DIR, when the file loads,
-	// then it's allowed — builtins are always safe to reference
-	res := Yml(t, `
+	// then it's allowed (why: the closed world admits built-ins, which are
+	// always settled before const:)
+	// Arrange
+	yml := `
 		const:
 		  - CONFIG_DIR: "{{.HOBNOB_FILE_DIR}}/config"
 
@@ -32,7 +40,12 @@ func TestE2E_Const_ClosedWorldAllowsBuiltins(t *testing.T) {
 		  t:
 		    steps:
 		      - run: echo dir={{.CONFIG_DIR}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "dir="+res.Dir+"/config")
 }
@@ -43,7 +56,8 @@ func TestE2E_Const_DuplicateKeyInOneBlockErrors(t *testing.T) {
 	// re-assigning a var later in the timeline is ordinary, const: is a
 	// one-time declaration — two entries with the same key can only be a
 	// copy-paste mistake)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: first
 		  - JIRA_ID: second
@@ -52,7 +66,12 @@ func TestE2E_Const_DuplicateKeyInOneBlockErrors(t *testing.T) {
 		  t:
 		    steps:
 		      - run: echo {{.JIRA_ID}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "const: JIRA_ID declared twice")
 }
@@ -63,7 +82,8 @@ func TestE2E_Const_ReservedNameRejectsSetCollision(t *testing.T) {
 	// constant from OUTSIDE the file — the timeline still outranks it in
 	// the precedence chain, so a task's own set: could otherwise overwrite
 	// it silently)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -72,16 +92,22 @@ func TestE2E_Const_ReservedNameRejectsSetCollision(t *testing.T) {
 		    steps:
 		      - set:
 		          - JIRA_ID: hacked
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "task t sets JIRA_ID, declared in const:")
 }
 
 func TestE2E_Const_ReservedNameRejectsGetCollision(t *testing.T) {
 	// given a const: entry and a task that get:'s the same name, when the
-	// file loads, then it errors — same rule as set:, extended to every
-	// step kind that can introduce a scope var
-	res := Yml(t, `
+	// file loads, then it errors (why: same rule as set:, extended to every
+	// step kind that can introduce a scope var)
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -89,15 +115,22 @@ func TestE2E_Const_ReservedNameRejectsGetCollision(t *testing.T) {
 		  t:
 		    steps:
 		      - get: [JIRA_ID]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "task t sets JIRA_ID, declared in const:")
 }
 
 func TestE2E_Const_ReservedNameRejectsIntoCollision(t *testing.T) {
-	// given a const: entry and a call: step whose into: writes the same
-	// name, when the file loads, then it errors
-	res := Yml(t, `
+	// given a const: entry and a call: step whose into: writes the same name,
+	// when the file loads, then it errors (why: into: introduces a scope var,
+	// so it can't redefine a const: either)
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -112,15 +145,22 @@ func TestE2E_Const_ReservedNameRejectsIntoCollision(t *testing.T) {
 		    steps:
 		      - set:
 		          - X: 1
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "task t sets JIRA_ID, declared in const:")
 }
 
 func TestE2E_Const_ReservedNameRejectsMatrixLoopCollision(t *testing.T) {
-	// given a const: entry and a matrix loop: whose var name matches it,
-	// when the file loads, then it errors
-	res := Yml(t, `
+	// given a const: entry and a matrix loop: whose var name matches it, when
+	// the file loads, then it errors (why: a loop iterator introduces a scope
+	// var, so it can't redefine a const: either)
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -131,16 +171,22 @@ func TestE2E_Const_ReservedNameRejectsMatrixLoopCollision(t *testing.T) {
 		          JIRA_ID: [a, b]
 		        steps:
 		          - run: echo {{.JIRA_ID}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "task t sets JIRA_ID, declared in const:")
 }
 
 func TestE2E_Const_ReservedNameCheckedInsideNestedLoopSteps(t *testing.T) {
-	// given a const: entry and a set: step nested inside a loop:'s own
-	// steps, when the file loads, then it still errors — the check
-	// recurses into nested step bodies, not just a task's top-level steps
-	res := Yml(t, `
+	// given a const: entry and a set: step nested inside a loop:'s own steps,
+	// when the file loads, then it still errors (why: the check must recurse
+	// into nested step bodies, not just a task's top-level steps)
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -151,17 +197,23 @@ func TestE2E_Const_ReservedNameCheckedInsideNestedLoopSteps(t *testing.T) {
 		        steps:
 		          - set:
 		              - JIRA_ID: hacked
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "task t sets JIRA_ID, declared in const:")
 }
 
 func TestE2E_Const_ReservedNameIsPerFileNotGlobal(t *testing.T) {
-	// given a const: entry in the root file and a DIFFERENT task in the
-	// SAME file that doesn't touch that name, when the file loads, then it
-	// loads fine — the check only rejects an actual collision, not the
-	// mere presence of a const: block elsewhere in the file
-	res := Yml(t, `
+	// given a const: entry in the root file and a DIFFERENT task in the SAME
+	// file that doesn't touch that name, when the file loads, then it loads
+	// fine (why: the check rejects an actual collision, not the mere presence
+	// of a const: block)
+	// Arrange
+	yml := `
 		const:
 		  - JIRA_ID: customfield_12345
 
@@ -171,7 +223,12 @@ func TestE2E_Const_ReservedNameIsPerFileNotGlobal(t *testing.T) {
 		      - set:
 		          - OTHER: fine
 		      - run: echo {{.OTHER}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "fine")
 }
@@ -182,12 +239,18 @@ func TestE2E_Const_UnknownTopLevelKeyErrors(t *testing.T) {
 	// before this, an unrecognized key was silently dropped, so a v0.2
 	// file's vars: block would parse "successfully" with every var
 	// rendering empty instead of failing loudly)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		taks:
 		  t:
 		    steps:
 		      - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `unknown top-level key "taks"`)
 }

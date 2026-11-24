@@ -9,6 +9,9 @@ import (
 )
 
 func TestEvalCondition(t *testing.T) {
+	// given if: conditions of various shapes, when evaluated, then each
+	// returns the shell test's verdict or an error (why: if: gates whether a
+	// step runs)
 	tests := []struct {
 		name      string
 		condTmpl  string
@@ -92,6 +95,9 @@ func TestEvalCondition(t *testing.T) {
 }
 
 func TestEvalCheckWithOverride(t *testing.T) {
+	// given a candidate value and a check:, when evaluated, then the check
+	// sees the candidate instead of the scope value (why: a prompt answer is
+	// checked before it's committed)
 	t.Run("given a candidate value passing the check, when evaluated, then returns true (why: re-prompt loops commit a value only once its check passes)", func(t *testing.T) {
 		// Arrange
 		vars := map[string]value.Value{"PORT": value.Str("80")}
@@ -163,6 +169,9 @@ func TestEvalCheckWithOverride(t *testing.T) {
 }
 
 func TestSourceShellFile(t *testing.T) {
+	// given shell scripts that set, re-export or change vars, when sourced,
+	// then only real changes are captured (why: env: picks up what a script
+	// defines, not the ambient environment)
 	tests := []struct {
 		name       string
 		script     string

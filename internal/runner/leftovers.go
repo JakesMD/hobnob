@@ -35,7 +35,7 @@ func keepLeftover(l *leftover) {
 	kept := leftovers[:0]
 	for _, old := range leftovers {
 		if old.group != 0 && !groupHasOthers(old.group) {
-			old.reap()
+			_ = old.reap()
 			old.group = 0
 		}
 		if old.group == 0 && old.pipes.closed() {
@@ -73,7 +73,7 @@ func stopLeftovers() {
 		l.pipes.drop()
 		l.pipes.withLock(l.flush)
 		if l.group != 0 {
-			l.reap()
+			_ = l.reap()
 			l.group = 0
 		}
 	}

@@ -11,6 +11,9 @@ import (
 )
 
 func TestPrintUsage(t *testing.T) {
+	// given a release or dev version, when usage is printed, then it shows
+	// the version and docs links (why: --help is where users look for the
+	// docs)
 	tests := []struct {
 		name       string
 		version    string

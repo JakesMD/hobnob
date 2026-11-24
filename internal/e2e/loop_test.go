@@ -6,24 +6,30 @@ func TestE2E_Loop_ListForm(t *testing.T) {
 	// given loop: over a literal list, when executed, then it iterates
 	// binding each item to ITEM (why: list form uses ITEM as its default
 	// iterator name)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - loop: [alpha, beta, gamma]
 		        steps:
 		          - run: echo item={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "item=alpha", "item=beta", "item=gamma")
 }
 
 func TestE2E_Loop_BareVarTarget(t *testing.T) {
 	// given loop: .VAR (bare, no {{ }}) where VAR is a real typed Array, when
-	// executed, then it iterates the array's elements directly — no
-	// re-parsing from text, since the array was already typed from a set:
-	// literal
-	res := Yml(t, `
+	// executed, then it iterates the array's elements directly (why: an array
+	// already typed by a set: literal must not be re-parsed from text)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -32,15 +38,22 @@ func TestE2E_Loop_BareVarTarget(t *testing.T) {
 		      - loop: .FILES
 		        steps:
 		          - run: echo item={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "item=x", "item=y", "item=z")
 }
 
 func TestE2E_Loop_EmptyListRunsZeroIterations(t *testing.T) {
 	// given loop: over an empty list, when executed, then it runs zero
-	// iterations without erroring
-	res := Yml(t, `
+	// iterations without erroring (why: nothing to process is a normal
+	// outcome, e.g. no changed files)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -49,16 +62,22 @@ func TestE2E_Loop_EmptyListRunsZeroIterations(t *testing.T) {
 		        steps:
 		          - run: echo item={{.ITEM}}
 		      - run: echo after
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "before", "after")
 }
 
 func TestE2E_Loop_ObjectFormBindsKeyAndValueInSortedOrder(t *testing.T) {
 	// given loop: over a real typed Object, when executed, then it iterates
-	// sorted keys binding KEY/VALUE — the object counterpart to list
-	// iteration's ITEM
-	res := Yml(t, `
+	// sorted keys binding KEY/VALUE (why: the object counterpart to list
+	// iteration's ITEM, in a deterministic order)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -67,7 +86,12 @@ func TestE2E_Loop_ObjectFormBindsKeyAndValueInSortedOrder(t *testing.T) {
 		      - loop: .REGIONS
 		        steps:
 		          - run: echo {{.KEY}}={{.VALUE}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "eu=eu-west-1", "us=us-east-1")
 }
@@ -78,7 +102,8 @@ func TestE2E_Loop_StringThatMerelyLooksLikeJSONStaysAString(t *testing.T) {
 	// string, rather than being re-sniffed as an object or erroring (why:
 	// structure is sniffed exactly once, at capture — loop: must not
 	// re-attempt it on a var that merely looks JSON-shaped)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -87,7 +112,12 @@ func TestE2E_Loop_StringThatMerelyLooksLikeJSONStaysAString(t *testing.T) {
 		      - loop: .BAD
 		        steps:
 		          - run: echo item={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "item={not valid json")
 }
@@ -96,7 +126,8 @@ func TestE2E_Loop_ItemNotLeakedAfterLoop(t *testing.T) {
 	// given ITEM not in scope before a list loop, when the loop completes,
 	// then ITEM no longer exists afterward (why: the iterator must not leak
 	// into the surrounding scope)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -104,7 +135,12 @@ func TestE2E_Loop_ItemNotLeakedAfterLoop(t *testing.T) {
 		        steps:
 		          - run: echo item={{.ITEM}}
 		      - run: echo after={{.ITEM | default "gone"}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "item=a", "item=b", "item=c", "after=gone")
 }
@@ -114,7 +150,8 @@ func TestE2E_Loop_PreexistingIterNameRestoredAfterLoop(t *testing.T) {
 	// then ITEM is restored to its prior value (why: loop: must not
 	// permanently clobber a caller's variable that happens to share the
 	// iterator's name)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -124,15 +161,22 @@ func TestE2E_Loop_PreexistingIterNameRestoredAfterLoop(t *testing.T) {
 		        steps:
 		          - run: echo during={{.ITEM}}
 		      - run: echo after={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "during=x", "after=original")
 }
 
 func TestE2E_Loop_MapFormKeyValueNotLeakedAfterLoop(t *testing.T) {
-	// given KEY/VALUE not in scope before a map-form loop, when it
-	// completes, then both are gone afterward, mirroring ITEM's cleanup
-	res := Yml(t, `
+	// given KEY/VALUE not in scope before a map-form loop, when it completes,
+	// then both are gone afterward (why: loop vars are scoped to the loop,
+	// mirroring ITEM's cleanup)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -142,15 +186,22 @@ func TestE2E_Loop_MapFormKeyValueNotLeakedAfterLoop(t *testing.T) {
 		        steps:
 		          - run: echo key={{.KEY}} value={{.VALUE}}
 		      - run: echo after key={{.KEY | default "gone"}} value={{.VALUE | default "gone"}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "key=a value=1", "after key=gone value=gone")
 }
 
 func TestE2E_Loop_MatrixSingleVarForm(t *testing.T) {
-	// given loop: matrix form with a single named var, when executed, then
-	// it iterates that var's list without needing a second key
-	res := Yml(t, `
+	// given loop: matrix form with a single named var, when executed, then it
+	// iterates that var's list without needing a second key (why: the matrix
+	// form doubles as a way to name the iterator)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -158,7 +209,12 @@ func TestE2E_Loop_MatrixSingleVarForm(t *testing.T) {
 		          PLATFORM: [ubuntu, macos, windows]
 		        steps:
 		          - run: echo platform={{.PLATFORM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "platform=ubuntu", "platform=macos", "platform=windows")
 }
@@ -168,7 +224,8 @@ func TestE2E_Loop_MatrixCartesianProductInKeyOrder(t *testing.T) {
 	// the full cartesian product with the first declared key as the
 	// outermost loop (why: nesting order follows key-declaration order, not
 	// alphabetical or map-random order)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -177,7 +234,12 @@ func TestE2E_Loop_MatrixCartesianProductInKeyOrder(t *testing.T) {
 		          DB: [postgres, sqlite]
 		        steps:
 		          - run: echo {{.PLATFORM}}/{{.DB}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t,
 		"ubuntu/postgres", "ubuntu/sqlite",
@@ -189,7 +251,8 @@ func TestE2E_Loop_MatrixReversedKeyOrderChangesNesting(t *testing.T) {
 	// given the same two matrix vars declared in the opposite order, when
 	// executed, then the nesting reverses too (why: pins that ordering
 	// follows declaration, not the var names)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -198,7 +261,12 @@ func TestE2E_Loop_MatrixReversedKeyOrderChangesNesting(t *testing.T) {
 		          PLATFORM: [ubuntu, macos]
 		        steps:
 		          - run: echo {{.DB}}/{{.PLATFORM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t,
 		"postgres/ubuntu", "postgres/macos",
@@ -207,9 +275,11 @@ func TestE2E_Loop_MatrixReversedKeyOrderChangesNesting(t *testing.T) {
 }
 
 func TestE2E_Loop_MatrixThreeVarsAllCombinations(t *testing.T) {
-	// given a three-var matrix, when executed, then every combination runs
-	// in correct nesting order
-	res := Yml(t, `
+	// given a three-var matrix, when executed, then every combination runs in
+	// correct nesting order (why: matrix order follows the file's key order,
+	// so output is predictable)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -219,7 +289,12 @@ func TestE2E_Loop_MatrixThreeVarsAllCombinations(t *testing.T) {
 		          DB: [pg]
 		        steps:
 		          - run: echo {{.OS}}/{{.ARCH}}/{{.DB}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t,
 		"linux/amd64/pg", "linux/arm64/pg",
@@ -230,8 +305,9 @@ func TestE2E_Loop_MatrixThreeVarsAllCombinations(t *testing.T) {
 func TestE2E_Loop_MatrixDynamicListFromVar(t *testing.T) {
 	// given a matrix var whose list is a {{.VAR}} template resolving to a
 	// real typed Array, when executed, then it resolves without re-parsing
-	// from text
-	res := Yml(t, `
+	// from text (why: typed values must keep their type through templates)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -241,15 +317,22 @@ func TestE2E_Loop_MatrixDynamicListFromVar(t *testing.T) {
 		          NODE: "{{.SERVERS}}"
 		        steps:
 		          - run: echo node={{.NODE}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "node=web1", "node=web2")
 }
 
 func TestE2E_Loop_MatrixIteratorVarsNotLeakedAfterLoop(t *testing.T) {
 	// given matrix iterator vars not in scope before the loop, when it
-	// completes, then none of them exist afterward
-	res := Yml(t, `
+	// completes, then none of them exist afterward (why: loop vars are scoped
+	// to the loop)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -259,7 +342,12 @@ func TestE2E_Loop_MatrixIteratorVarsNotLeakedAfterLoop(t *testing.T) {
 		        steps:
 		          - run: echo {{.OS}}/{{.ARCH}}
 		      - run: echo after os={{.OS | default "gone"}} arch={{.ARCH | default "gone"}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "linux/amd64", "mac/amd64", "after os=gone arch=gone")
 }

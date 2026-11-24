@@ -7,6 +7,8 @@ import (
 )
 
 func TestMask(t *testing.T) {
+	// given secrets in various positions, when masking, then every non-empty
+	// secret value is replaced (why: secrets must not appear in logs)
 	tests := []struct {
 		name    string
 		input   string
@@ -108,6 +110,9 @@ func TestSet_ClaimsAmbientName(t *testing.T) {
 }
 
 func TestBind_RestoresPriorState(t *testing.T) {
+	// given ITEM absent, ambient or set before a loop, when a Bind is
+	// restored, then ITEM is exactly as it was (why: a loop must leave no
+	// trace on the scope)
 	tests := []struct {
 		name      string
 		scope     func() *Scope

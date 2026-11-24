@@ -6,6 +6,9 @@ import (
 )
 
 func TestTextModel_View_OptionalHint(t *testing.T) {
+	// given optional and required text prompts, when rendered, then only the
+	// optional one shows a leave-blank hint (why: optional fields must be
+	// obviously skippable)
 	tests := []struct {
 		name      string
 		optional  bool

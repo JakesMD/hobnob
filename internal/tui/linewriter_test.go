@@ -7,6 +7,9 @@ import (
 )
 
 func TestLineWriter_Write(t *testing.T) {
+	// given output with newlines and carriage returns, when written, then
+	// each line or redraw is prefixed and flushed promptly (why: progress
+	// output like rsync --progress must show live)
 	tests := []struct {
 		name  string
 		input string
@@ -105,6 +108,9 @@ func TestLineWriter_Write_BareCRWithNoFollowingByteStaysLive(t *testing.T) {
 }
 
 func TestLineWriter_Flush(t *testing.T) {
+	// given buffered or drained output, when flushed, then only a real
+	// partial line is written (why: the last line must reach the user without
+	// a stray blank line)
 	tests := []struct {
 		name  string
 		input string

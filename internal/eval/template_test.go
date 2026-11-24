@@ -7,6 +7,9 @@ import (
 )
 
 func TestEvalTemplate(t *testing.T) {
+	// given templates of various shapes, when evaluated, then each renders
+	// its expected text or errors (why: every templated field goes through
+	// this one renderer)
 	tests := []struct {
 		name        string
 		tmpl        string
@@ -75,11 +78,11 @@ func TestEvalTemplate(t *testing.T) {
 // don't already: real template/EvalTemplate integration (negative index,
 // wildcard, chained dotted access, deferred-error-via-default). Basic
 // path/nested/numeric-leaf/slice/missing-key semantics live in path_test.go
-// — see that file for the base grammar. Replaces the old pluck-filter suite
-// (TestPluck) — its two RFC 9535 filter-expression cases have no accessor
-// equivalent and are deliberately not replaced; see DESIGN-PATH.md "What is
-// lost".
+// — see that file for the base grammar.
 func TestAccessor(t *testing.T) {
+	// given accessors in real templates, when evaluated, then they render the
+	// selected values or error (why: proves accessors work through the full
+	// template path, not just Path)
 	dataVar := func(json string) map[string]value.Value {
 		v, err := value.Parse(json)
 		if err != nil {

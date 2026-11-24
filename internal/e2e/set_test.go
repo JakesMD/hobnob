@@ -4,8 +4,10 @@ import "testing"
 
 func TestE2E_Set_TopToBottomResolution(t *testing.T) {
 	// given a set: block, when a later entry references an earlier one, then
-	// it resolves against the value just assigned above it
-	res := Yml(t, `
+	// it resolves against the value just assigned above it (why: one set:
+	// block can build values step by step)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -13,16 +15,23 @@ func TestE2E_Set_TopToBottomResolution(t *testing.T) {
 		          - BASE_URL: https://api.example.com
 		          - AUTH_URL: "{{.BASE_URL}}/v1/auth"
 		      - run: echo {{.AUTH_URL}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "https://api.example.com/v1/auth")
 }
 
 func TestE2E_Set_ListLiteralBecomesArray(t *testing.T) {
 	// given a YAML sequence under set:, when executed, then it becomes a real
-	// JSON array in scope — provable by looping over it, which only works on
-	// an Array, not on text that merely looks like one
-	res := Yml(t, `
+	// JSON array in scope (why: a list written in YAML must behave as a list;
+	// looping over it proves that, since a loop rejects text that merely
+	// looks like one)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -31,19 +40,24 @@ func TestE2E_Set_ListLiteralBecomesArray(t *testing.T) {
 		      - loop: .PORTS
 		        steps:
 		          - run: echo port={{.ITEM}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "port=8080", "port=9090")
 }
 
 func TestE2E_Set_MapLiteralBecomesObjectKeepingJSONTypes(t *testing.T) {
 	// given a YAML map under set: with mixed scalar types and a template
-	// leaf, when executed, then it becomes a real JSON object whose non-
-	// string scalars keep their native type (a bool stays a bool, a number
-	// stays a number) and whose template leaf resolves against scope —
-	// provable via an accessor, which errors on a string but not on real
-	// structure
-	res := Yml(t, `
+	// leaf, when executed, then it becomes a real JSON object whose
+	// non-string scalars keep their native type and whose template leaf
+	// resolves against scope (why: a map written in YAML must behave as
+	// structured data; an accessor proves it, since it errors on a string)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -55,7 +69,12 @@ func TestE2E_Set_MapLiteralBecomesObjectKeepingJSONTypes(t *testing.T) {
 		              enabled: true
 		              tag: "{{.ENV}}"
 		      - run: echo host={{.CONFIG.host}} replicas={{.CONFIG.replicas}} enabled={{.CONFIG.enabled}} tag={{.CONFIG.tag}} gt={{gt .CONFIG.replicas 2}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "host=prod.example.com replicas=3 enabled=true tag=prod gt=true")
 }
@@ -65,7 +84,8 @@ func TestE2E_Set_QuoteInTemplateLeafDoesNotCorruptJSON(t *testing.T) {
 	// when executed, then the quote is escaped rather than corrupting the
 	// object (why: regression — marshaling must happen once, after leaf
 	// evaluation, not by string-concatenating JSON text before it)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -75,7 +95,12 @@ func TestE2E_Set_QuoteInTemplateLeafDoesNotCorruptJSON(t *testing.T) {
 		              name: "{{.NAME}}"
 		      - run: |
 		          echo '{{.OBJ.name}}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `he said "hi"`)
 }
@@ -87,7 +112,8 @@ func TestE2E_Set_SecretMasksValue(t *testing.T) {
 	// redact whatever the child process chooses to print, so this uses `:`,
 	// a shell no-op that consumes its argument without echoing it, to keep
 	// the assertion scoped to what hobnob itself controls)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -96,7 +122,12 @@ func TestE2E_Set_SecretMasksValue(t *testing.T) {
 		              value: abc123
 		              secret: true
 		      - run: ": {{.API_KEY}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "abc123")
 }
@@ -104,14 +135,20 @@ func TestE2E_Set_SecretMasksValue(t *testing.T) {
 func TestE2E_Set_NonSecretEntryNotMasked(t *testing.T) {
 	// given a set: entry with no secret flag, when its value is echoed, then
 	// it prints unmasked (why: masking must be opt-in, not applied blanket)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - HOST: localhost
 		      - run: echo host={{.HOST}}
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "host=localhost")
 }
@@ -121,7 +158,8 @@ func TestE2E_Set_IfFalseSkipsSilently(t *testing.T) {
 	// var is never assigned and nothing is printed (why: the "skipped" chrome
 	// line is scoped to run: steps only — a silently-skipped set: doesn't
 	// need an explanation the way a missing command's output would)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -129,7 +167,12 @@ func TestE2E_Set_IfFalseSkipsSilently(t *testing.T) {
 		          - MARKER: ran
 		        if: '[ "{{.ENABLED}}" = "true" ]'
 		      - run: echo marker={{.MARKER | default "unset"}}
-	`, "t", "ENABLED=false")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "ENABLED=false")
+
+	// Assert
 	res.OK(t)
 	res.NotOut(t, "skipped", "ran")
 	res.Lines(t, "marker=unset")
@@ -140,13 +183,19 @@ func TestE2E_Set_TemplateSyntaxInVarNameRejected(t *testing.T) {
 	// rejected rather than silently treated as a literal key (why: this
 	// same rejection applies at every var-naming site — set:, into:, get:,
 	// loop: matrix keys — set: is the cheapest one to pin here)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - "{{.BAD}}": oops
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "template syntax")
 }
@@ -156,7 +205,8 @@ func TestE2E_Set_NestedMapKeyErrorNamesFullPath(t *testing.T) {
 	// the error names the full dotted path, not just the outer key (why:
 	// otherwise a bad key several levels deep is nearly impossible to find
 	// in a large literal)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -164,7 +214,12 @@ func TestE2E_Set_NestedMapKeyErrorNamesFullPath(t *testing.T) {
 		          - OUTER:
 		              inner:
 		                "{{bad}}": oops
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "OUTER.inner.{{bad}}")
 }
@@ -197,6 +252,10 @@ func TestE2E_Set_SpreadSplicesListsIntoAListLiteral(t *testing.T) {
 }
 
 func TestE2E_Set_SpreadOutsideAListErrors(t *testing.T) {
+	// given a spread (...) in set: anywhere but a list, when the file loads,
+	// then it errors (why: a spread splices items into a list, so elsewhere
+	// it has nothing to splice into)
+	// Arrange
 	tests := []struct {
 		name    string
 		yml     string
@@ -319,6 +378,10 @@ func TestE2E_Set_SpreadOfAMissingPathErrors(t *testing.T) {
 }
 
 func TestE2E_Set_SpreadOfANonListErrors(t *testing.T) {
+	// given a spread of something that isn't a list, when set: runs, then it
+	// errors saying what it is instead (why: only a list can be spliced, and
+	// the error should explain the mismatch)
+	// Arrange
 	tests := []struct {
 		name    string
 		yml     string

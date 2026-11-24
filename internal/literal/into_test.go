@@ -28,6 +28,9 @@ func fakeSource() eval.IntoSource {
 }
 
 func TestParseInto(t *testing.T) {
+	// given into: sources of every shape, when evaluated, then each reads its
+	// source through accessors and filters (why: into: accepts the same
+	// expressions as anywhere else)
 	tests := []struct {
 		name      string
 		yml       string
@@ -65,6 +68,8 @@ func TestParseInto(t *testing.T) {
 }
 
 func TestParseInto_LoadErrors(t *testing.T) {
+	// given malformed into: entries, when parsed, then each errors naming the
+	// problem (why: a mistake must fail at load, not mid-run)
 	tests := []struct {
 		name       string
 		yml        string

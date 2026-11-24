@@ -89,6 +89,7 @@ func TestInstall_RC_UnpairedMarkersLeaveFileUntouched(t *testing.T) {
 	// given an rc whose markers are unpaired or out of order, when the
 	// installer runs, then the file is untouched and the user is warned
 	// (why: guessing where the block ends could delete the user's lines)
+	// Arrange
 	cases := map[string]string{
 		"begin without end": "x\n### hobnob ###\nmine\nkeep\n",
 		"end before begin":  "keep1\n### end hobnob ###\nkeep2\n### hobnob ###\nkeep3\n",
@@ -112,6 +113,7 @@ func TestInstall_RC_RemovesPreMarkerBlocks(t *testing.T) {
 	// given an rc set up by an installer from before the markers, when the
 	// installer runs, then the old lines are replaced by the block (why:
 	// upgrading must not set PATH and completion up twice)
+	// Arrange
 	cases := map[string]string{
 		"bash": "alias a=1\n\n# hobnob: path+completion\nexport PATH=\"$HOME/.local/bin:$PATH\"\neval \"$(hobnob completion bash)\"\n",
 		"zsh":  "alias a=1\n\n# hobnob: path+completion\nexport PATH=\"$HOME/.local/bin:$PATH\"\ntype compdef &>/dev/null || { autoload -Uz compinit && compinit; }; eval \"$(hobnob completion zsh)\"\n",

@@ -6,21 +6,35 @@ import (
 )
 
 func TestRewriteAccessors_BareVarUnchanged(t *testing.T) {
-	// given a template with a bare var reference (zero steps)
+	// given a template with a bare var reference (zero steps), when
+	// rewritten, then it is untouched (why: a top-level bare .VAR keeps
+	// text/template's own handling)
+	// Arrange
 	src := "{{ .VAR }}"
-	// when rewritten
+
+	// Act
 	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
-	// then it is untouched -- a top-level bare .VAR is never rewritten
 	if got != src {
 		t.Fatalf("got %q, want unchanged %q", got, src)
 	}
 }
 
 func TestRewriteAccessors_DottedField(t *testing.T) {
-	got, err := rewriteAccessors("{{ .RESP.profile.name }}")
+	// given a dotted field path, when rewritten, then it becomes an hbpath
+	// call with one key per step (why: the original path text is kept for
+	// error messages)
+	// Arrange
+	src := "{{ .RESP.profile.name }}"
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -31,7 +45,16 @@ func TestRewriteAccessors_DottedField(t *testing.T) {
 }
 
 func TestRewriteAccessors_IndexAndDynamicKey(t *testing.T) {
-	got, err := rewriteAccessors("{{ .JSON[.MY_VAR][0] }}")
+	// given a dynamic key and an index, when rewritten, then the key stays a
+	// var reference and the index a number (why: the key is resolved at
+	// render time, never parsed as a path)
+	// Arrange
+	src := "{{ .JSON[.MY_VAR][0] }}"
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -42,6 +65,10 @@ func TestRewriteAccessors_IndexAndDynamicKey(t *testing.T) {
 }
 
 func TestRewriteAccessors_StarAndSlice(t *testing.T) {
+	// given wildcard, slice and negative-index accessors, when rewritten,
+	// then each becomes its hbstar, hbslice or number step (why: Path needs
+	// to tell the step kinds apart)
+	// Arrange
 	tests := map[string]string{
 		"{{ .ITEMS[*].name }}": `{{ (hbpath ".ITEMS[*].name" .ITEMS hbstar "name") }}`,
 		"{{ .ITEMS[1:3] }}":    `{{ (hbpath ".ITEMS[1:3]" .ITEMS (hbslice 1 3)) }}`,
@@ -49,7 +76,10 @@ func TestRewriteAccessors_StarAndSlice(t *testing.T) {
 		"{{ .ITEMS[-1] }}":     `{{ (hbpath ".ITEMS[-1]" .ITEMS -1) }}`,
 	}
 	for src, want := range tests {
+		// Act
 		got, err := rewriteAccessors(src)
+
+		// Assert
 		if err != nil {
 			t.Fatalf("rewriteAccessors(%q): %v", src, err)
 		}
@@ -60,7 +90,16 @@ func TestRewriteAccessors_StarAndSlice(t *testing.T) {
 }
 
 func TestRewriteAccessors_QuotedKey(t *testing.T) {
-	got, err := rewriteAccessors(`{{ .A["app.kubernetes.io/name"] }}`)
+	// given a quoted key containing dots and slashes, when rewritten, then it
+	// becomes a single key step (why: keys like Kubernetes labels must not
+	// split into a nested path)
+	// Arrange
+	src := `{{ .A["app.kubernetes.io/name"] }}`
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -71,7 +110,16 @@ func TestRewriteAccessors_QuotedKey(t *testing.T) {
 }
 
 func TestRewriteAccessors_ParenHead(t *testing.T) {
-	got, err := rewriteAccessors(`{{ (.TAGS | json)[0] }}`)
+	// given an accessor on a parenthesized pipeline, when rewritten, then the
+	// pipeline becomes the path root (why: (.TAGS | json)[0] indexes the
+	// parsed result)
+	// Arrange
+	src := `{{ (.TAGS | json)[0] }}`
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -82,7 +130,15 @@ func TestRewriteAccessors_ParenHead(t *testing.T) {
 }
 
 func TestRewriteAccessors_FilterChainAfterAccessor(t *testing.T) {
-	got, err := rewriteAccessors("{{ .A.b | trim }}")
+	// given an accessor followed by a filter, when rewritten, then only the
+	// accessor is wrapped (why: the filter applies to the selected value)
+	// Arrange
+	src := "{{ .A.b | trim }}"
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -93,8 +149,15 @@ func TestRewriteAccessors_FilterChainAfterAccessor(t *testing.T) {
 }
 
 func TestRewriteAccessors_NoRewriteInsideStringLiteral(t *testing.T) {
+	// given a string literal that looks like an accessor, when rewritten,
+	// then it is untouched (why: string contents are data, not paths)
+	// Arrange
 	src := `{{ printf "%s" "a.b[0]" }}`
+
+	// Act
 	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -104,8 +167,15 @@ func TestRewriteAccessors_NoRewriteInsideStringLiteral(t *testing.T) {
 }
 
 func TestRewriteAccessors_NumberLiteralNotTreatedAsField(t *testing.T) {
+	// given a decimal number literal, when rewritten, then it is untouched
+	// (why: 1.5 must not read as a field .5 on 1)
+	// Arrange
 	src := "{{ 1.5 }}"
+
+	// Act
 	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -115,19 +185,35 @@ func TestRewriteAccessors_NumberLiteralNotTreatedAsField(t *testing.T) {
 }
 
 func TestRewriteAccessors_RangeBody(t *testing.T) {
+	// given a range over a bare var with a bare field in its body, when
+	// rewritten, then it is untouched (why: both are zero-step references,
+	// which text/template handles itself)
+	// Arrange
 	src := "{{ range .L }}{{ .name }}{{ end }}"
+
+	// Act
 	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
-	// .L and .name are both bare (zero steps) -- unchanged.
 	if got != src {
 		t.Fatalf("got %q, want unchanged %q", got, src)
 	}
 }
 
 func TestRewriteAccessors_IfBody(t *testing.T) {
-	got, err := rewriteAccessors("{{ if .A.b }}yes{{ end }}")
+	// given an accessor as an if: condition, when rewritten, then it is
+	// wrapped like anywhere else (why: accessors work in every action, not
+	// just output)
+	// Arrange
+	src := "{{ if .A.b }}yes{{ end }}"
+
+	// Act
+	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -138,8 +224,15 @@ func TestRewriteAccessors_IfBody(t *testing.T) {
 }
 
 func TestRewriteAccessors_TextOutsideActionsUntouched(t *testing.T) {
+	// given accessor-like text outside {{ }}, when rewritten, then that text
+	// is untouched (why: only template actions hold paths)
+	// Arrange
 	src := "prefix .A.b {{ .X.y }} suffix .C.d"
+
+	// Act
 	got, err := rewriteAccessors(src)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("rewriteAccessors: %v", err)
 	}
@@ -149,18 +242,40 @@ func TestRewriteAccessors_TextOutsideActionsUntouched(t *testing.T) {
 }
 
 func TestRewriteAccessors_UnterminatedActionErrors(t *testing.T) {
-	if _, err := rewriteAccessors("{{ .A.b"); err == nil {
+	// given an unterminated action, when rewritten, then it errors (why: a malformed
+	// template must fail here, not render half-rewritten)
+	// Arrange
+	src := "{{ .A.b"
+
+	// Act
+	_, err := rewriteAccessors(src)
+
+	// Assert
+	if err == nil {
 		t.Fatal("expected an error for an unterminated action")
 	}
 }
 
 func TestRewriteAccessors_UnterminatedBracketErrors(t *testing.T) {
-	if _, err := rewriteAccessors("{{ .A[0 }}"); err == nil {
+	// given an unterminated bracket, when rewritten, then it errors (why: a malformed
+	// template must fail here, not render half-rewritten)
+	// Arrange
+	src := "{{ .A[0 }}"
+
+	// Act
+	_, err := rewriteAccessors(src)
+
+	// Assert
+	if err == nil {
 		t.Fatal("expected an error for an unterminated bracket")
 	}
 }
 
 func TestIsBareRef(t *testing.T) {
+	// given var references and look-alike paths, when checked, then only real
+	// upper-case var references count (why: brace-free fields must tell .VAR
+	// from paths such as ./infra or .env.local)
+	// Arrange
 	tests := []struct {
 		name string
 		in   string

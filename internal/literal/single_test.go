@@ -50,6 +50,9 @@ func testVars() map[string]value.Value {
 }
 
 func TestSingle(t *testing.T) {
+	// given single-value fields of every shape, when evaluated, then
+	// references keep their type and templates render text (why: a reference
+	// holds a value, a template renders text)
 	tests := []struct {
 		name      string
 		raw       string
@@ -122,6 +125,9 @@ func TestSingle_Empty(t *testing.T) {
 }
 
 func TestSingle_SpreadErrors(t *testing.T) {
+	// given a spread in a single-value field, when parsed, then it errors
+	// (why: a single value has no list to splice into)
+	// Arrange
 	tests := []struct {
 		name string
 		raw  string
@@ -147,6 +153,10 @@ func TestSingle_SpreadErrors(t *testing.T) {
 }
 
 func TestSingle_String(t *testing.T) {
+	// given references and templates, when printed, then each shows as the
+	// author would write it in braces (why: error messages print the stored
+	// template)
+	// Arrange
 	tests := []struct {
 		name string
 		raw  string

@@ -8,6 +8,8 @@ import (
 )
 
 func TestParse(t *testing.T) {
+	// given literal entries of every shape, when evaluated, then each keeps
+	// the types it holds (why: a literal nests what it holds, as JSON does)
 	tests := []struct {
 		name      string
 		yml       string
@@ -54,6 +56,8 @@ func TestParse(t *testing.T) {
 }
 
 func TestParse_LoadErrors(t *testing.T) {
+	// given malformed literals, when parsed, then each errors naming the path
+	// to the problem (why: a mistake must fail at load and say where)
 	tests := []struct {
 		name       string
 		yml        string

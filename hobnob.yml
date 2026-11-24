@@ -29,10 +29,24 @@ tasks:
     steps:
       - run: go vet ./...
 
+  go:lint:
+    info: Lints Go code with golangci-lint, including the test-convention plugin
+    steps:
+      - run: go test ./...
+        dir: tools/testconventions
+      - run: golangci-lint custom
+      - run: ./bin/custom-gcl run ./...
+
+  go:vuln:
+    info: Scans dependencies and the standard library for known vulnerabilities
+    steps:
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.10.0 ./...
+
   go:check:
-    info: Vets and tests Go code
+    info: Vets, lints and tests Go code
     steps:
       - call: go:vet
+      - call: go:lint
       - call: go:test
 
   go:build:release:

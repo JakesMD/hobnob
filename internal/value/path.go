@@ -83,11 +83,11 @@ func Slice(lo, hi Value) Value { return Value{v: sliceStep{lo: lo, hi: hi}} }
 //
 // A star or slice step turns multiplicity on for every step after it: from
 // that point on a miss or a wrong-kind element is DROPPED rather than
-// failing the whole lookup ("multiplicity is not absence" — DESIGN-PATH.md),
+// failing the whole lookup (multiplicity is not absence),
 // and the final result is always an Array, even at length 0 or 1. Before
 // multiplicity begins, a miss returns a deferred Missing sentinel
 // (catchable by | default) and a wrong kind returns a real error (never
-// catchable) — the "two error classes" DESIGN-PATH.md describes.
+// catchable).
 //
 // A malformed index (non-integral, or not a number at all) against an
 // Array is always a hard error, in multi mode too: unlike a heterogeneous

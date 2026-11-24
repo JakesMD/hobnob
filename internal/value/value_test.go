@@ -3,6 +3,9 @@ package value
 import "testing"
 
 func TestKind(t *testing.T) {
+	// given a value of each kind, when its kind is checked, then it reports
+	// that kind (why: filters and accessors branch on kind)
+	// Arrange
 	tests := []struct {
 		name string
 		v    Value
@@ -29,6 +32,10 @@ func TestKind(t *testing.T) {
 }
 
 func TestString(t *testing.T) {
+	// given a value of each kind, when stringified, then scalars render as
+	// plain text and structure as compact JSON (why: values must splice into
+	// shell commands and stay chainable)
+	// Arrange
 	tests := []struct {
 		name string
 		v    Value
@@ -72,6 +79,10 @@ func TestString_CapturedValueKeepsRawText(t *testing.T) {
 }
 
 func TestIsEmpty(t *testing.T) {
+	// given nil, strings, an empty array and false, when checked for
+	// emptiness, then only nil and the empty string are empty (why: emptiness
+	// follows the rendered text, which | default and optional: rely on)
+	// Arrange
 	tests := []struct {
 		name string
 		v    Value
@@ -97,6 +108,10 @@ func TestIsEmpty(t *testing.T) {
 }
 
 func TestCanonical(t *testing.T) {
+	// given Go numbers and strings, when canonicalized, then numbers render
+	// without float artifacts and strings are unchanged (why: values from
+	// YAML and JSON must print the way they were written)
+	// Arrange
 	tests := []struct {
 		name       string
 		v          any
@@ -157,6 +172,10 @@ func TestCanonical(t *testing.T) {
 }
 
 func TestParse(t *testing.T) {
+	// given JSON arrays and objects, trailing data or malformed JSON, when
+	// parsed, then only a single clean JSON value decodes (why: Parse is
+	// strict so callers never accept half-valid input)
+	// Arrange
 	tests := []struct {
 		name       string
 		input      string
@@ -213,6 +232,11 @@ func TestParse(t *testing.T) {
 }
 
 func TestCapture(t *testing.T) {
+	// given captured text of various shapes, when captured, then only a clean
+	// JSON array or object becomes structure, and everything else stays
+	// String (why: only [ and { are sniffed, so plain output never surprises
+	// a later filter)
+	// Arrange
 	tests := []struct {
 		name     string
 		input    string

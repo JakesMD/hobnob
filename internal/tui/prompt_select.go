@@ -65,8 +65,6 @@ func PromptSelect(ctx context.Context, varName, info string, items []string, mul
 	return chosen, nil
 }
 
-// ── select model ─────────────────────────────────────────────────────────────
-
 type selectModel struct {
 	varName  string
 	info     string

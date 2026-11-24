@@ -50,8 +50,6 @@ func PromptText(ctx context.Context, info, varName string, validate func(string)
 	return final.value, nil
 }
 
-// ── text input model ─────────────────────────────────────────────────────────
-
 type textModel struct {
 	info       string
 	validate   func(string) (bool, error)
