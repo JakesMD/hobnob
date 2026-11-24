@@ -95,6 +95,9 @@
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
 // 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
 // 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
+// 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
+// 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
+// 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
 package e2e
 
 import (
@@ -136,8 +139,9 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Cwd      string // subdir of the temp root to chdir into (default: the root itself)
-	Discover bool   // omit --file, exercise findTaskfile's upward walk
+	Probe    []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd      string   // subdir of the temp root to chdir into (default: the root itself)
+	Discover bool     // omit --file, exercise findTaskfile's upward walk
 }
 
 // PromptCall records one prompt the run actually made.
@@ -152,6 +156,11 @@ type PromptCall struct {
 	Task     string
 	Type     string   // "file" or "dir" for a picker, empty for a text prompt or menu
 	Match    []string // the match: patterns the picker was given
+
+	// What the picker's predicates reported for each Case.Probe path (keyed as
+	// given). Nil when the picker got no predicate.
+	Included map[string]bool
+	Excluded map[string]bool
 }
 
 // Result is what the user would have seen.
@@ -272,6 +281,7 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	state := newPromptState(t, c.Answers)
+	state.dir, state.probe = dir, c.Probe
 	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
 	defer restorePrompts()
 
@@ -445,6 +455,8 @@ type promptState struct {
 	selIdx  map[string]int
 	pathIdx map[string]int
 	calls   []PromptCall
+	dir     string   // the temp root, for resolving probe paths
+	probe   []string // see Case.Probe
 }
 
 func newPromptState(t *testing.T, answers map[string][]string) *promptState {
@@ -525,8 +537,28 @@ func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task stri
 	}
 	raw := answers[idx]
 	s.pathIdx[prompt.VarName] = idx + 1
-	s.record(PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Match: prompt.Patterns})
+	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Match: prompt.Patterns}
+	for _, p := range s.probe {
+		full := filepath.Join(s.dir, p)
+		info, err := os.Stat(full)
+		if err != nil {
+			s.t.Fatalf("probe path %q: %v", p, err)
+		}
+		if prompt.Included != nil {
+			if call.Included == nil {
+				call.Included = map[string]bool{}
+			}
+			call.Included[p] = prompt.Included(full, info.IsDir())
+		}
+		if prompt.Excluded != nil {
+			if call.Excluded == nil {
+				call.Excluded = map[string]bool{}
+			}
+			call.Excluded[p] = prompt.Excluded(full, info.IsDir())
+		}
+	}
+	s.record(call)
 	abs := func(p string) string {
 		if filepath.IsAbs(p) {
 			return p

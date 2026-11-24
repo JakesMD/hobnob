@@ -984,3 +984,58 @@ func TestPathModel_WorkDir_RelativeDefaultResolvesAgainstIt(t *testing.T) {
 		t.Errorf("cwd=%s row=%s picks=%v", m.cwd, row.name, m.picks)
 	}
 }
+
+func TestPathModel_Multi_DefaultsThatMissMatchAreNotMarked(t *testing.T) {
+	// given multi defaults where one misses match:, is hidden by a "!" pattern or is junk, when the picker opens, then only the ones a listed entry could be are marked
+	// (why: a pre-picked default must be one the picker would let the user pick)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.md", "c.txt", ".DS_Store", "d/", "skip/")
+	included := func(p string, _ bool) bool { return strings.HasSuffix(p, ".txt") }
+	excluded := func(p string, _ bool) bool { return filepath.Base(p) == "c.txt" || filepath.Base(p) == "skip" }
+
+	// Act
+	file := newPathModel(PathPrompt{Type: "file", Invoke: root, Multi: true, Included: included, Excluded: excluded,
+		Default: []string{"b.md", "a.txt", "c.txt", ".DS_Store"}})
+	dir := newPathModel(PathPrompt{Type: "dir", Invoke: root, Multi: true, Included: func(p string, _ bool) bool { return filepath.Base(p) != "d" }, Excluded: excluded,
+		Default: []string{"d", "skip"}})
+
+	// Assert
+	if !equal(file.picks, []string{filepath.Join(root, "a.txt")}) {
+		t.Errorf("file picker: picks %v, want only a.txt", file.picks)
+	}
+	if len(dir.picks) != 0 {
+		t.Errorf("dir picker: picks %v, want none", dir.picks)
+	}
+}
+
+func TestPathDisplay(t *testing.T) {
+	// given a picked path or list, when shown on the get: line, then a secret is masked and anything else is in full
+	// (why: secret: must not leak a picked path into the terminal)
+
+	// Arrange
+	tests := []struct {
+		name   string
+		picked string
+		picks  []string
+		multi  bool
+		secret bool
+		want   string
+	}{
+		{"single", "/x/a.txt", nil, false, false, "/x/a.txt"},
+		{"multi", "", []string{"/x/a", "/x/b"}, true, false, "/x/a, /x/b"},
+		{"secret single", "/x/a.txt", nil, false, true, SecretMask},
+		{"secret multi", "", []string{"/x/a", "/x/b"}, true, true, SecretMask},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Act
+			got := pathDisplay(tt.picked, tt.picks, tt.multi, tt.secret)
+
+			// Assert
+			if got != tt.want {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

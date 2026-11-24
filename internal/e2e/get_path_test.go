@@ -690,3 +690,34 @@ func TestE2E_GetPath_UnknownTypeRejectedAtLoad(t *testing.T) {
 	res.Fails(t)
 	res.Err(t, `get entry "CONFIG"`, "text, file or dir", `"folder"`)
 }
+
+func TestE2E_GetPath_PickerGetsMatchAsPredicates(t *testing.T) {
+	// given a type: file entry whose match: has a plain and a "!" pattern, when the picker opens, then its predicates include the matching file, drop the non-matching one and hide the "!" directory
+	// (why: the picker never sees match: itself, only these two predicates)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              match: ["*.txt", "!other"]
+		      - run: echo conf={{.CONF}}
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), TTY: true, Args: []string{"t"}, Probe: []string{"sub/f.txt", "sub/g.md", "other"},
+		Answers: map[string][]string{"CONF": {"sub/f.txt"}}})
+
+	// Assert
+	res.OK(t)
+	res.Prompted(t, "CONF")
+	got := res.Prompts[0]
+	if !got.Included["sub/f.txt"] || got.Included["sub/g.md"] {
+		t.Errorf("Included = %v, want f.txt true and g.md false", got.Included)
+	}
+	if !got.Excluded["other"] || got.Excluded["sub/f.txt"] {
+		t.Errorf("Excluded = %v, want other true and f.txt false", got.Excluded)
+	}
+}

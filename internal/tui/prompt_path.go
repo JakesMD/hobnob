@@ -113,7 +113,7 @@ func newPathModel(prompt PathPrompt) pathModel {
 	if prompt.Multi {
 		for _, d := range prompt.Default {
 			_, abs := m.resolve(d, m.prompt.WorkDir)
-			if info, err := os.Stat(abs); err == nil && info.IsDir() == (prompt.Type == "dir") {
+			if info, err := os.Stat(abs); err == nil && info.IsDir() == (prompt.Type == "dir") && m.pickable(abs, info.IsDir()) {
 				m.picks = append(m.picks, abs)
 			}
 		}
@@ -202,6 +202,14 @@ func (m pathModel) dirText() string {
 	return withSlash(filepath.ToSlash(m.cwd))
 }
 
+// pickable reports whether a listed entry at abs could be picked: not junk,
+// not Excluded, and for a file Included, for a directory Included too.
+func (m pathModel) pickable(abs string, isDir bool) bool {
+	return !isJunk(filepath.Base(abs)) &&
+		(m.prompt.Excluded == nil || !m.prompt.Excluded(abs, isDir)) &&
+		(m.prompt.Included == nil || m.prompt.Included(abs, isDir))
+}
+
 // entries lists the directory, applying the junk list, the type and the
 // caller's predicate. Directories come first, then by name ignoring case.
 func (m pathModel) entries() []pathEntry {
@@ -245,9 +253,7 @@ func (m pathModel) entries() []pathEntry {
 func (m pathModel) rows() []pathRow {
 	var out []pathRow
 	if m.prompt.Type == "dir" && m.seg == "" {
-		here := !isJunk(filepath.Base(m.cwd)) &&
-			(m.prompt.Excluded == nil || !m.prompt.Excluded(m.cwd, true)) &&
-			(m.prompt.Included == nil || m.prompt.Included(m.cwd, true))
+		here := m.pickable(m.cwd, true)
 		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true, pickable: here}, here: true})
 	}
 	type scored struct {
@@ -611,19 +617,26 @@ func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool
 	if final.skipped {
 		return value.Value{}, false, nil
 	}
-	display := final.picked
 	val = value.Str(final.picked)
 	if prompt.Multi {
 		list := make([]any, len(final.picks))
 		for i, p := range final.picks {
 			list[i] = p
 		}
-		display = strings.Join(final.picks, ", ")
 		val = value.Of(list)
 	}
-	if secret {
-		display = SecretMask
-	}
-	printGetLine(task, prompt.VarName, display)
+	printGetLine(task, prompt.VarName, pathDisplay(final.picked, final.picks, prompt.Multi, secret))
 	return val, true, nil
+}
+
+// pathDisplay is what the get: line shows for a pick: the path, the list
+// joined, or the mask for a secret.
+func pathDisplay(picked string, picks []string, multi, secret bool) string {
+	switch {
+	case secret:
+		return SecretMask
+	case multi:
+		return strings.Join(picks, ", ")
+	}
+	return picked
 }
