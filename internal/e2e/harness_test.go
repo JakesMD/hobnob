@@ -84,6 +84,7 @@
 // 64. drop the JSON-text case from runner.multiList                  -> get_test.go (MultiPresetFromShellJSONTextBecomesAList, MultiDefaultAsJSONTextBecomesAList)
 // 65. signal the group as soon as the shell exits, in execRun         -> run_background_test.go (JobKeepsRunningAfterItsStepEnds, JobNotHoldingTheOutputKeepsRunningAfterItsStepEnds)
 // 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
+// 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
 package e2e
 
 import (

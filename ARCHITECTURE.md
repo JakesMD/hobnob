@@ -540,8 +540,8 @@ The memo is load-bearing in three ways:
 A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
-`KEY=VALUE` satisfies a prompt. Otherwise it uses `default:`, aborts, or
-prompts through `promptTextFn`/`promptSelectFn`. A preset, a default and an
+`KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `promptTextFn`/`promptSelectFn`. A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
