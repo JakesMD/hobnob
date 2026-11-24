@@ -192,3 +192,36 @@ func TestBind_DoesNotLeakSecretFlag(t *testing.T) {
 		t.Errorf("Mask = %q, want unmasked", got)
 	}
 }
+
+func TestFromInvocation_TracksCLIAndOSEnvUntilWritten(t *testing.T) {
+	// given a CLI-arg name and an OS-env name, when copied, bound in a loop
+	// and then overwritten with Set, then each still reads as from the
+	// invocation until Set claims it (why: a relative path resolves against
+	// the invocation dir only while its value is still what the user typed)
+
+	// Arrange
+	scope := ambientScope("FROM_ENV", "e")
+	scope.vars["FROM_CLI"] = value.Str("c")
+	scope.fromCLI["FROM_CLI"] = true
+
+	// Act
+	copied := scope.Copy()
+	restore := copied.Bind("FROM_CLI", value.Str("loop"))
+	duringLoop := copied.FromInvocation("FROM_CLI")
+	restore()
+	afterRestore := copied.FromInvocation("FROM_CLI")
+	fromEnv := copied.FromInvocation("FROM_ENV")
+	copied.Set("FROM_CLI", value.Str("rewritten"), false)
+	copied.Set("FROM_ENV", value.Str("rewritten"), false)
+
+	// Assert
+	if duringLoop || !afterRestore || !fromEnv {
+		t.Errorf("during loop=%v after restore=%v env=%v, want false true true", duringLoop, afterRestore, fromEnv)
+	}
+	if copied.FromInvocation("FROM_CLI") || copied.FromInvocation("FROM_ENV") {
+		t.Error("names still read as from the invocation after Set")
+	}
+	if !scope.FromInvocation("FROM_CLI") {
+		t.Error("Set on the copy cleared the original")
+	}
+}

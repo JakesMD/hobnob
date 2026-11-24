@@ -83,6 +83,7 @@ func (cfg *ConfigFile) DeclaresConst(name string) bool {
 type GetEntry struct {
 	VarName     string
 	Info        string
+	Type        string // "file" or "dir"; empty is text. See IsPath
 	FromList    []string
 	FromTmpl    literal.Expr
 	MatchList   []string     // match: patterns, parsed like options:
@@ -93,6 +94,18 @@ type GetEntry struct {
 	Secret      bool
 	Optional    bool
 }
+
+// IsPath reports whether the entry takes a file or directory path.
+func (entry GetEntry) IsPath() bool {
+	return entry.Type == GetTypeFile || entry.Type == GetTypeDir
+}
+
+// The values type: accepts.
+const (
+	GetTypeText = "text"
+	GetTypeFile = "file"
+	GetTypeDir  = "dir"
+)
 
 type ForMatrixEntry struct {
 	VarName  string

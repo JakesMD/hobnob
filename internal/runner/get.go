@@ -29,10 +29,13 @@ func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if existing, exists := scope.Vars()[getEntry.VarName]; exists {
-		return acceptAnswer(execState, getEntry, scope, existing)
+		return acceptAnswer(execState, getEntry, scope, existing, scope.FromInvocation(getEntry.VarName))
 	}
 	if execState.noPrompts {
 		return getFromNoPrompts(execState, getEntry, scope)
+	}
+	if getEntry.IsPath() {
+		return getPathInteractive(execState, getEntry, scope)
 	}
 	return getInteractive(execState, getEntry, scope)
 }
@@ -40,7 +43,7 @@ func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scop
 func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if getEntry.DefaultTmpl.IsZero() {
 		if getEntry.Optional {
-			return acceptAnswer(execState, getEntry, scope, value.Nil())
+			return acceptAnswer(execState, getEntry, scope, value.Nil(), false)
 		}
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
 	}
@@ -48,20 +51,37 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 	if err != nil {
 		return fmt.Errorf("get %s default: %w", getEntry.VarName, err)
 	}
-	return acceptAnswer(execState, getEntry, scope, val)
+	if isDirDefault(getEntry, val, execState.dir) {
+		// A directory only says where a picker would start: with prompts
+		// off there's no default.
+		if getEntry.Optional {
+			return acceptAnswer(execState, getEntry, scope, value.Nil(), false)
+		}
+		return fmt.Errorf("--no-input: %s requires input; its default is a directory and %s needs a file; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName, getEntry.VarName)
+	}
+	return acceptAnswer(execState, getEntry, scope, val, false)
 }
 
 // acceptAnswer takes an answer nobody typed at a prompt (a value already in
 // scope, a default, or no answer to an optional entry), sets it and
 // validates it. Setting a value already in scope claims it, so a later
-// module vars: default can't swap it out from under the task.
-func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value) error {
+// module vars: default can't swap it out from under the task. fromInvocation
+// says val came from the command line or the shell, which decides what a
+// relative path in it is relative to.
+func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool) error {
 	if getEntry.Multi {
 		list, err := multiList(getEntry.VarName, val)
 		if err != nil {
 			return err
 		}
 		val = list
+	}
+	if getEntry.IsPath() {
+		base := execState.dir
+		if fromInvocation {
+			base = scope.InvocationDir()
+		}
+		return acceptPath(execState, getEntry, scope, val, base)
 	}
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
 	if getEntry.Optional && val.IsEmpty() {
@@ -232,8 +252,10 @@ func validateGetValue(execState execCtx, getEntry config.GetEntry, vars map[stri
 	if getEntry.Optional && vars[getEntry.VarName].IsEmpty() {
 		return nil
 	}
-	if err := validateMatch(getEntry, vars); err != nil {
-		return err
+	if !getEntry.IsPath() { // a path's match: ran with its other checks
+		if err := validateMatch(getEntry, vars); err != nil {
+			return err
+		}
 	}
 	if getEntry.Check != "" {
 		ok, err := eval.EvalCondition(execState.ctx, getEntry.Check, vars, "")

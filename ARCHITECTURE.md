@@ -298,22 +298,28 @@ evaluator:
 
 ### `internal/scope`: the runtime scope and file scopes
 
-`Scope` keeps four private maps, so no write skips the bookkeeping:
+`Scope` keeps five private maps, so no write skips the bookkeeping:
 
 | Map       | Holds                                                                   |
 | --------- | ----------------------------------------------------------------------- |
 | `vars`    | the values, read through `Vars()` (live map, read-only by convention)   |
 | `secrets` | names flagged secret, read through `IsSecret`                           |
 | `ambient` | names whose value still comes only from the OS env base layer           |
+| `fromCLI` | names whose value is a command-line argument nothing has overwritten   |
 | `carried` | secret values `Adopt` brought up from a `call:` child, without a name   |
 
 Writes go through four methods:
 
-- `Set` overwrites, propagates the secret flag, and clears `ambient`.
+- `Set` overwrites, propagates the secret flag, and clears `ambient` and `fromCLI`.
 - `SetIfDefault` fills only an unclaimed name.
 - `MarkSecret` flags a name already in scope (a `get: secret:` on a set var).
 - `Bind(key, val) (restore func())` sets a `loop:` iterator; `restore` puts
   back the prior value and flags, or removes the key.
+
+`resolve` sets `fromCLI` for the root's `cliVars`; `Copy` carries it. The one
+query, `FromInvocation(key)`, is true for a `fromCLI` or `ambient` name: the
+value still comes from where hobnob was run, so a relative path in it resolves
+against `HOBNOB_INVOCATION_DIR` (see `get:`'s path checks).
 
 **The claimed rule.** A name is _claimed_ when present and not ambient. Only
 `Load`'s base layer marks ambient; every `Set` clears it. That one rule decides
@@ -553,6 +559,19 @@ before it is shown (nothing left fails, or is empty under `optional:`), and
 join `check:` in the closure handed to `PromptText`. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before
 `check:`.
+
+A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
+runs its value through `acceptPath` before `check:`: empty is no answer
+(`optional:` sets it empty and skips `check:`, otherwise it fails), then per
+item (each under `multi:`) absolute, exists, right kind (`os.Stat`, so a
+symlink is judged by its target and stored as given), `match:` (`glob.Path`).
+A relative path resolves against the invocation dir when
+`Scope.FromInvocation` says the value came from the CLI or shell, else against
+the task's working directory (`execCtx.dir`); `filepath.Clean` and `~`
+expansion apply. With prompts off, a `type: file` `default:` that is a
+directory counts as no default (`isDirDefault`). Until the picker is wired in,
+prompts on fall back to the text prompt (`getPathInteractive`), whose
+validator runs the same checks against the invocation dir.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
