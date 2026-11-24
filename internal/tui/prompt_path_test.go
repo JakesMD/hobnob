@@ -59,6 +59,7 @@ var (
 	keyEnter = tea.KeyMsg{Type: tea.KeyEnter}
 	keyTab   = tea.KeyMsg{Type: tea.KeyTab}
 	keyBack  = tea.KeyMsg{Type: tea.KeyBackspace}
+	keyEsc   = tea.KeyMsg{Type: tea.KeyEsc}
 )
 
 func names(m pathModel) []string {
@@ -147,7 +148,7 @@ func TestPathModel_PredicateDecidesWhatTheListingShows(t *testing.T) {
 
 	// Arrange
 	root := tree(t, "a.log", "b.txt", "sub/")
-	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Show: func(path string, isDir bool) bool {
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Included: func(path string, isDir bool) bool {
 		return isDir || !strings.HasSuffix(path, ".log")
 	}})
 
@@ -540,5 +541,280 @@ func TestPathModel_TabCompletesTheHighlightedName(t *testing.T) {
 	// Assert
 	if m.seg != "config.yml" || m.done {
 		t.Errorf("seg: got %q done %v, want config.yml not done", m.seg, m.done)
+	}
+}
+
+func hasPrefixLabel(m pathModel, label string) bool {
+	for _, n := range names(m) {
+		if n == label {
+			return true
+		}
+	}
+	return false
+}
+
+func TestPathModel_Multi_TabTogglesPicksAndEnterConfirmsAll(t *testing.T) {
+	// given a multi file picker, when tab toggles two files and enter confirms, then both are returned in pick order
+	// (why: multi: collects several answers before confirming)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.txt", "c.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
+
+	// Act
+	m = press(m, keyDown, keyTab, keyUp, keyTab)
+	view := m.View()
+	m = press(m, keyEnter)
+
+	// Assert
+	want := []string{filepath.Join(root, "b.txt"), filepath.Join(root, "a.txt")}
+	if !m.done || !equal(m.picks, want) {
+		t.Errorf("picks: got %v done=%v, want %v", m.picks, m.done, want)
+	}
+	if !strings.Contains(view, "b.txt") || !strings.Contains(view, "picked") {
+		t.Errorf("view should list picks above the input, got:\n%s", view)
+	}
+}
+
+func TestPathModel_Multi_TabAgainUnpicks(t *testing.T) {
+	// given a picked file, when tab is pressed on it again, then it is no longer picked
+	// (why: tab is a toggle)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true})
+
+	// Act
+	m = press(m, keyTab, keyTab)
+
+	// Assert
+	if len(m.picks) != 0 {
+		t.Errorf("picks: got %v, want none", m.picks)
+	}
+}
+
+func TestPathModel_Multi_DefaultArrivesAlreadyMarked(t *testing.T) {
+	// given a multi default list, when the picker opens, then those paths are already picked and enter confirms them
+	// (why: a default is a pre-made answer the user can accept)
+
+	// Arrange
+	root := tree(t, "a.txt", "b.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Multi: true, Default: []string{"a.txt", "b.txt"}})
+
+	// Act
+	m = press(m, keyEnter)
+
+	// Assert
+	want := []string{filepath.Join(root, "a.txt"), filepath.Join(root, "b.txt")}
+	if !m.done || !equal(m.picks, want) {
+		t.Errorf("picks: got %v, want %v", m.picks, want)
+	}
+}
+
+func TestPathModel_Optional_EscClearsSegmentThenGivesNoAnswer(t *testing.T) {
+	// given an optional picker with text typed, when esc is pressed twice, then the first clears the segment and the second skips
+	// (why: esc backs out one step at a time)
+
+	// Arrange
+	root := tree(t, "a.txt")
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Optional: true})
+	m = typed(m, "ab")
+
+	// Act
+	m = press(m, keyEsc)
+	afterFirst := m
+
+	m = press(m, keyEsc)
+
+	// Assert
+	if afterFirst.seg != "" || afterFirst.done {
+		t.Errorf("first esc: seg=%q done=%v, want cleared and not done", afterFirst.seg, afterFirst.done)
+	}
+	if !m.done || !m.skipped {
+		t.Errorf("second esc: done=%v skipped=%v, want both true", m.done, m.skipped)
+	}
+}
+
+func TestPathModel_Required_EscDoesNothing(t *testing.T) {
+	// given a picker that is not optional, when esc is pressed on an empty segment, then it stays open
+	// (why: an answer is required)
+
+	// Arrange
+	m := newTestPath(tree(t, "a.txt"), "file")
+
+	// Act
+	m = press(m, keyEsc)
+
+	// Assert
+	if m.done {
+		t.Error("esc finished a required picker")
+	}
+}
+
+func TestPathModel_FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes(t *testing.T) {
+	// given plain and ! predicates, when a file picker lists, then the plain one hides only files and the ! one hides a directory too
+	// (why: dirs must stay reachable for plain patterns, while !.* must hide .git/; mutation checklist line 74)
+
+	// Arrange
+	root := tree(t, "a.yml", "b.txt", "sub/", ".git/")
+	plain := func(path string, isDir bool) bool { return strings.HasSuffix(path, ".yml") }
+	bang := func(path string, isDir bool) bool { return strings.HasPrefix(filepath.Base(path), ".") }
+
+	// Act
+	withPlain := names(newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Included: plain}))
+	withBang := names(newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Excluded: bang}))
+
+	// Assert
+	if want := []string{".git/", "sub/", "a.yml"}; !equal(withPlain, want) {
+		t.Errorf("plain: got %v, want %v", withPlain, want)
+	}
+	if want := []string{"sub/", "a.yml", "b.txt"}; !equal(withBang, want) {
+		t.Errorf("bang: got %v, want %v", withBang, want)
+	}
+}
+
+func TestPathModel_DirPicker_NonMatchingDirCanBeOpenedButNotPicked(t *testing.T) {
+	// given a dir picker whose predicate matches only "ok", when enter is pressed on "other", then it opens; on "ok" it is picked
+	// (why: you may need to walk through non-matching dirs to reach a matching one)
+
+	// Arrange
+	root := tree(t, "other/ok/", "ok/")
+	only := func(path string, isDir bool) bool { return filepath.Base(path) == "ok" }
+	m := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: only})
+
+	// Act
+	m = typed(m, "oth")
+	opened := press(m, keyEnter)
+	picked := press(typed(newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: only}), "ok"), keyEnter)
+
+	// Assert
+	if opened.done || opened.cwd != filepath.Join(root, "other") {
+		t.Errorf("enter on non-matching dir: cwd=%s done=%v, want it opened", opened.cwd, opened.done)
+	}
+	if !picked.done || picked.picked != filepath.Join(root, "ok") {
+		t.Errorf("enter on matching dir: picked=%q done=%v", picked.picked, picked.done)
+	}
+	if hasPrefixLabel(opened, "./ (this directory)") && opened.cwd == root {
+		t.Error("unexpected here row")
+	}
+}
+
+func TestPathModel_DirPicker_ThisDirectoryNotPickableUnlessItMatches(t *testing.T) {
+	// given a dir picker whose predicate rejects the listed directory, when enter is pressed on the here row, then nothing is picked
+	// (why: only matching directories can be picked)
+
+	// Arrange
+	root := tree(t, "sub/")
+	none := func(path string, isDir bool) bool { return false }
+	m := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: none})
+
+	// Act
+	m = press(m, keyEnter)
+
+	// Assert
+	if m.done || m.errMsg == "" {
+		t.Errorf("done=%v err=%q, want refused with a message", m.done, m.errMsg)
+	}
+}
+
+func TestPathModel_View_ShowsMatchPatternsDimlyInHeader(t *testing.T) {
+	// given match patterns, when the picker renders, then the header shows them
+	// (why: the user should know what is being filtered)
+
+	// Arrange
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: tree(t), Patterns: []string{"*.yml", "!.*"}})
+
+	// Act
+	view := m.View()
+
+	// Assert
+	if !strings.Contains(view, "*.yml") || !strings.Contains(view, "!.*") {
+		t.Errorf("view missing patterns:\n%s", view)
+	}
+}
+
+func TestPathModel_Open_FileDefaultIsPreselectedInItsDirectory(t *testing.T) {
+	// given a file default in a subdirectory, when the picker opens, then it lists that directory with the file highlighted
+	// (why: accepting the default should be one keypress)
+
+	// Arrange
+	root := tree(t, "sub/a.txt", "sub/b.txt")
+
+	// Act
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Default: []string{"sub/b.txt"}})
+
+	// Assert
+	row, ok := m.highlighted()
+	if m.cwd != filepath.Join(root, "sub") || !ok || row.name != "b.txt" {
+		t.Errorf("cwd=%s row=%v, want sub with b.txt highlighted", m.cwd, row.name)
+	}
+}
+
+func TestPathModel_Open_DirDefaultIsPreselectedInItsParent(t *testing.T) {
+	// given a directory default in a dir picker, when it opens, then the parent is listed with that directory highlighted
+	// (why: same one-keypress accept as for files)
+
+	// Arrange
+	root := tree(t, "x/", "y/")
+
+	// Act
+	m := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Default: []string{"y"}})
+
+	// Assert
+	row, ok := m.highlighted()
+	if m.cwd != root || !ok || row.name != "y" {
+		t.Errorf("cwd=%s row=%v, want root with y highlighted", m.cwd, row.name)
+	}
+}
+
+func TestPathModel_Open_DirectoryDefaultInFilePickerIsWhereBrowsingStarts(t *testing.T) {
+	// given a directory default in a file picker, when it opens, then browsing starts inside that directory
+	// (why: a file picker cannot pick it, but it hints where to look)
+
+	// Arrange
+	root := tree(t, "sub/a.txt", "other.txt")
+
+	// Act
+	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Default: []string{"sub"}})
+
+	// Assert
+	if m.cwd != filepath.Join(root, "sub") || !equal(names(m), []string{"a.txt"}) {
+		t.Errorf("cwd=%s rows=%v", m.cwd, names(m))
+	}
+}
+
+func TestPathModel_Open_MissingOrWrongKindDefaultOpensNearestExistingParent(t *testing.T) {
+	// given a missing default and a file default in a dir picker, when it opens, then the nearest existing parent is listed with nothing selected
+	// (why: the default cannot be used, but its neighbourhood is the best guess)
+
+	// Arrange
+	root := tree(t, "sub/a.txt")
+
+	// Act
+	missing := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Default: []string{"sub/gone/deeper/f.txt"}})
+	wrong := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Default: []string{"sub/a.txt"}})
+
+	// Assert
+	if missing.cwd != filepath.Join(root, "sub") || missing.cursor != 0 {
+		t.Errorf("missing: cwd=%s cursor=%d", missing.cwd, missing.cursor)
+	}
+	if wrong.cwd != filepath.Join(root, "sub") || wrong.cursor != 0 {
+		t.Errorf("wrong kind: cwd=%s cursor=%d", wrong.cwd, wrong.cursor)
+	}
+}
+
+func TestPathModel_Open_NoDefaultStartsInInvokeDirectory(t *testing.T) {
+	// given no default, when it opens, then it lists the working directory
+	// (why: the task's working directory is the natural start)
+
+	// Arrange
+	root := tree(t, "a.txt")
+
+	// Act
+	m := newTestPath(root, "file")
+
+	// Assert
+	if m.cwd != root {
+		t.Errorf("cwd=%s, want %s", m.cwd, root)
 	}
 }

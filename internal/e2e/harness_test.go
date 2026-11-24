@@ -85,6 +85,7 @@
 // 65. signal the group as soon as the shell exits, in execRun         -> run_background_test.go (JobKeepsRunningAfterItsStepEnds, JobNotHoldingTheOutputKeepsRunningAfterItsStepEnds)
 // 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
+// 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
 package e2e
 
 import (

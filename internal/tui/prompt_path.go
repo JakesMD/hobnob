@@ -14,16 +14,27 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// PathPrompt is everything the picker takes in. Show is the caller's
-// predicate for what the listing shows (tui never learns about match:); it is
-// applied on top of the type and the junk-name list.
+// PathPrompt is everything the picker takes in. Included and Excluded are the
+// caller's predicates for match: (tui never learns about match:); both are
+// applied on top of the type and the junk-name list, and either may be nil.
+//
+//   - Included is the plain patterns: in a file picker it hides non-matching
+//     files (never directories); in a dir picker non-matching directories can
+//     be opened but not picked.
+//   - Excluded is the "!" patterns: whatever it reports true for is hidden,
+//     directories included.
 type PathPrompt struct {
-	Type    string // "file" or "dir"
-	VarName string
-	Info    string
-	Start   string // start directory as written: relative to Invoke, ~-based or absolute; empty means Invoke
-	Invoke  string // absolute directory that relative paths resolve against
-	Show    func(path string, isDir bool) bool
+	Type     string // "file" or "dir"
+	VarName  string
+	Info     string
+	Start    string   // start directory as written: relative to Invoke, ~-based or absolute; empty means Invoke
+	Invoke   string   // absolute directory that relative paths resolve against
+	Default  []string // as written (relative to Invoke, ~-based or absolute); first one decides where the picker opens
+	Multi    bool     // tab toggles picks, enter confirms them all; Default is the initial picks
+	Optional bool     // esc clears the segment, then gives no answer
+	Patterns []string // match: patterns as written, shown dimly in the header
+	Included func(path string, isDir bool) bool
+	Excluded func(path string, isDir bool) bool
 }
 
 var (
@@ -53,8 +64,9 @@ func isJunk(name string) bool {
 }
 
 type pathEntry struct {
-	name  string
-	isDir bool
+	name     string
+	isDir    bool
+	pickable bool
 }
 
 type pathRow struct {
@@ -74,34 +86,89 @@ func (r pathRow) label() string {
 }
 
 type pathModel struct {
-	prompt PathPrompt
-	home   string
-	form   string // how the directory is written: "rel", "home" or "abs"
-	cwd    string // absolute directory being listed
-	seg    string // the fuzzy-matched segment after the last "/"
-	cursor int
-	offset int
-	errMsg string
-	picked string
-	done   bool
-	quit   bool
+	prompt  PathPrompt
+	home    string
+	form    string // how the directory is written: "rel", "home" or "abs"
+	cwd     string // absolute directory being listed
+	seg     string // the fuzzy-matched segment after the last "/"
+	cursor  int
+	offset  int
+	errMsg  string
+	picked  string
+	picks   []string // multi: absolute paths picked so far, in pick order
+	done    bool
+	quit    bool
+	skipped bool // esc on an optional picker: no answer
 }
 
 func newPathModel(prompt PathPrompt) pathModel {
 	home, _ := os.UserHomeDir()
-	m := pathModel{prompt: prompt, home: home, form: "rel", cwd: filepath.Clean(prompt.Invoke)}
-	switch {
-	case prompt.Start == "":
-	case prompt.Start == "~" || strings.HasPrefix(prompt.Start, "~/"):
-		m.form = "home"
-		m.cwd = filepath.Join(home, strings.TrimPrefix(prompt.Start, "~"))
-	case filepath.IsAbs(prompt.Start):
-		m.form = "abs"
-		m.cwd = filepath.Clean(prompt.Start)
-	default:
-		m.cwd = filepath.Join(prompt.Invoke, prompt.Start)
+	m := pathModel{prompt: prompt, home: home}
+	m.form, m.cwd = m.resolve(prompt.Start)
+	if prompt.Multi {
+		for _, d := range prompt.Default {
+			_, abs := m.resolve(d)
+			m.picks = append(m.picks, abs)
+		}
+	}
+	if len(prompt.Default) > 0 {
+		m.open(prompt.Default[0])
 	}
 	return m
+}
+
+// resolve turns a path as written into its form and absolute path; empty
+// means the invoke directory.
+func (m pathModel) resolve(written string) (form, abs string) {
+	switch {
+	case written == "":
+		return "rel", filepath.Clean(m.prompt.Invoke)
+	case written == "~" || strings.HasPrefix(written, "~/"):
+		return "home", filepath.Join(m.home, strings.TrimPrefix(written, "~"))
+	case filepath.IsAbs(written):
+		return "abs", filepath.Clean(written)
+	}
+	return "rel", filepath.Join(m.prompt.Invoke, written)
+}
+
+// open positions the picker for a default: a default of the prompt's kind is
+// highlighted in its directory, a directory given to a file picker is where
+// browsing starts, and anything else opens the nearest existing parent with
+// nothing selected.
+func (m *pathModel) open(written string) {
+	form, abs := m.resolve(written)
+	m.form = form
+	info, err := os.Stat(abs)
+	switch {
+	case err == nil && info.IsDir() && m.prompt.Type == "file":
+		m.cwd = abs
+		return
+	case err == nil && info.IsDir() == (m.prompt.Type == "dir"):
+		m.cwd = filepath.Dir(abs)
+		m.highlight(abs)
+		return
+	}
+	dir := filepath.Dir(abs)
+	for {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			break
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			break
+		}
+		dir = next
+	}
+	m.cwd = dir
+}
+
+func (m *pathModel) highlight(abs string) {
+	for i, row := range m.rows() {
+		if !row.here && filepath.Join(m.cwd, row.name) == abs {
+			m.cursor = i
+		}
+	}
+	m.clamp()
 }
 
 // dirText writes the listed directory the way the user started writing it.
@@ -147,13 +214,17 @@ func (m pathModel) entries() []pathEntry {
 		if m.prompt.Type == "dir" && !isDir {
 			continue
 		}
-		if m.prompt.Show != nil && !m.prompt.Show(abs, isDir) {
+		if m.prompt.Excluded != nil && m.prompt.Excluded(abs, isDir) {
+			continue
+		}
+		included := m.prompt.Included == nil || m.prompt.Included(abs, isDir)
+		if !isDir && !included {
 			continue
 		}
 		if isDir {
-			dirs = append(dirs, pathEntry{item.Name(), true})
+			dirs = append(dirs, pathEntry{item.Name(), true, m.prompt.Type == "dir" && included})
 		} else {
-			files = append(files, pathEntry{item.Name(), false})
+			files = append(files, pathEntry{item.Name(), false, true})
 		}
 	}
 	byName := func(s []pathEntry) {
@@ -167,7 +238,8 @@ func (m pathModel) entries() []pathEntry {
 func (m pathModel) rows() []pathRow {
 	var out []pathRow
 	if m.prompt.Type == "dir" && m.seg == "" {
-		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true}, here: true})
+		here := m.prompt.Included == nil || m.prompt.Included(m.cwd, true)
+		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true, pickable: here}, here: true})
 	}
 	type scored struct {
 		row   pathRow
@@ -343,20 +415,43 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "ctrl+u":
 		m.setSegment("")
+	case "esc":
+		switch {
+		case m.seg != "":
+			m.setSegment("")
+		case m.prompt.Optional:
+			m.skipped, m.done = true, true
+			return m, tea.Quit
+		}
 	case "tab":
-		if hasRow && !row.here {
+		switch {
+		case !hasRow:
+		case m.prompt.Multi:
+			if row.pickable {
+				m.toggle(m.rowPath(row))
+			} else {
+				m.errMsg = "can't pick that"
+			}
+		case !row.here:
 			m.setSegment(row.name)
 		}
 	case "enter":
 		switch {
+		case m.prompt.Multi && len(m.picks) > 0:
+			m.done = true
+			return m, tea.Quit
 		case !hasRow:
 			m.errMsg = "nothing matches"
-		case row.here:
-			return m.finish(m.cwd)
-		case row.isDir && m.prompt.Type == "file":
+		case row.isDir && !row.here && (m.prompt.Type == "file" || !row.pickable):
 			m.enter(filepath.Join(m.cwd, row.name))
+		case !row.pickable:
+			m.errMsg = "doesn't match"
+		case m.prompt.Multi:
+			m.picks = []string{m.rowPath(row)}
+			m.done = true
+			return m, tea.Quit
 		default:
-			return m.finish(filepath.Join(m.cwd, row.name))
+			return m.finish(m.rowPath(row))
 		}
 	default:
 		if key.Type == tea.KeyRunes || key.Type == tea.KeySpace {
@@ -375,6 +470,32 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.clamp()
 	return m, nil
+}
+
+func (m pathModel) rowPath(row pathRow) string {
+	if row.here {
+		return m.cwd
+	}
+	return filepath.Join(m.cwd, row.name)
+}
+
+func (m *pathModel) toggle(path string) {
+	for i, p := range m.picks {
+		if p == path {
+			m.picks = append(append([]string{}, m.picks[:i]...), m.picks[i+1:]...)
+			return
+		}
+	}
+	m.picks = append(m.picks, path)
+}
+
+func (m pathModel) isPicked(path string) bool {
+	for _, p := range m.picks {
+		if p == path {
+			return true
+		}
+	}
+	return false
 }
 
 func (m pathModel) finish(path string) (tea.Model, tea.Cmd) {
@@ -396,7 +517,16 @@ func (m pathModel) View() string {
 	if m.prompt.Info != "" {
 		b.WriteString("\n" + SInfo.Render(m.prompt.Info))
 	}
+	if len(m.prompt.Patterns) > 0 {
+		b.WriteString("\n" + SInfo.Render("match: "+strings.Join(m.prompt.Patterns, ", ")))
+	}
 	b.WriteString("\n")
+	if len(m.picks) > 0 {
+		b.WriteString(SInfo.Render(fmt.Sprintf("picked (%d):", len(m.picks))) + "\n")
+		for _, p := range m.picks {
+			b.WriteString("  " + SArrow.Render("✓ ") + p + "\n")
+		}
+	}
 	dir := SInfo.Render("./")
 	if text := m.dirText(); text != "" {
 		dir = sPathDir.Render(text)
@@ -418,6 +548,13 @@ func (m pathModel) View() string {
 		} else {
 			b.WriteString("  ")
 		}
+		if m.prompt.Multi {
+			if m.isPicked(m.rowPath(row)) {
+				b.WriteString(SArrow.Render("✓ "))
+			} else {
+				b.WriteString("  ")
+			}
+		}
 		switch {
 		case row.here:
 			b.WriteString(sPathDir.Render("./") + SInfo.Render(" (this directory)"))
@@ -434,24 +571,45 @@ func (m pathModel) View() string {
 	if m.errMsg != "" {
 		b.WriteString(SError.Render(m.errMsg) + "\n")
 	}
-	b.WriteString(SHint.Render("type to filter  / enter dir  ↑↓ move  ← up  → open  tab complete  enter pick"))
+	hint := "type to filter  / enter dir  ↑↓ move  ← up  → open  tab complete  enter pick"
+	if m.prompt.Multi {
+		hint = "type to filter  / enter dir  ↑↓ move  ← up  → open  tab toggle pick  enter confirm"
+	}
+	if m.prompt.Optional {
+		hint += "  esc skip"
+	}
+	b.WriteString(SHint.Render(hint))
 	return b.String()
 }
 
 // PromptPath runs the picker and returns the picked absolute path.
-func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool) (value.Value, error) {
+// With Multi the value is a list of absolute paths. answered is false when an
+// optional picker was escaped: there is no answer and nothing is printed.
+func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool) (val value.Value, answered bool, err error) {
 	result, err := tea.NewProgram(newPathModel(prompt), tea.WithContext(ctx)).Run()
 	if err != nil {
-		return value.Value{}, err
+		return value.Value{}, false, err
 	}
 	final := result.(pathModel)
 	if final.quit {
-		return value.Value{}, fmt.Errorf("aborted")
+		return value.Value{}, false, fmt.Errorf("aborted")
+	}
+	if final.skipped {
+		return value.Value{}, false, nil
 	}
 	display := final.picked
+	val = value.Str(final.picked)
+	if prompt.Multi {
+		list := make([]any, len(final.picks))
+		for i, p := range final.picks {
+			list[i] = p
+		}
+		display = strings.Join(final.picks, ", ")
+		val = value.Of(list)
+	}
 	if secret {
 		display = SecretMask
 	}
 	printGetLine(task, prompt.VarName, display)
-	return value.Str(final.picked), nil
+	return val, true, nil
 }
