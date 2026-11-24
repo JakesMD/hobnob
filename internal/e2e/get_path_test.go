@@ -570,7 +570,7 @@ func TestE2E_GetPath_OptionalWithDefaultUsesDefaultWithPromptsOff(t *testing.T) 
 
 func TestE2E_GetPath_PickerAnswerIsStoredAbsolute(t *testing.T) {
 	// given a type: file entry with prompts on, when the picker answers, then
-	// the picker was opened with its type and match: and the answer is stored
+	// the picker was opened with its type and the answer is stored
 	// absolute (why: a picked path must read the same as a preset one)
 	// Arrange
 	yml := `
@@ -592,8 +592,8 @@ func TestE2E_GetPath_PickerAnswerIsStoredAbsolute(t *testing.T) {
 	res.OK(t)
 	res.Lines(t, "conf="+filepath.Join(res.Dir, "sub", "f.txt"))
 	res.Prompted(t, "CONF")
-	if got := res.Prompts[0]; got.Type != "file" || len(got.Match) != 1 || got.Match[0] != "*.txt" {
-		t.Errorf("picker opened with Type %q, Match %v; want file, [*.txt]", got.Type, got.Match)
+	if got := res.Prompts[0]; got.Type != "file" {
+		t.Errorf("picker opened with Type %q, want file", got.Type)
 	}
 }
 

@@ -717,22 +717,6 @@ func TestPathModel_DirPicker_ThisDirectoryNotPickableUnlessItMatches(t *testing.
 	}
 }
 
-func TestPathModel_View_ShowsMatchPatternsDimlyInHeader(t *testing.T) {
-	// given match patterns, when the picker renders, then the header shows them
-	// (why: the user should know what is being filtered)
-
-	// Arrange
-	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: tree(t), Patterns: []string{"*.yml", "!.*"}})
-
-	// Act
-	view := m.View()
-
-	// Assert
-	if !strings.Contains(view, "*.yml") || !strings.Contains(view, "!.*") {
-		t.Errorf("view missing patterns:\n%s", view)
-	}
-}
-
 func TestPathModel_Open_FileDefaultIsPreselectedInItsDirectory(t *testing.T) {
 	// given a file default in a subdirectory, when the picker opens, then it lists that directory with the file highlighted
 	// (why: accepting the default should be one keypress)

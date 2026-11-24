@@ -154,8 +154,7 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
-	Type     string   // "file" or "dir" for a picker, empty for a text prompt or menu
-	Match    []string // the match: patterns the picker was given
+	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -538,7 +537,7 @@ func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task stri
 	raw := answers[idx]
 	s.pathIdx[prompt.VarName] = idx + 1
 	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Match: prompt.Patterns}
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type}
 	for _, p := range s.probe {
 		full := filepath.Join(s.dir, p)
 		info, err := os.Stat(full)

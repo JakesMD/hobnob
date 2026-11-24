@@ -11,6 +11,7 @@ import (
 	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // PathPrompt is everything the picker takes in. Paths written in the taskfile
@@ -35,7 +36,6 @@ type PathPrompt struct {
 	Default  []string // as written in the taskfile (relative to WorkDir, ~-based or absolute); first one decides where the picker opens
 	Multi    bool     // tab toggles picks, enter confirms them all; Default is the initial picks
 	Optional bool     // esc clears the segment, then gives no answer
-	Patterns []string // match: patterns as written, shown dimly in the header
 	Included func(path string, isDir bool) bool
 	Excluded func(path string, isDir bool) bool
 }
@@ -534,9 +534,6 @@ func (m pathModel) View() string {
 	if m.prompt.Info != "" {
 		b.WriteString("\n" + SInfo.Render(m.prompt.Info))
 	}
-	if len(m.prompt.Patterns) > 0 {
-		b.WriteString("\n" + SInfo.Render("match: "+strings.Join(m.prompt.Patterns, ", ")))
-	}
 	b.WriteString("\n")
 	if len(m.picks) > 0 {
 		b.WriteString(SInfo.Render(fmt.Sprintf("picked (%d):", len(m.picks))) + "\n")
@@ -544,13 +541,14 @@ func (m pathModel) View() string {
 			b.WriteString("  " + SChecked.Render("◉ ") + p + "\n")
 		}
 	}
+	rows := m.rows()
 	dir := SInfo.Render("./")
 	if text := m.dirText(); text != "" {
-		dir = sPathDir.Render(text)
+		dir = sPathInput.Render(text)
 	}
-	b.WriteString(SArrow.Render("› ") + dir + m.seg + sPathMatch.Render("▏") + "\n")
-
-	rows := m.rows()
+	input := dir + sPathInput.Render(m.seg) + sPathMatch.Render("▏")
+	b.WriteString("\n" + SArrow.Render("› ") + input + "\n")
+	b.WriteString(SInfo.Render(strings.Repeat("─", m.ruleWidth(input, rows))) + "\n")
 	if len(rows) == 0 {
 		b.WriteString(SInfo.Render("  nothing matches") + "\n")
 	}
@@ -591,15 +589,25 @@ func (m pathModel) View() string {
 	if m.errMsg != "" {
 		b.WriteString(SError.Render(m.errMsg) + "\n")
 	}
-	hint := "type to filter  / enter dir  ↑↓ move  ← up  → open  tab complete  enter pick"
+	hint := "type to filter  ↑↓ move  ← up  → open  tab complete  enter pick"
 	if m.prompt.Multi {
-		hint = "type to filter  / enter dir  ↑↓ move  ← up  → open  tab toggle pick  enter confirm"
+		hint = "type to filter  ↑↓ move  ← up  → open  tab toggle pick  enter confirm"
 	}
 	if m.prompt.Optional {
 		hint += "  esc skip"
 	}
-	b.WriteString(SHint.Render(hint))
+	b.WriteString("\n" + SHint.Render(hint))
 	return b.String()
+}
+
+// ruleWidth is how long the rule between the input line and the list is: as
+// wide as the widest of the two, so it reads as a divider at any path length.
+func (m pathModel) ruleWidth(input string, rows []pathRow) int {
+	width := max(lipgloss.Width(input)+2, 24)
+	for _, row := range rows[m.offset:min(m.offset+pathListHeight, len(rows))] {
+		width = max(width, lipgloss.Width(row.label())+6)
+	}
+	return width
 }
 
 // PromptPath runs the picker and returns the picked absolute path.

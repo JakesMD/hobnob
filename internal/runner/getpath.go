@@ -173,10 +173,6 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 	if err != nil {
 		return err
 	}
-	patterns, err := eval.ResolveItemStrings(getEntry.MatchList, getEntry.MatchTmpl.Value, scope.Vars(), "get "+name+" match")
-	if err != nil {
-		return err
-	}
 	prompt := tui.PathPrompt{
 		Type:     string(getEntry.Type),
 		VarName:  name,
@@ -186,7 +182,6 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		Default:  defaults,
 		Multi:    getEntry.Multi,
 		Optional: getEntry.Optional,
-		Patterns: patterns,
 	}
 	if !checker.matcher.Empty() {
 		prompt.Included = func(abs string, _ bool) bool { return checker.matcher.Included(abs, checker.workDir, checker.home) }
