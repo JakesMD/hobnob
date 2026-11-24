@@ -568,11 +568,10 @@ func TestE2E_GetPath_OptionalWithDefaultUsesDefaultWithPromptsOff(t *testing.T) 
 	res.Lines(t, "out="+filepath.Join(res.Dir, "sub"))
 }
 
-func TestE2E_GetPath_TypedAnswerGoesThroughTheSameChecks(t *testing.T) {
-	// given a type: file entry with prompts on, when the first typed answer
-	// is missing and the second exists, then the second is stored absolute
-	// relative to where hobnob ran (why: the text prompt stands in for the
-	// picker and must not weaken the checks)
+func TestE2E_GetPath_PickerAnswerIsStoredAbsolute(t *testing.T) {
+	// given a type: file entry with prompts on, when the picker answers, then
+	// the picker was opened with its type and match: and the answer is stored
+	// absolute (why: a picked path must read the same as a preset one)
 	// Arrange
 	yml := `
 		tasks:
@@ -581,16 +580,72 @@ func TestE2E_GetPath_TypedAnswerGoesThroughTheSameChecks(t *testing.T) {
 		      - get:
 		          - CONF:
 		              type: file
+		              match: "*.txt"
 		      - run: echo conf={{.CONF}}
 	`
 
 	// Act
 	res := Run(t, Case{Files: pathFiles(yml), TTY: true, Cwd: "sub", Args: []string{"t"},
-		Answers: map[string][]string{"CONF": {"missing.txt", "f.txt"}}})
+		Answers: map[string][]string{"CONF": {"f.txt"}}})
 
 	// Assert
 	res.OK(t)
 	res.Lines(t, "conf="+filepath.Join(res.Dir, "sub", "f.txt"))
+	res.Prompted(t, "CONF")
+	if got := res.Prompts[0]; got.Type != "file" || len(got.Match) != 1 || got.Match[0] != "*.txt" {
+		t.Errorf("picker opened with Type %q, Match %v; want file, [*.txt]", got.Type, got.Match)
+	}
+}
+
+func TestE2E_GetPath_FailingCheckReopensThePicker(t *testing.T) {
+	// given a type: file entry with a check: the first pick fails, when the
+	// second pick passes, then the picker was opened twice and the second
+	// pick is stored (why: check: re-opens a picker the way it re-opens a menu)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              check: "case {{.CONF}} in *.md) true;; *) false;; esac"
+		      - run: echo conf={{.CONF}}
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), TTY: true, Args: []string{"t"},
+		Answers: map[string][]string{"CONF": {"sub/f.txt", "sub/g.md"}}})
+
+	// Assert
+	res.OK(t)
+	res.Prompted(t, "CONF", "CONF")
+	res.Lines(t, "conf="+filepath.Join(res.Dir, "sub", "g.md"))
+}
+
+func TestE2E_GetPath_SecretPickerIsMaskedInCommands(t *testing.T) {
+	// given a secret: type: file entry picked at a prompt, when the path is
+	// used in a command, then it is masked (why: secret: applies to a picked
+	// path as to any value)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              secret: true
+		      - run: ": {{.CONF}}"
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), TTY: true, Args: []string{"t"},
+		Answers: map[string][]string{"CONF": {"sub/f.txt"}}})
+
+	// Assert
+	res.OK(t)
+	res.Masked(t, filepath.Join(res.Dir, "sub", "f.txt"))
 }
 
 func TestE2E_GetPath_OptionsWithTypeFileRejectedAtLoad(t *testing.T) {

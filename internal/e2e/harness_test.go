@@ -93,6 +93,8 @@
 // 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
 // 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
+// 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
+// 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
 package e2e
 
 import (
@@ -148,6 +150,8 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
+	Type     string   // "file" or "dir" for a picker, empty for a text prompt or menu
+	Match    []string // the match: patterns the picker was given
 }
 
 // Result is what the user would have seen.
@@ -268,7 +272,7 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	state := newPromptState(t, c.Answers)
-	restorePrompts := runner.SetPrompts(state.text, state.sel)
+	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
@@ -439,6 +443,7 @@ type promptState struct {
 	answers map[string][]string
 	textIdx map[string]int
 	selIdx  map[string]int
+	pathIdx map[string]int
 	calls   []PromptCall
 }
 
@@ -448,6 +453,7 @@ func newPromptState(t *testing.T, answers map[string][]string) *promptState {
 		answers: answers,
 		textIdx: map[string]int{},
 		selIdx:  map[string]int{},
+		pathIdx: map[string]int{},
 	}
 }
 
@@ -502,4 +508,40 @@ func (s *promptState) sel(ctx context.Context, varName, info string, items []str
 		return value.Of(parts), nil
 	}
 	return value.Str(raw), nil
+}
+
+// path implements runner.PathPromptFunc. Each call consumes the next
+// not-yet-used answer for prompt.VarName, like sel: a path (comma-separated
+// under multi:), relative ones taken from the invocation directory the way
+// the real picker returns absolute paths. An empty answer on an optional
+// picker is the escape key: no answer. internal/runner's own check:/re-open
+// loop is what drives repeat calls.
+func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task string, secret bool) (value.Value, bool, error) {
+	s.t.Helper()
+	answers := s.answers[prompt.VarName]
+	idx := s.pathIdx[prompt.VarName]
+	if idx >= len(answers) {
+		s.t.Fatalf("unexpected picker for %q (task %q, visit %d) — only %d answer(s) provided", prompt.VarName, task, idx+1, len(answers))
+	}
+	raw := answers[idx]
+	s.pathIdx[prompt.VarName] = idx + 1
+	s.record(PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Match: prompt.Patterns})
+	abs := func(p string) string {
+		if filepath.IsAbs(p) {
+			return p
+		}
+		return filepath.Join(prompt.Invoke, p)
+	}
+	if raw == "" && prompt.Optional {
+		return value.Value{}, false, nil
+	}
+	if prompt.Multi {
+		parts := []any{}
+		for _, p := range strings.Split(raw, ",") {
+			parts = append(parts, abs(p))
+		}
+		return value.Of(parts), true, nil
+	}
+	return value.Str(abs(raw)), true, nil
 }

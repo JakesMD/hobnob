@@ -13,10 +13,11 @@ import (
 	"hobnob/internal/value"
 )
 
-// promptTextFn and promptSelectFn are package-level so SetPrompts (testseam.go)
+// promptTextFn, promptSelectFn and promptPathFn are package-level so SetPrompts (testseam.go)
 // can substitute fakes.
 var promptTextFn TextPromptFunc = tui.PromptText
 var promptSelectFn SelectPromptFunc = tui.PromptSelect
+var promptPathFn PathPromptFunc = tui.PromptPath
 
 func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 	for _, getEntry := range step.GetEntries {

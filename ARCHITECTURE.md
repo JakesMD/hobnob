@@ -55,8 +55,8 @@ Every change must preserve these. Each is explained in the section named.
   reaches `into:` or a `quiet:` buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
-- **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
-  (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`.
+- **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel, path)
+  (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`/`promptPathFn`.
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
   `keys`, `join` and accessors error on a String, naming `| json`, rather
@@ -119,8 +119,10 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure,
-  so the prompt layer never learns how a shell condition works.
+- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure
+  and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
+  from `internal/glob`, so the prompt layer never learns how a shell condition
+  or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask`.
@@ -549,7 +551,7 @@ A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
 `KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
-one, else sets an optional entry empty, else aborts; with prompts on it prompts through `promptTextFn`/`promptSelectFn`. A preset, a default and an
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `promptTextFn`/`promptSelectFn`, or `promptPathFn` for a `type: file|dir` entry. A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
@@ -571,9 +573,12 @@ A relative path resolves against the invocation dir when
 `Scope.FromInvocation` says the value came from the CLI or shell, else against
 the task's working directory (`execCtx.dir`); `filepath.Clean` and `~`
 expansion apply. With prompts off, a `type: file` `default:` that is a
-directory counts as no default (`isDirDefault`). Until the picker is wired in,
-prompts on fall back to the text prompt (`getPathInteractive`), whose
-validator runs the same checks against the invocation dir.
+directory counts as no default (`isDirDefault`). With prompts on,
+`getPathInteractive` opens the picker through `promptPathFn` (the task's
+working directory as `WorkDir`, the `default:` as written, `match:` as
+`Included`/`Excluded` predicates). A pick goes through the same per-item
+checks, and a failing `check:` re-opens the picker, as `promptSelectUntilValid`
+does for menus. An escaped optional picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -626,8 +631,8 @@ end of the run.
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
-and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText` and
-`PromptSelect`; `app` injects `PromptTaskSelect` as the picker.
+and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
+`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the picker.
 
 ### `internal/app`: the CLI body
 
@@ -712,5 +717,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly four test seams: `runner.SetPrompts`,
+Production code exposes exactly four test seams: `runner.SetPrompts` (text, select and path prompts together),
 `runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.

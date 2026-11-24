@@ -10,6 +10,7 @@ import (
 	"hobnob/internal/eval"
 	"hobnob/internal/glob"
 	"hobnob/internal/scope"
+	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
 
@@ -83,6 +84,28 @@ func (pc pathChecker) item(raw, base string) (string, error) {
 	return abs, nil
 }
 
+// resolvePaths turns val (empty already handled) into absolute path(s),
+// each item checked on its own under multi:.
+func resolvePaths(checker pathChecker, getEntry config.GetEntry, val value.Value, base string) (value.Value, error) {
+	if !getEntry.Multi {
+		path, err := checker.item(val.String(), base)
+		if err != nil {
+			return value.Value{}, err
+		}
+		return value.Str(path), nil
+	}
+	items, _ := val.Any().([]any)
+	abs := make([]any, 0, len(items))
+	for _, item := range items {
+		path, err := checker.item(value.Of(item).String(), base)
+		if err != nil {
+			return value.Value{}, err
+		}
+		abs = append(abs, path)
+	}
+	return value.Of(abs), nil
+}
+
 // acceptPath is acceptAnswer for a type: file|dir entry. val is a path
 // nobody picked; relative paths resolve against base. It rewrites the value
 // in place as absolute path(s), then runs check:.
@@ -99,23 +122,9 @@ func acceptPath(execState execCtx, getEntry config.GetEntry, scope *scope.Scope,
 	if err != nil {
 		return err
 	}
-	if getEntry.Multi {
-		items, _ := val.Any().([]any)
-		abs := make([]any, 0, len(items))
-		for _, item := range items {
-			path, err := checker.item(value.Of(item).String(), base)
-			if err != nil {
-				return err
-			}
-			abs = append(abs, path)
-		}
-		val = value.Of(abs)
-	} else {
-		path, err := checker.item(val.String(), base)
-		if err != nil {
-			return err
-		}
-		val = value.Str(path)
+	val, err = resolvePaths(checker, getEntry, val, base)
+	if err != nil {
+		return err
 	}
 	scope.Set(name, val, getEntry.Secret)
 	return validateGetValue(execState, getEntry, scope.Vars())
@@ -135,69 +144,84 @@ func isDirDefault(getEntry config.GetEntry, val value.Value, base string) bool {
 	return err == nil && info.IsDir()
 }
 
-// getPathInteractive is the text-prompt fallback for a type: file|dir entry
-// until the picker is wired in: the typed answer goes through the same
-// checks as a preset one, relative to where hobnob was run.
+// getPathInteractive opens the picker for a type: file|dir entry. A picked
+// path goes through the same checks as a preset one; a failing check:
+// re-opens the picker, as promptSelectUntilValid does for menus.
 func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	name := getEntry.VarName
 	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars())
 	if err != nil {
 		return fmt.Errorf("get %s info: %w", name, err)
 	}
-	defaultVal := ""
+	var defaults []string
 	if !getEntry.DefaultTmpl.IsZero() {
-		if defaultVal, err = getEntry.DefaultTmpl.Text(scope.Vars()); err != nil {
+		val, err := getEntry.DefaultTmpl.Value(scope.Vars())
+		if err != nil {
 			return fmt.Errorf("get %s default: %w", name, err)
 		}
-		if isDirDefault(getEntry, value.Str(defaultVal), execState.dir) {
-			defaultVal = ""
+		if !val.IsEmpty() {
+			if items, ok := val.Any().([]any); ok {
+				for _, item := range items {
+					defaults = append(defaults, value.Of(item).String())
+				}
+			} else {
+				defaults = []string{val.String()}
+			}
 		}
 	}
 	checker, err := newPathChecker(getEntry, scope.Vars(), execState.dir)
 	if err != nil {
 		return err
 	}
-	invocationDir := scope.InvocationDir()
-	vars := scope.Vars()
-	validate := func(candidate string) (bool, error) {
-		if candidate == "" {
-			return true, nil
-		}
-		abs, err := checker.item(candidate, invocationDir)
-		if err != nil {
-			return false, nil
-		}
-		if getEntry.Check == "" {
-			return true, nil
-		}
-		return eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, vars, name, pathAnswer(getEntry, abs))
-	}
-	desc := validatorDesc(getEntry, checker.matcher, checker.patterns)
-	text, err := promptTextFn(execState.ctx, info, name, validate, desc, defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
+	patterns, err := eval.ResolveItemStrings(getEntry.MatchList, getEntry.MatchTmpl.Value, scope.Vars(), "get "+name+" match")
 	if err != nil {
-		return wrapPromptErr(name, err)
+		return err
 	}
-	return acceptPath(execState, getEntry, scope, pathAnswerRaw(getEntry, text), invocationDir)
-}
-
-// pathAnswer is a single typed path as the value the entry holds.
-func pathAnswer(getEntry config.GetEntry, abs string) value.Value {
-	if getEntry.Multi {
-		return value.Of([]any{abs})
+	prompt := tui.PathPrompt{
+		Type:     string(getEntry.Type),
+		VarName:  name,
+		Info:     info,
+		Invoke:   scope.InvocationDir(),
+		WorkDir:  execState.dir,
+		Default:  defaults,
+		Multi:    getEntry.Multi,
+		Optional: getEntry.Optional,
+		Patterns: patterns,
 	}
-	return value.Str(abs)
-}
-
-// pathAnswerRaw is typed text as the value acceptPath takes: empty is no
-// answer, anything else one path.
-func pathAnswerRaw(getEntry config.GetEntry, text string) value.Value {
-	if text == "" {
-		if getEntry.Multi {
-			return value.Of([]any{})
+	if !checker.matcher.Empty() {
+		prompt.Included = func(abs string, _ bool) bool { return checker.matcher.Included(abs, checker.workDir, checker.home) }
+		prompt.Excluded = func(abs string, _ bool) bool { return checker.matcher.Excluded(abs, checker.workDir, checker.home) }
+	}
+	for {
+		picked, answered, err := promptPathFn(execState.ctx, prompt, execState.task, getEntry.Secret)
+		if err != nil {
+			return wrapPromptErr(name, err)
 		}
-		return value.Str("")
+		if !answered {
+			if getEntry.Multi {
+				picked = value.Of([]any{})
+			} else {
+				picked = value.Str("")
+			}
+			scope.Set(name, picked, getEntry.Secret)
+			return nil
+		}
+		picked, err = resolvePaths(checker, getEntry, picked, prompt.Invoke)
+		if err != nil {
+			return err
+		}
+		if getEntry.Check != "" {
+			ok, err := eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, scope.Vars(), name, picked)
+			if err != nil {
+				return fmt.Errorf("get %s check: %w", name, err)
+			}
+			if !ok {
+				continue
+			}
+		}
+		scope.Set(name, picked, getEntry.Secret)
+		return nil
 	}
-	return pathAnswer(getEntry, text)
 }
 
 // emptyList reports whether val is a list with nothing in it.

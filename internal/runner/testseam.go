@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
 
@@ -16,14 +17,18 @@ type TextPromptFunc func(ctx context.Context, info, varName string,
 type SelectPromptFunc func(ctx context.Context, varName, info string, items []string,
 	multi bool, defaultVal, task string, secret bool) (value.Value, error)
 
+// PathPromptFunc matches tui.PromptPath's signature.
+type PathPromptFunc func(ctx context.Context, prompt tui.PathPrompt, task string,
+	secret bool) (val value.Value, answered bool, err error)
+
 // SetPrompts substitutes the interactive prompt implementations and returns a
 // func that restores the originals. Test-only seam — production code always
 // calls the real tui prompts and never calls this.
-func SetPrompts(text TextPromptFunc, sel SelectPromptFunc) (restore func()) {
-	origText, origSel := promptTextFn, promptSelectFn
-	promptTextFn, promptSelectFn = text, sel
+func SetPrompts(text TextPromptFunc, sel SelectPromptFunc, path PathPromptFunc) (restore func()) {
+	origText, origSel, origPath := promptTextFn, promptSelectFn, promptPathFn
+	promptTextFn, promptSelectFn, promptPathFn = text, sel, path
 	return func() {
-		promptTextFn, promptSelectFn = origText, origSel
+		promptTextFn, promptSelectFn, promptPathFn = origText, origSel, origPath
 	}
 }
 
