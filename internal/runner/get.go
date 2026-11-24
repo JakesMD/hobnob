@@ -38,10 +38,10 @@ func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scop
 }
 
 func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
-	if getEntry.Optional {
-		return acceptAnswer(execState, getEntry, scope, value.Nil())
-	}
 	if getEntry.DefaultTmpl.IsZero() {
+		if getEntry.Optional {
+			return acceptAnswer(execState, getEntry, scope, value.Nil())
+		}
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
 	}
 	val, err := getEntry.DefaultTmpl.Value(scope.Vars())

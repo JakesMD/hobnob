@@ -673,3 +673,28 @@ func TestE2E_Get_CLIArgSatisfiesPromptWithoutAsking(t *testing.T) {
 	res.Lines(t, "hi-cli-value")
 	res.Prompted(t /* none */)
 }
+
+func TestE2E_Get_OptionalWithDefaultUsesDefaultWithPromptsOff(t *testing.T) {
+	// given optional: true entries with a default: (text and menu) and one
+	// without, when run --no-input, then the defaults are used and only the
+	// entry with none is empty (why: optional means skippable, not that a
+	// default the author wrote should be ignored)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - COUNT: { optional: true, default: 3 }
+		          - COLOR: { optional: true, default: green, options: [red, green] }
+		          - NOTE: { optional: true }
+		      - run: echo count={{.COUNT}} color={{.COLOR}} note={{.NOTE | default "none"}}
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "--no-input")
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "count=3 color=green note=none")
+}
