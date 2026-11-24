@@ -13,7 +13,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// PathPrompt is everything the picker takes in. Included and Excluded are the
+// PathPrompt is everything the picker takes in. Paths written in the taskfile
+// (Default) resolve against WorkDir; the start directory and the input line
+// are relative to Invoke, so a WorkDir below Invoke shows as e.g. "sub/". The
+// caller passes both as absolute directories. Included and Excluded are the
 // caller's predicates for match: (tui never learns about match:); both are
 // applied on top of the type and the junk-name list, and either may be nil.
 //
@@ -26,9 +29,10 @@ type PathPrompt struct {
 	Type     string // "file" or "dir"
 	VarName  string
 	Info     string
-	Start    string   // start directory as written: relative to Invoke, ~-based or absolute; empty means Invoke
+	Start    string   // start directory as written: relative to Invoke, ~-based or absolute; empty means WorkDir
 	Invoke   string   // absolute directory that relative paths resolve against
-	Default  []string // as written in the taskfile (relative to Invoke, ~-based or absolute); first one decides where the picker opens
+	WorkDir  string   // absolute directory of the asking task (dir:, else the taskfile's); relative Default items resolve against it and an empty Start opens in it; empty means Invoke
+	Default  []string // as written in the taskfile (relative to WorkDir, ~-based or absolute); first one decides where the picker opens
 	Multi    bool     // tab toggles picks, enter confirms them all; Default is the initial picks
 	Optional bool     // esc clears the segment, then gives no answer
 	Patterns []string // match: patterns as written, shown dimly in the header
@@ -98,10 +102,17 @@ type pathModel struct {
 func newPathModel(prompt PathPrompt) pathModel {
 	home, _ := os.UserHomeDir()
 	m := pathModel{prompt: prompt, home: home}
-	m.form, m.cwd = m.resolve(prompt.Start, prompt.Invoke)
+	if m.prompt.WorkDir == "" {
+		m.prompt.WorkDir = prompt.Invoke
+	}
+	if prompt.Start == "" {
+		m.form, m.cwd = m.resolve("", m.prompt.WorkDir)
+	} else {
+		m.form, m.cwd = m.resolve(prompt.Start, prompt.Invoke)
+	}
 	if prompt.Multi {
 		for _, d := range prompt.Default {
-			_, abs := m.resolve(d, prompt.Invoke)
+			_, abs := m.resolve(d, m.prompt.WorkDir)
 			if info, err := os.Stat(abs); err == nil && info.IsDir() == (prompt.Type == "dir") {
 				m.picks = append(m.picks, abs)
 			}
@@ -132,7 +143,7 @@ func (m pathModel) resolve(written, base string) (form, abs string) {
 // browsing starts, and anything else opens the nearest existing parent with
 // nothing selected.
 func (m *pathModel) open(written string) {
-	form, abs := m.resolve(written, m.prompt.Invoke)
+	form, abs := m.resolve(written, m.prompt.WorkDir)
 	m.form = form
 	info, err := os.Stat(abs)
 	switch {

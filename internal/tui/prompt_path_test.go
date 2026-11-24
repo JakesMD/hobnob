@@ -951,3 +951,36 @@ func TestPathModel_SortingIgnoresCase(t *testing.T) {
 		t.Errorf("rows: got %v, want %v", got, want)
 	}
 }
+
+func TestPathModel_WorkDir_NoDefaultOpensInWorkDirShownRelativeToInvoke(t *testing.T) {
+	// given a WorkDir below Invoke and no default, when the picker opens, then it lists WorkDir and the input reads relative to Invoke
+	// (why: the task's working directory is the start, but the line stays in invocation-relative form)
+
+	// Arrange
+	root := tree(t, "sub/a.txt")
+
+	// Act
+	m := newPathModel(PathPrompt{Type: "file", Invoke: root, WorkDir: filepath.Join(root, "sub")})
+
+	// Assert
+	if m.cwd != filepath.Join(root, "sub") || m.dirText() != "sub/" {
+		t.Errorf("cwd=%s dirText=%q, want sub and %q", m.cwd, m.dirText(), "sub/")
+	}
+}
+
+func TestPathModel_WorkDir_RelativeDefaultResolvesAgainstIt(t *testing.T) {
+	// given a relative default and a WorkDir below Invoke, when the picker opens, then the default is found under WorkDir
+	// (why: taskfile paths are relative to the task's working directory)
+
+	// Arrange
+	root := tree(t, "sub/a.txt", "a.txt")
+	m := newPathModel(PathPrompt{Type: "file", Invoke: root, WorkDir: filepath.Join(root, "sub"), Default: []string{"a.txt"}, Multi: true})
+
+	// Act
+	row, _ := m.highlighted()
+
+	// Assert
+	if m.cwd != filepath.Join(root, "sub") || row.name != "a.txt" || !equal(m.picks, []string{filepath.Join(root, "sub", "a.txt")}) {
+		t.Errorf("cwd=%s row=%s picks=%v", m.cwd, row.name, m.picks)
+	}
+}
