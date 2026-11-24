@@ -3,9 +3,11 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/glob"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
@@ -87,15 +89,28 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 		return err
 	}
 
+	matcher, patterns, err := resolveMatch(getEntry, scope.Vars())
+	if err != nil {
+		return err
+	}
+
 	var val value.Value
 	if len(fromItems) > 0 {
+		fromItems = filterMatching(fromItems, matcher)
+		if len(fromItems) == 0 {
+			if getEntry.Optional {
+				scope.Set(getEntry.VarName, value.Nil(), getEntry.Secret)
+				return nil
+			}
+			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
+		}
 		val, err = promptSelectUntilValid(execState, getEntry, fromItems, info, defaultVal, scope.Vars())
 		if err != nil {
 			return err
 		}
 	} else {
-		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars())
-		text, err := promptTextFn(execState.ctx, info, getEntry.VarName, checkValidate, getEntry.Check, defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
+		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
+		text, err := promptTextFn(execState.ctx, info, getEntry.VarName, checkValidate, validatorDesc(getEntry, matcher, patterns), defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
 		if err != nil {
 			return wrapPromptErr(getEntry.VarName, err)
 		}
@@ -106,14 +121,61 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 	return nil
 }
 
+// resolveMatch renders getEntry's match: patterns and compiles them. patterns
+// is their text, for error messages.
+func resolveMatch(getEntry config.GetEntry, vars map[string]value.Value) (glob.Matcher, string, error) {
+	ctxName := "get " + getEntry.VarName + " match"
+	patterns, err := eval.ResolveItemStrings(getEntry.MatchList, getEntry.MatchTmpl.Value, vars, ctxName)
+	if err != nil {
+		return glob.Matcher{}, "", err
+	}
+	matcher, err := glob.New(patterns)
+	if err != nil {
+		return glob.Matcher{}, "", fmt.Errorf("%s: %w", ctxName, err)
+	}
+	return matcher, strings.Join(patterns, ", "), nil
+}
+
+func filterMatching(items []string, matcher glob.Matcher) []string {
+	if matcher.Empty() {
+		return items
+	}
+	kept := make([]string, 0, len(items))
+	for _, item := range items {
+		if matcher.Text(item) {
+			kept = append(kept, item)
+		}
+	}
+	return kept
+}
+
+// validatorDesc is what tui shows when a text answer is refused: the check:
+// expression, the match: patterns, or both.
+func validatorDesc(getEntry config.GetEntry, matcher glob.Matcher, patterns string) string {
+	var parts []string
+	if getEntry.Check != "" {
+		parts = append(parts, getEntry.Check)
+	}
+	if !matcher.Empty() {
+		parts = append(parts, "must match "+patterns)
+	}
+	return strings.Join(parts, "; ")
+}
+
 // checkValidator returns a candidate-validating closure for tui.PromptText,
-// or nil when getEntry has no check: — tui calls it only if non-nil, so it
-// never needs to know how a check is evaluated.
-func checkValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value) func(string) (bool, error) {
-	if getEntry.Check == "" {
+// or nil when getEntry has neither check: nor match: — tui calls it only if
+// non-nil, so it never needs to know how either is evaluated.
+func checkValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value, matcher glob.Matcher) func(string) (bool, error) {
+	if getEntry.Check == "" && matcher.Empty() {
 		return nil
 	}
 	return func(candidate string) (bool, error) {
+		if !matcher.Empty() && !matcher.Text(candidate) {
+			return false, nil
+		}
+		if getEntry.Check == "" {
+			return true, nil
+		}
 		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, value.Str(candidate))
 	}
 }
@@ -167,13 +229,42 @@ func validateGetValue(execState execCtx, getEntry config.GetEntry, vars map[stri
 			}
 		}
 	}
-	if getEntry.Check != "" && !(getEntry.Optional && vars[getEntry.VarName].IsEmpty()) {
+	if getEntry.Optional && vars[getEntry.VarName].IsEmpty() {
+		return nil
+	}
+	if err := validateMatch(getEntry, vars); err != nil {
+		return err
+	}
+	if getEntry.Check != "" {
 		ok, err := eval.EvalCondition(execState.ctx, getEntry.Check, vars, "")
 		if err != nil {
 			return fmt.Errorf("get %s check: %w", getEntry.VarName, err)
 		}
 		if !ok {
 			return fmt.Errorf("get %s: validation failed: %s", getEntry.VarName, getEntry.Check)
+		}
+	}
+	return nil
+}
+
+// validateMatch checks a value nobody typed at a prompt against match:, each
+// item on its own under multi:.
+func validateMatch(getEntry config.GetEntry, vars map[string]value.Value) error {
+	matcher, patterns, err := resolveMatch(getEntry, vars)
+	if err != nil || matcher.Empty() {
+		return err
+	}
+	items := []string{vars[getEntry.VarName].String()}
+	if getEntry.Multi {
+		items = items[:0]
+		selected, _ := vars[getEntry.VarName].Any().([]any) // a list after multiList
+		for _, sel := range selected {
+			items = append(items, value.Of(sel).String())
+		}
+	}
+	for _, item := range items {
+		if !matcher.Text(item) {
+			return fmt.Errorf("get %s: %q doesn't match %s", getEntry.VarName, item, patterns)
 		}
 	}
 	return nil
