@@ -91,6 +91,7 @@
 // 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
 // 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
+// 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
 package e2e
 
