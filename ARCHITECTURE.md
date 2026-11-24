@@ -596,8 +596,9 @@ end of the run.
 ### `internal/tui`
 
 `linewriter.go` (the prefixing writer for `run:` output),
-`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go` (bubbletea
-models), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
+`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
+(bubbletea models; `prompt_path.go` is the file/directory picker, which takes a
+`Show` predicate from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
 and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText` and
 `PromptSelect`; `app` injects `PromptTaskSelect` as the picker.
 
