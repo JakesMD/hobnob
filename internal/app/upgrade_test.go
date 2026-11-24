@@ -26,7 +26,7 @@ func captureStdout(t *testing.T, f func()) string {
 	done := make(chan string, 1)
 	go func() {
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+		_, _ = io.Copy(&buf, r)
 		done <- buf.String()
 	}()
 
@@ -37,11 +37,25 @@ func captureStdout(t *testing.T, f func()) string {
 	return <-done
 }
 
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mkdirAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func serveScript(t *testing.T, status int, script string) string {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
-		w.Write([]byte(script))
+		_, _ = w.Write([]byte(script))
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL + "/install.sh"
@@ -75,6 +89,9 @@ func TestUpgradeFlagRunsInstaller(t *testing.T) {
 }
 
 func TestRunInstaller(t *testing.T) {
+	// given installer failures and environments, when upgrading, then
+	// failures surface and the installer runs clean (why: an upgrade must
+	// never report success it didn't achieve)
 	t.Run("given HTTP 404, when upgrading, then returns error (why: a missing installer must not look like success)", func(t *testing.T) {
 		// Arrange
 		url := serveScript(t, http.StatusNotFound, "")
@@ -111,9 +128,9 @@ func TestRunInstaller(t *testing.T) {
 	t.Run("given upgrade run inside a hobnob checkout, when upgrading, then installer runs outside it (why: the installer builds from source when run in a checkout)", func(t *testing.T) {
 		// Arrange
 		checkout := t.TempDir()
-		os.WriteFile(filepath.Join(checkout, "go.mod"), []byte("module hobnob\n"), 0o644)
-		os.MkdirAll(filepath.Join(checkout, "cmd", "hobnob"), 0o755)
-		os.WriteFile(filepath.Join(checkout, "cmd", "hobnob", "main.go"), []byte("package main\n"), 0o644)
+		writeFile(t, filepath.Join(checkout, "go.mod"), "module hobnob\n")
+		mkdirAll(t, filepath.Join(checkout, "cmd", "hobnob"))
+		writeFile(t, filepath.Join(checkout, "cmd", "hobnob", "main.go"), "package main\n")
 		t.Chdir(checkout)
 		url := serveScript(t, http.StatusOK, `[[ -f go.mod ]] && echo "in checkout" || echo "outside checkout"`)
 		var out bytes.Buffer

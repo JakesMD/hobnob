@@ -8,6 +8,9 @@ import (
 )
 
 func TestParseArgv(t *testing.T) {
+	// given list-form run: elements of every shape, when resolved, then each
+	// becomes exact argv entries (why: the list form execs without a shell,
+	// so argument boundaries must be exact)
 	tests := []struct {
 		name    string
 		yml     string

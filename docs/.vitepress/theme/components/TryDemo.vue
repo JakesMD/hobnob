@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Browser re-enactments of hobnob runs, one per taskfile in the named slots.
 // Output mirrors the real CLI (internal/tui/styles.go, prompt_select.go,
-// prompt_text.go, runner.displayArgv, app.execTask's done line). Trivia
+// prompt_text.go, prompt_path.go, runner.displayArgv, app.execTask's done line). Trivia
 // fetches live questions; the others play back scripted command output.
 // Each script marks the step it is on by a line of text from that step's
 // YAML, so a slot can be edited without renumbering anything here. The trivia
@@ -13,12 +13,27 @@ type Line = Seg[]
 type Prompt =
   | { kind: 'select'; varName: string; info: string; items: string[]; cursor: number; multi: boolean; picked: boolean[]; resolve: (v: string | string[]) => void }
   | { kind: 'text'; varName: string; info: string; secret: boolean; value: string; resolve: (v: string | string[]) => void }
+  | (PathState & { kind: 'path'; resolve: (v: string | string[]) => void })
+
+// A type: file picker over a made-up tree (FS), after prompt_path.go.
+type PathState = {
+  varName: string
+  info: string
+  match: (name: string) => boolean
+  invoke: string
+  form: 'rel' | 'home' | 'abs'
+  cwd: string
+  seg: string
+  cursor: number
+  errMsg: string
+}
+type PathRow = { name: string; isDir: boolean; positions: number[] }
 
 type DemoId = 'trivia' | 'deploy' | 'flash'
 const DEMOS: { id: DemoId; label: string; command: string; caption: string }[] = [
   { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia', caption: 'Live, in your browser: the questions come straight from the API.' },
   { id: 'deploy', label: 'Deploy', command: 'hobnob deploy', caption: 'Pick services, an environment and a token. The token never shows.' },
-  { id: 'flash', label: 'Flash an image', command: 'hobnob build-and-flash', caption: 'One pipeline from two tasks. Every question comes first; say no and nothing is touched.' },
+  { id: 'flash', label: 'Flash an image', command: 'hobnob build-and-flash', caption: 'Pick a template, then a disk. Every question comes first; say no and nothing is touched.' },
 ]
 
 const active = ref<DemoId>('trivia')
@@ -139,7 +154,7 @@ const secretText = (varName: string, info: string) =>
 
 function submit() {
   const p = prompt.value
-  if (!p) return
+  if (!p || p.kind === 'path') return
   prompt.value = null
   if (p.kind === 'text') p.resolve(p.value)
   else if (p.multi) p.resolve(p.items.filter((_, i) => p.picked[i]))
@@ -164,6 +179,14 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (p.kind === 'text') return
+  if (p.kind === 'path') {
+    // stopPropagation keeps a typed "/" from also opening the site search.
+    if (onPathKey(p, e)) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+    return
+  }
   if (e.key === 'ArrowUp' || e.key === 'k') p.cursor = Math.max(0, p.cursor - 1)
   else if (e.key === 'ArrowDown' || e.key === 'j') p.cursor = Math.min(p.items.length - 1, p.cursor + 1)
   else if (e.key === ' ' && p.multi) p.picked[p.cursor] = !p.picked[p.cursor]
@@ -171,6 +194,164 @@ function onKey(e: KeyboardEvent) {
   else return
   e.preventDefault()
 }
+
+// ── the file picker, after prompt_path.go ───────────────────────────────────
+
+const HOME = '/home/you'
+const PROJECT = `${HOME}/os-images`
+// Directories end in "/". A directory not listed here is empty.
+const FS: Record<string, string[]> = {
+  '/': ['home/'],
+  '/home': ['you/'],
+  [HOME]: ['Downloads/', 'os-images/', 'notes.txt'],
+  [`${HOME}/Downloads`]: ['ubuntu-24.04-live-server-amd64.iso'],
+  [PROJECT]: ['images/', 'output/', 'scripts/', 'README.md', 'hobnob.yml'],
+  [`${PROJECT}/images`]: ['http/', 'debian-12.pkr.hcl', 'raspios-lite.pkr.hcl', 'ubuntu-24.04.pkr.hcl', 'README.md'],
+  [`${PROJECT}/images/http`]: ['preseed.cfg', 'user-data'],
+  [`${PROJECT}/scripts`]: ['setup.sh'],
+}
+
+const join = (dir: string, name: string) => (dir === '/' ? '' : dir) + '/' + name
+const parent = (dir: string) => dir.slice(0, dir.lastIndexOf('/')) || '/'
+const withSlash = (p: string) => (p.endsWith('/') ? p : p + '/')
+
+function relPath(from: string, to: string): string {
+  const a = from.split('/').filter(Boolean)
+  const b = to.split('/').filter(Boolean)
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/')
+}
+
+function dirText(p: PathState): string {
+  if (p.form === 'home' && (p.cwd === HOME || p.cwd.startsWith(HOME + '/'))) return withSlash('~' + p.cwd.slice(HOME.length))
+  if (p.form === 'rel') {
+    const rel = relPath(p.invoke, p.cwd)
+    return rel ? withSlash(rel) : ''
+  }
+  return withSlash(p.cwd)
+}
+
+function fuzzyMatch(query: string, target: string): { score: number; positions: number[] } | null {
+  if (!query) return { score: 0, positions: [] }
+  const q = [...query.toLowerCase()]
+  const t = [...target.toLowerCase()]
+  const positions: number[] = []
+  let qi = 0, last = -2, score = 0
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] !== q[qi]) continue
+    positions.push(ti)
+    if (ti === last + 1) score += 5
+    if (ti === 0 || '_-.'.includes(t[ti - 1])) score += 3
+    score++
+    last = ti
+    qi++
+  }
+  return qi < q.length ? null : { score: score * 100 - t.length, positions }
+}
+
+function entries(p: PathState): { name: string; isDir: boolean }[] {
+  const all = (FS[p.cwd] ?? []).map((e) => ({ name: e.replace(/\/$/, ''), isDir: e.endsWith('/') }))
+  const byName = (a: { name: string }, b: { name: string }) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+  return [...all.filter((e) => e.isDir).sort(byName), ...all.filter((e) => !e.isDir && p.match(e.name)).sort(byName)]
+}
+
+function pathRows(p: PathState): PathRow[] {
+  const hits = entries(p).flatMap((e) => {
+    const m = fuzzyMatch(p.seg, e.name)
+    return m ? [{ ...e, positions: m.positions, score: m.score }] : []
+  })
+  if (p.seg) hits.sort((a, b) => b.score - a.score)
+  return hits
+}
+
+// A row's name in segments, its fuzzy-matched letters picked out.
+const rowSegs = (row: PathRow): Seg[] => [...row.name].map((ch, i) => ({ t: ch, c: row.positions.includes(i) ? 'a11 b' : undefined }))
+
+function ruleWidth(p: PathState): number {
+  const input = (dirText(p) || './') + p.seg + '▏'
+  return Math.max(input.length + 2, 24, ...pathRows(p).map((r) => r.name.length + (r.isDir ? 1 : 0) + 6))
+}
+
+function setSegment(p: PathState, seg: string) {
+  p.seg = seg
+  p.cursor = 0
+}
+
+function enterDir(p: PathState, dir: string) {
+  p.cwd = dir
+  setSegment(p, '')
+}
+
+function pathUp(p: PathState) {
+  const prev = p.cwd
+  enterDir(p, parent(p.cwd))
+  const i = pathRows(p).findIndex((r) => join(p.cwd, r.name) === prev)
+  if (i >= 0) p.cursor = i
+}
+
+function slash(p: PathState) {
+  if (p.seg === '') {
+    if (dirText(p) === '') {
+      p.form = 'abs'
+      enterDir(p, '/')
+    }
+    return
+  }
+  if (p.seg === '~') return (p.form = 'home'), enterDir(p, HOME)
+  if (p.seg === '.') return setSegment(p, '')
+  if (p.seg === '..') return pathUp(p)
+  const exact = entries(p).find((e) => e.isDir && e.name === p.seg)
+  const row = pathRows(p)[p.cursor]
+  if (exact) enterDir(p, join(p.cwd, exact.name))
+  else if (row?.isDir) enterDir(p, join(p.cwd, row.name))
+  else p.errMsg = `no directory matching "${p.seg}" here`
+}
+
+function choosePathRow(p: PathState & { resolve: (v: string) => void }, row: PathRow | undefined) {
+  if (!row) p.errMsg = 'nothing matches'
+  else if (row.isDir) enterDir(p, join(p.cwd, row.name))
+  else {
+    prompt.value = null
+    p.resolve(join(p.cwd, row.name))
+  }
+}
+
+function clickPathRow(i: number) {
+  const p = prompt.value
+  if (p?.kind !== 'path') return
+  p.errMsg = ''
+  choosePathRow(p, pathRows(p)[i])
+}
+
+function clickPathUp() {
+  const p = prompt.value
+  if (p?.kind !== 'path') return
+  p.errMsg = ''
+  pathUp(p)
+}
+
+function onPathKey(p: PathState & { resolve: (v: string) => void }, e: KeyboardEvent): boolean {
+  p.errMsg = ''
+  const rows = pathRows(p)
+  const row = rows[p.cursor]
+  if (e.key === 'ArrowUp') p.cursor = Math.max(0, p.cursor - 1)
+  else if (e.key === 'ArrowDown') p.cursor = Math.min(rows.length - 1, p.cursor + 1)
+  else if (e.key === 'ArrowLeft') pathUp(p)
+  else if (e.key === 'ArrowRight') row?.isDir && enterDir(p, join(p.cwd, row.name))
+  else if (e.key === 'Backspace') p.seg ? setSegment(p, p.seg.slice(0, -1)) : pathUp(p)
+  else if (e.key === 'Escape') setSegment(p, '')
+  else if (e.key === 'Tab') row && setSegment(p, row.name)
+  else if (e.key === 'Enter') choosePathRow(p, row)
+  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) e.key === '/' ? slash(p) : setSegment(p, p.seg + e.key)
+  else return false
+  p.cursor = Math.max(0, Math.min(p.cursor, pathRows(p).length - 1))
+  return true
+}
+
+// A type: file picker opening in a directory default, the way open() does.
+const pickFile = (varName: string, info: string, start: string, match: (name: string) => boolean) =>
+  ask({ kind: 'path', varName, info, match, invoke: PROJECT, form: 'rel', cwd: join(PROJECT, start), seg: '', cursor: 0, errMsg: '' }) as Promise<string>
 
 // ── the runs ────────────────────────────────────────────────────────────────
 
@@ -290,23 +471,12 @@ async function deploy() {
 
 async function flash() {
   const task = 'build-and-flash'
-  const images = ['debian-12', 'raspios-lite', 'ubuntu-24.04']
   const disks = ['nvme0n1 953.9G Samsung SSD 980 PRO', 'sda      28.9G SanDisk Ultra']
   const step = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
 
-  // _pick-image has no once:, so each call lists images again; only its
-  // prompt is skipped once IMAGE is in scope.
-  const listImages = async (within: string) => {
-    await step('call: _pick-image', within)
-    highlight('ls images')
-    runLine('_pick-image', 'ls images')
-    await stream('_pick-image', images, 50)
-    await sleep(250)
-  }
-
-  await listImages('build-and-flash:')
+  await step('call: _pick-image', 'build-and-flash:')
   highlight('- IMAGE:')
-  const image = await select('IMAGE', 'Which image?', images)
+  const image = await pickFile('IMAGE', 'Which image?', 'images', (name) => name.endsWith('.pkr.hcl'))
   getLine('_pick-image', 'IMAGE', image)
   await sleep(250)
 
@@ -336,10 +506,13 @@ async function flash() {
   const disk = line.split(' ')[0]
 
   await step('call: build', 'build-and-flash:')
-  await listImages('build:')
+  // once: replays the first answer, so nothing is asked twice.
+  highlight('call: _pick-image', 'build:')
+  cachedLine('build', '_pick-image', `IMAGE=${image}`)
+  await sleep(400)
   highlight('packer build')
-  const src = `qemu.${image}`
-  runLine('build', `packer build images/${image}`)
+  const src = `qemu.${image.slice(image.lastIndexOf('/') + 1).replace(/\.pkr\.hcl$/, '')}`
+  runLine('build', `packer build -var out=output/os.img ${image}`)
   await stream('build', [
     `${src}: output will be in this color.`,
     '',
@@ -349,7 +522,7 @@ async function flash() {
     `==> ${src}: Connected to SSH!`,
     `==> ${src}: Provisioning with shell script: scripts/setup.sh`,
     `==> ${src}: Gracefully halting virtual machine...`,
-    `==> ${src}: Converting hard drive to raw: output/${image}.img`,
+    `==> ${src}: Converting hard drive to raw: output/os.img`,
     `Build '${src}' finished after 6 minutes 12 seconds.`,
     '',
     '==> Builds finished. The artifacts of successful builds are:',
@@ -358,8 +531,6 @@ async function flash() {
   await sleep(400)
 
   await step('call: flash', 'build-and-flash:')
-  await listImages('flash:')
-  // once: replays the first answer, so nothing is asked twice.
   highlight('call: _pick-disk', 'flash:')
   cachedLine('flash', '_pick-disk', `DISK=${disk} DISKS=${JSON.stringify(disks)} SURE=yes`)
   await sleep(500)
@@ -375,7 +546,7 @@ async function flash() {
   await sleep(400)
 
   highlight('sudo dd')
-  runLine('flash', `sudo dd if=output/${image}.img of=/dev/${disk} bs=4M status=progress conv=fsync`)
+  runLine('flash', `sudo dd if=output/os.img of=/dev/${disk} bs=4M status=progress conv=fsync`)
   const total = 2147483648
   outLine('flash', '')
   for (let s = 1; s <= 7; s++) {
@@ -503,6 +674,26 @@ async function start() {
               />
             </div>
             <div class="ln a8">enter ↵</div>
+          </template>
+
+          <template v-if="prompt?.kind === 'path'">
+            <div class="ln">&nbsp;</div>
+            <div class="ln">Pick a file for <span class="a14 b">{{ prompt.varName }}</span>.</div>
+            <div v-if="prompt.info" class="ln a8">{{ prompt.info }}</div>
+            <div class="ln">&nbsp;</div>
+            <div class="ln"><span class="a14 b">› </span><span :class="dirText(prompt) ? 'b' : 'a8'">{{ dirText(prompt) || './' }}</span><span class="b">{{ prompt.seg }}</span><span class="a11 b">▏</span></div>
+            <div class="ln a8">{{ '─'.repeat(ruleWidth(prompt)) }}</div>
+            <div v-if="!pathRows(prompt).length" class="ln a8">{{ '  nothing matches' }}</div>
+            <div
+              v-for="(row, i) in pathRows(prompt)"
+              :key="row.name"
+              class="ln item"
+              @mouseenter="prompt.cursor = i"
+              @click.stop="clickPathRow(i)"
+            ><span class="a14 b">{{ i === prompt.cursor ? '▶ ' : '  ' }}</span><span :class="row.isDir ? 'a12' : undefined"><span v-for="(seg, j) in rowSegs(row)" :key="j" :class="seg.c">{{ seg.t }}</span>{{ row.isDir ? '/' : '' }}</span></div>
+            <div v-if="prompt.errMsg" class="ln a9">{{ prompt.errMsg }}</div>
+            <div class="ln">&nbsp;</div>
+            <div class="ln a8">{{ 'type to filter  ↑↓ move  ' }}<span class="hint-key" @click.stop="clickPathUp">← up</span>{{ '  → open  tab complete  enter pick' }}</div>
           </template>
 
           <div v-if="state !== 'running' || typed" class="ln">

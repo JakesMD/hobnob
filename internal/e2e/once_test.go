@@ -5,20 +5,13 @@ import (
 	"testing"
 )
 
-// once: true memoizes a task: it runs at most once per hobnob invocation,
-// keyed on the task's physical identity (not the name it was reached by via
-// call:), and a later call: to it replays the scope its first run produced
-// rather than re-executing — each call: site still projects what it wants
-// out of that scope through its own into:, same as an unmemoized call:.
-// Without once:, a task runs every time it's called, same as before this
-// existed.
-
 func TestE2E_Once_MemoizedSecondCallSkipsRerun(t *testing.T) {
 	// given the same once: task called: twice, when the second call: is
 	// reached, then its run: step does not execute again (why: once: means
 	// "ensure this has run", not "run this again" — a shared prologue's side
 	// effects, e.g. an API call, must happen once)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -35,7 +28,12 @@ func TestE2E_Once_MemoizedSecondCallSkipsRerun(t *testing.T) {
 			      - run: printf x >> count.txt
 		`,
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "count=1")
 }
@@ -46,7 +44,8 @@ func TestE2E_Once_ReplaysAcrossCallSandboxes(t *testing.T) {
 	// result via their own into: (why: caching only the fact something ran
 	// would leave the second sandbox with nothing — the memo must replay the
 	// actual scope, and each into: projects from it independently)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  main:
 		    steps:
@@ -76,7 +75,12 @@ func TestE2E_Once_ReplaysAcrossCallSandboxes(t *testing.T) {
 		      - run: printf x >> count.txt && wc -c < count.txt
 		        into:
 		          - TOKEN: stdout | trim
-	`, "main")
+	`
+
+	// Act
+	res := Yml(t, yml, "main")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "a=1 b=1 count=1")
 }
@@ -86,7 +90,8 @@ func TestE2E_Once_WithoutOnceRunsEveryLoopIteration(t *testing.T) {
 	// runs, then it re-executes on every iteration — the default, unlike the
 	// old use:/rerun: pairing this replaces (why: once: is now a property of
 	// the callee, not something a call site opts into per-site)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -103,7 +108,12 @@ func TestE2E_Once_WithoutOnceRunsEveryLoopIteration(t *testing.T) {
 			      - run: printf x >> count.txt
 		`,
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "count=3")
 }
@@ -111,7 +121,9 @@ func TestE2E_Once_WithoutOnceRunsEveryLoopIteration(t *testing.T) {
 func TestE2E_Once_TrueInLoopRunsOnlyOnce(t *testing.T) {
 	// given a call: step to a once: true task inside a loop:, when it runs,
 	// then it executes on the first iteration only, memoized on the rest
-	res := Run(t, Case{
+	// (why: once: holds per invocation, wherever the calls come from)
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -129,7 +141,12 @@ func TestE2E_Once_TrueInLoopRunsOnlyOnce(t *testing.T) {
 			      - run: printf x >> count.txt
 		`,
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "count=1")
 }
@@ -138,7 +155,8 @@ func TestE2E_Once_UseRejectedAtParseTime(t *testing.T) {
 	// given a use: step, when parsed, then it's rejected naming call: and
 	// once: as the replacement (why: use: was removed in favor of call: +
 	// once: + into:)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -146,7 +164,12 @@ func TestE2E_Once_UseRejectedAtParseTime(t *testing.T) {
 		  setup:
 		    steps:
 		      - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "use:", "call:", "once:")
 }
@@ -156,7 +179,8 @@ func TestE2E_Once_RerunRejectedAtParseTime(t *testing.T) {
 	// once: as the replacement (why: rerun: was removed along with use: —
 	// whether a task memoizes is now the target task's own once:, not a flag
 	// at the call site)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -165,7 +189,12 @@ func TestE2E_Once_RerunRejectedAtParseTime(t *testing.T) {
 		  child:
 		    steps:
 		      - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "rerun:", "once:")
 }
@@ -176,7 +205,8 @@ func TestE2E_Once_TasksOwnIfFalseSkipsAndCaches(t *testing.T) {
 	// deterministic — the first attempt gives the later caller what it got,
 	// not a re-evaluated condition; into: needs | default, since a skipped
 	// task set nothing to pull)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -193,7 +223,12 @@ func TestE2E_Once_TasksOwnIfFalseSkipsAndCaches(t *testing.T) {
 		    steps:
 		      - set:
 		          - RAN: yes
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "ran=no ran2=no")
 }
@@ -204,7 +239,8 @@ func TestE2E_Once_StepIfFalseDoesNotCache(t *testing.T) {
 	// step skipped by its own if: never even reaches execCall — it asserts
 	// nothing about the task, and must not be confused with the task having
 	// already run)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -221,16 +257,22 @@ func TestE2E_Once_StepIfFalseDoesNotCache(t *testing.T) {
 		    steps:
 		      - set:
 		          - RAN: yes
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "ran=no ran2=yes")
 }
 
 func TestE2E_Once_DirDoesNotLeakToCaller(t *testing.T) {
 	// given a once: task with its own dir:, when the caller's later steps
-	// run, then they are unaffected by it — same dir: scoping an unmemoized
-	// call: already has, still true through the cache path
-	res := Run(t, Case{
+	// run, then they are unaffected by it (why: an unmemoized call: already
+	// scopes dir: this way, and the cache path must not change that)
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -250,7 +292,12 @@ func TestE2E_Once_DirDoesNotLeakToCaller(t *testing.T) {
 			"sub/.keep": "",
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := res.Dir
 	res.Lines(t, filepath.Join(want, "sub"), want, "pwd="+want)
@@ -262,7 +309,8 @@ func TestE2E_Once_SoftContinuesPastFailureWithoutCaching(t *testing.T) {
 	// transient failure is neither a completion nor a deterministic skip —
 	// caching a half-finished scope would silently hand a later caller a
 	// broken result, so nothing is cached on a soft-swallowed failure)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -282,7 +330,12 @@ func TestE2E_Once_SoftContinuesPastFailureWithoutCaching(t *testing.T) {
 			      - run: exit 1
 		`,
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "count=2")
 }
@@ -294,6 +347,7 @@ func TestE2E_Once_ModuleTaskIdentitySharesMemoAcrossQualifiedAndBareNames(t *tes
 	// task's physical identity, not the name it was reached by — a shared
 	// module prologue must run once regardless of which caller reaches it
 	// first)
+	// Arrange
 	files := Files{
 		"hobnob.yml": `
 			modules:
@@ -319,7 +373,12 @@ func TestE2E_Once_ModuleTaskIdentitySharesMemoAcrossQualifiedAndBareNames(t *tes
 			      - run: printf x >> count.txt
 		`,
 	}
-	res := Run(t, Case{Files: files, Args: []string{"t"}})
+	c := Case{Files: files, Args: []string{"t"}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "count=1")
 }
@@ -331,7 +390,8 @@ func TestE2E_Once_ReplayOverwritesLaterSetWhenIntoNamesIt(t *testing.T) {
 	// — it is not "maybe run something"; unlike the old use: version of this
 	// sharp edge, the overwrite is now visible at the call site that asks
 	// for it, via into:, rather than happening silently to the whole scope)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -349,7 +409,12 @@ func TestE2E_Once_ReplayOverwritesLaterSetWhenIntoNamesIt(t *testing.T) {
 		    steps:
 		      - set:
 		          - TOKEN: abc
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "token=abc")
 }
@@ -359,13 +424,19 @@ func TestE2E_Once_SelfCycleErrors(t *testing.T) {
 	// the cycle rather than recursing forever (why: the first attempt hasn't
 	// finished — and so hasn't reached the cache — when the nested call:
 	// tries to run it again)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    once: true
 		    steps:
 		      - call: t
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "cycle")
 }
@@ -376,7 +447,8 @@ func TestE2E_Once_CacheHitIsLoggedWithProducedVars(t *testing.T) {
 	// produced (why: otherwise a memoized call: is silent — no prompt, no
 	// command output — and there'd be no way to tell it happened short of a
 	// debugger)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Yml: `
 			tasks:
 			  t:
@@ -390,7 +462,12 @@ func TestE2E_Once_CacheHitIsLoggedWithProducedVars(t *testing.T) {
 			          - ACCOUNT: "123456789"
 		`,
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "cached", "ACCOUNT=123456789")
 }

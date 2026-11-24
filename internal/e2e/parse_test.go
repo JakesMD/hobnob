@@ -4,18 +4,31 @@ import "testing"
 
 func TestE2E_Parse_EmptyFileIsValidWithZeroTasks(t *testing.T) {
 	// given a completely empty taskfile, when run with no args, then it's
-	// treated as valid with zero tasks rather than a parse error
-	res := Yml(t, ``, "--list")
+	// treated as valid with zero tasks rather than a parse error (why: a
+	// freshly created hobnob.yml must not be an error)
+	// Arrange
+	yml := ``
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "No tasks found")
 }
 
 func TestE2E_Parse_CommentOnlyFileIsValid(t *testing.T) {
-	// given a taskfile containing only comments, when parsed, then it's
-	// valid with zero tasks
-	res := Yml(t, `
+	// given a taskfile containing only comments, when parsed, then it's valid
+	// with zero tasks (why: a commented-out file is as empty as a blank one)
+	// Arrange
+	yml := `
 		# just a comment, no actual content
-	`, "--list")
+	`
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "No tasks found")
 }
@@ -24,7 +37,13 @@ func TestE2E_Parse_NullDocumentIsValid(t *testing.T) {
 	// given a taskfile whose only content is a literal null, when parsed,
 	// then it's valid with zero tasks (why: YAML's `null`/`~` is a
 	// legitimate empty document, not malformed input)
-	res := Yml(t, "null\n", "--list")
+	// Arrange
+	yml := "null\n"
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "No tasks found")
 }
@@ -33,39 +52,59 @@ func TestE2E_Parse_BareTopLevelKeysAreValid(t *testing.T) {
 	// given env:/modules:/tasks: present but each with no children, when
 	// parsed, then it's valid and yields nothing (why: a bare key is a
 	// legitimate way to say "none of these yet", not malformed structure)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		env:
 		modules:
 		tasks:
-	`, "--list")
+	`
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "No tasks found")
 }
 
 func TestE2E_Parse_MissingTaskfileErrors(t *testing.T) {
 	// given --file pointing at a taskfile that doesn't exist, when run, then
-	// it fails rather than silently falling back to discovery
-	res := Run(t, Case{Yml: "tasks: {}", Args: []string{"--file", "does-not-exist.yml", "t"}, Discover: true})
+	// it fails rather than silently falling back to discovery (why: an
+	// explicit path that's wrong must never run some other file)
+	// Arrange
+	c := Case{Yml: "tasks: {}", Args: []string{"--file", "does-not-exist.yml", "t"}, Discover: true}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.Fails(t)
 }
 
 func TestE2E_Parse_UnknownTaskNameErrors(t *testing.T) {
 	// given a task name that isn't declared anywhere in the file, when run,
-	// then it fails rather than silently doing nothing
-	res := Yml(t, `
+	// then it fails (why: a typo'd task name must not silently do nothing)
+	// Arrange
+	yml := `
 		tasks:
 		  build:
 		    steps:
 		      - run: echo building
-	`, "deploy")
+	`
+
+	// Act
+	res := Yml(t, yml, "deploy")
+
+	// Assert
 	res.Fails(t)
 }
 
 func TestE2E_Parse_EnvBlockMalformedMultiKeyEntryErrors(t *testing.T) {
 	// given an env: entry that's mis-indented into holding two path keys
-	// instead of one, when parsed, then it's a hard error rather than a
-	// silently-dropped or partially-loaded file
-	res := Yml(t, `
+	// instead of one, when parsed, then it's a hard error (why: a silently
+	// dropped or partly loaded env file is worse than a failure)
+	// Arrange
+	yml := `
 		env:
 		  - first.env:
 		    second.env:
@@ -73,7 +112,12 @@ func TestE2E_Parse_EnvBlockMalformedMultiKeyEntryErrors(t *testing.T) {
 		  t:
 		    steps:
 		      - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 }
 
@@ -82,7 +126,8 @@ func TestE2E_Parse_ListSortsTasksAlphabeticallyRegardlessOfDeclarationOrder(t *t
 	// they're shown sorted (why: visibleTaskNames sorts for display —
 	// declaration order is preserved internally in cfg.TaskNames, but that's
 	// not what the user sees in the menu)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  zebra:
 		    steps:
@@ -90,60 +135,85 @@ func TestE2E_Parse_ListSortsTasksAlphabeticallyRegardlessOfDeclarationOrder(t *t
 		  apple:
 		    steps:
 		      - run: echo a
-	`, "--list")
+	`
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
 	res.OK(t)
 	res.Order(t, "apple", "zebra")
 }
 
 func TestE2E_Parse_TemplateSyntaxInIntoKeyRejected(t *testing.T) {
 	// given an into: entry whose parent key contains template syntax, when
-	// parsed, then it's rejected — same rule as set:, applied at the into:
-	// site too
-	res := Yml(t, `
+	// parsed, then it's rejected (why: same rule as set:, applied at the
+	// into: site too; var names must be static)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: echo hi
 		        into:
 		          - "{{.BAD}}": stdout
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "must not contain template syntax")
 }
 
 func TestE2E_Parse_TemplateSyntaxInBareGetNameRejected(t *testing.T) {
-	// given get: [ "{{.BAD}}" ] (bare shorthand form), when parsed, then
-	// it's rejected — same rule applied at the bare get: site
-	res := Yml(t, `
+	// given get: [ "{{.BAD}}" ] (bare shorthand form), when parsed, then it's
+	// rejected (why: var names must be static, at the bare get: site too)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - get: ["{{.BAD}}"]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "must not contain template syntax")
 }
 
 func TestE2E_Parse_TemplateSyntaxInFullGetNameRejected(t *testing.T) {
-	// given a full-syntax get: entry whose var name contains template
-	// syntax, when parsed, then it's rejected — same rule applied at the
-	// mapping get: site
-	res := Yml(t, `
+	// given a full-syntax get: entry whose var name contains template syntax,
+	// when parsed, then it's rejected (why: var names must be static, at the
+	// mapping get: site too)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - get:
 		          - "{{.BAD}}":
 		              info: nope
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "must not contain template syntax")
 }
 
 func TestE2E_Parse_TemplateSyntaxInLoopMatrixKeyRejected(t *testing.T) {
-	// given a loop: matrix key containing template syntax, when parsed,
-	// then it's rejected — same rule applied at the matrix-key site
-	res := Yml(t, `
+	// given a loop: matrix key containing template syntax, when parsed, then
+	// it's rejected (why: var names must be static, at the matrix-key site
+	// too)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -151,7 +221,12 @@ func TestE2E_Parse_TemplateSyntaxInLoopMatrixKeyRejected(t *testing.T) {
 		          "{{.BAD}}": [a, b]
 		        steps:
 		          - run: echo hi
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "must not contain template syntax")
 }

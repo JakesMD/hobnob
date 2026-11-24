@@ -224,6 +224,15 @@ func TestKillRunningStep_NoStepRunning_NoOp(t *testing.T) {
 	// handler must be able to call it unconditionally, including when
 	// hobnob is idle e.g. blocked on a get: prompt)
 
-	// Act / Assert
-	KillRunningStep()
+	// Act
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		KillRunningStep()
+	}()
+
+	// Assert
+	if recovered != nil {
+		t.Fatalf("KillRunningStep panicked: %v", recovered)
+	}
 }

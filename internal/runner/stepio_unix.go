@@ -19,7 +19,7 @@ func (p *stepPipes) copyOut(pipe *outPipe) {
 		return
 	}
 	buf := make([]byte, 32*1024)
-	raw.Read(func(fd uintptr) bool {
+	_ = raw.Read(func(fd uintptr) bool {
 		for {
 			p.mu.Lock()
 			if p.abandoned {
@@ -50,7 +50,7 @@ func drainNow(pipe *outPipe) {
 		return
 	}
 	buf := make([]byte, 32*1024)
-	raw.Control(func(fd uintptr) {
+	_ = raw.Control(func(fd uintptr) {
 		for total := 0; total < maxDrain; {
 			n, err := syscall.Read(int(fd), buf)
 			if err == syscall.EINTR {

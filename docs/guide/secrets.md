@@ -30,7 +30,9 @@ Mark it where the value is first set:
 - **In `set:`, `vars:` and `const:`**, write the entry with `value:` and
   `secret: true`, as above.
 - **In a prompt**, add `secret: true` to the [`get:`](./prompts.md#prompt-options)
-  entry. hobnob hides the answer as you type it, too.
+  entry. hobnob hides the answer as you type it, too. A file or directory
+  picker is the exception: it shows paths while you browse, and masks the
+  path you picked.
 - **In an env file**, add `secret: true` to its `env:` entry. Every value the
   file sets is then masked:
 

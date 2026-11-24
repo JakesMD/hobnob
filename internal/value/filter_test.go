@@ -15,6 +15,10 @@ func call(t *testing.T, name string, args ...Value) (Value, error) {
 }
 
 func TestFilterDefault(t *testing.T) {
+	// given an empty, nil or set piped value, when default called, then the
+	// fallback replaces only the empty and nil ones (why: | default fills
+	// gaps without overriding a real value)
+	// Arrange
 	tests := []struct {
 		name       string
 		def, piped Value
@@ -26,7 +30,10 @@ func TestFilterDefault(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// Act
 			got, err := call(t, "default", test.def, test.piped)
+
+			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -58,7 +65,15 @@ func TestFilterDefault_PreservesTypeOfPipedValue(t *testing.T) {
 
 func TestFilterTrim(t *testing.T) {
 	// given a string with padding, when trim called, then whitespace removed
-	got, err := call(t, "trim", Str("  hello  "))
+	// (why: command output usually ends in a newline that values shouldn't
+	// carry)
+	// Arrange
+	input := Str("  hello  ")
+
+	// Act
+	got, err := call(t, "trim", input)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,25 +102,50 @@ func TestFilterTrim_IdentityOnNonString(t *testing.T) {
 }
 
 func TestFilterUpperLower(t *testing.T) {
-	if got, err := call(t, "upper", Str("hello")); err != nil || got.String() != "HELLO" {
-		t.Errorf("upper: got (%q, %v), want (%q, nil)", got.String(), err, "HELLO")
+	// given text, when upper and lower called, then the case changes (why:
+	// the basic case transforms authors reach for in names and tags)
+	// Arrange
+	lowerText, upperText := Str("hello"), Str("HELLO")
+
+	// Act
+	upper, upperErr := call(t, "upper", lowerText)
+	lower, lowerErr := call(t, "lower", upperText)
+
+	// Assert
+	if upperErr != nil || upper.String() != "HELLO" {
+		t.Errorf("upper: got (%q, %v), want (%q, nil)", upper.String(), upperErr, "HELLO")
 	}
-	if got, err := call(t, "lower", Str("HELLO")); err != nil || got.String() != "hello" {
-		t.Errorf("lower: got (%q, %v), want (%q, nil)", got.String(), err, "hello")
+	if lowerErr != nil || lower.String() != "hello" {
+		t.Errorf("lower: got (%q, %v), want (%q, nil)", lower.String(), lowerErr, "hello")
 	}
 }
 
 func TestFilterUpper_ErrorsOnStructuredValue(t *testing.T) {
 	// given an array, when upper called, then errors naming | string (why:
 	// upper on structure is never meaningful — must not silently stringify)
-	_, err := call(t, "upper", Of([]any{"a"}))
+	// Arrange
+	input := Of([]any{"a"})
+
+	// Act
+	_, err := call(t, "upper", input)
+
+	// Assert
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
 func TestFilterSplit(t *testing.T) {
-	got, err := call(t, "split", Str(","), Str("a,,b"))
+	// given comma-separated text with an empty field, when split called, then
+	// it becomes an Array without the empty element (why: a doubled separator
+	// shouldn't produce blank items to loop over)
+	// Arrange
+	input := Str("a,,b")
+
+	// Act
+	got, err := call(t, "split", Str(","), input)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,6 +199,9 @@ func TestFilterJoin_ScalarsJoinAsText(t *testing.T) {
 }
 
 func TestFilterJoin_ErrorsOnNonTextElement(t *testing.T) {
+	// given a list with a non-text element, when join called, then it errors
+	// naming the element and the accessor to use (why: joining structure
+	// produces text nobody meant)
 	tests := []struct {
 		name     string
 		elem     any
@@ -277,7 +320,16 @@ func TestFilterJoin_EmptyListGivesEmptyString(t *testing.T) {
 }
 
 func TestFilterLines(t *testing.T) {
-	got, err := call(t, "lines", Str("  foo  \n\n  bar  \n"))
+	// given text with padding and blank lines, when lines called, then each
+	// non-blank line is trimmed into an Array (why: turns command output into
+	// something loop: can iterate)
+	// Arrange
+	input := Str("  foo  \n\n  bar  \n")
+
+	// Act
+	got, err := call(t, "lines", input)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -287,9 +339,15 @@ func TestFilterLines(t *testing.T) {
 }
 
 func TestFilterKeys(t *testing.T) {
+	// given an object, when keys called, then its keys come back sorted (why:
+	// map order is random, and output must be deterministic)
+	// Arrange
 	obj := Of(map[string]any{"us": "us-east-1", "eu": "eu-west-1"})
 
+	// Act
 	keys, err := call(t, "keys", obj)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -299,14 +357,31 @@ func TestFilterKeys(t *testing.T) {
 }
 
 func TestFilterKeys_ErrorsOnArray(t *testing.T) {
-	_, err := call(t, "keys", Of([]any{"a", "b"}))
+	// given an array, when keys called, then it errors (why: an array has no
+	// keys, and returning indexes would hide the mistake)
+	// Arrange
+	input := Of([]any{"a", "b"})
+
+	// Act
+	_, err := call(t, "keys", input)
+
+	// Assert
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
 }
 
 func TestFilterJSONEscape(t *testing.T) {
-	got, err := call(t, "jsonEscape", Str(`he said "hi"`))
+	// given text with double quotes, when jsonEscape called, then the quotes
+	// are escaped (why: the text must be safe inside a hand-written JSON
+	// string)
+	// Arrange
+	input := Str(`he said "hi"`)
+
+	// Act
+	got, err := call(t, "jsonEscape", input)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -316,6 +391,10 @@ func TestFilterJSONEscape(t *testing.T) {
 }
 
 func TestFilterJSON(t *testing.T) {
+	// given JSON text, plain text or structure, when json called, then text
+	// is parsed, non-JSON errors and structure passes through (why: | json is
+	// the explicit way to turn text into structure)
+	// Arrange
 	tests := []struct {
 		name     string
 		input    Value
@@ -328,7 +407,10 @@ func TestFilterJSON(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// Act
 			got, err := call(t, "json", test.input)
+
+			// Assert
 			if test.wantErr {
 				if err == nil {
 					t.Error("expected error, got nil")
@@ -349,7 +431,13 @@ func TestFilterString(t *testing.T) {
 	// given a structured value, when string called, then returns its
 	// compact JSON text as a String (why: the explicit way to opt back into
 	// text after values/keys/an accessor/etc)
-	got, err := call(t, "string", Of([]any{"a", "b"}))
+	// Arrange
+	input := Of([]any{"a", "b"})
+
+	// Act
+	got, err := call(t, "string", input)
+
+	// Assert
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -362,6 +450,10 @@ func TestFilterString(t *testing.T) {
 }
 
 func TestFilterQuote(t *testing.T) {
+	// given text or structure, when quote called, then it becomes one
+	// single-quoted shell word (why: a value spliced into a shell command
+	// must stay one argument)
+	// Arrange
 	tests := []struct {
 		name  string
 		input Value
@@ -374,7 +466,10 @@ func TestFilterQuote(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// Act
 			got, err := call(t, "quote", test.input)
+
+			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -389,6 +484,10 @@ func TestFilterQuote(t *testing.T) {
 }
 
 func TestFilterLen(t *testing.T) {
+	// given an array, object, string or nil, when len called, then it counts
+	// elements, keys, runes or zero (why: one filter answers "how many" for
+	// every kind)
+	// Arrange
 	tests := []struct {
 		name  string
 		input Value
@@ -401,7 +500,10 @@ func TestFilterLen(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
+			// Act
 			got, err := call(t, "len", test.input)
+
+			// Assert
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}

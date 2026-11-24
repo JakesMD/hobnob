@@ -171,7 +171,10 @@ func resolve(ctx context.Context, cfg *config.ConfigFile, base *Scope, cliVars m
 	}
 
 	for key, val := range cliVars {
-		scope.SetIfDefault(key, value.Capture(val), false)
+		if !scope.claimed(key) {
+			scope.Set(key, value.Capture(val), false)
+			scope.fromCLI[key] = true
+		}
 	}
 
 	envFileVars, envFileSecrets, err := loadEnvFiles(ctx, cfg.EnvFileTmpls, cfg.TaskfileDir, scope.vars, scope.envFileRef)

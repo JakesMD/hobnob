@@ -11,7 +11,7 @@
 //  1. reverse matrix nesting order in internal/runner/loop.go        -> loop_test.go (.Lines)
 //  2. drop the raw-value ReplaceAll in Scope.Mask                    -> secrets_test.go (.Masked)
 //  3. drop the JSON-escaped ReplaceAll in Scope.Mask                 -> secrets_test.go (into: leaf)
-//  4. write cliVars with Set, not SetIfDefault, in scope.resolve     -> scope_test.go (ConstWinsOverCLIArgs)
+//  4. drop the claimed guard on cliVars in scope.resolve             -> scope_test.go (ConstWinsOverCLIArgs)
 //  5. remove the "_" guard in internal/app/app.go Run                -> cli_test.go
 //  6. make Task.Hidden not suppress from --list                      -> cli_test.go (.NotOut)
 //  7. make module flatten override a native task                    -> modules_test.go
@@ -84,6 +84,20 @@
 // 64. drop the JSON-text case from runner.multiList                  -> get_test.go (MultiPresetFromShellJSONTextBecomesAList, MultiDefaultAsJSONTextBecomesAList)
 // 65. signal the group as soon as the shell exits, in execRun         -> run_background_test.go (JobKeepsRunningAfterItsStepEnds, JobNotHoldingTheOutputKeepsRunningAfterItsStepEnds)
 // 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
+// 67. drop the absolute-path rewrite for an already-set type: file value -> get_path_test.go (PresetRelativeBecomesAbsolute)
+// 68. resolve a CLI-arg path against the task dir, not the invocation dir -> get_path_test.go (CLIArgResolvesAgainstInvocationDir, ShellEnvResolvesAgainstInvocationDir)
+// 69. skip the right-kind check in the path pipeline                  -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails)
+// 70. resolve symlinks before storing a picked path                   -> get_path_test.go (SymlinkKeptAsGiven)
+// 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff, MultiDirectoryDefaultIsNoAnswerWithPromptsOff, MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff)
+// 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
+// 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
+// 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
+// 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
+// 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
+// 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
+// 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
+// 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
+// 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
 package e2e
 
 import (
@@ -125,8 +139,9 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Cwd      string // subdir of the temp root to chdir into (default: the root itself)
-	Discover bool   // omit --file, exercise findTaskfile's upward walk
+	Probe    []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd      string   // subdir of the temp root to chdir into (default: the root itself)
+	Discover bool     // omit --file, exercise findTaskfile's upward walk
 }
 
 // PromptCall records one prompt the run actually made.
@@ -139,6 +154,12 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
+	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
+
+	// What the picker's predicates reported for each Case.Probe path (keyed as
+	// given). Nil when the picker got no predicate.
+	Included map[string]bool
+	Excluded map[string]bool
 }
 
 // Result is what the user would have seen.
@@ -259,7 +280,8 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	state := newPromptState(t, c.Answers)
-	restorePrompts := runner.SetPrompts(state.text, state.sel)
+	state.dir, state.probe = dir, c.Probe
+	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
@@ -290,12 +312,16 @@ func Run(t *testing.T, c Case) *Result {
 // exactly what env specifies, and returns a func restoring the original
 // environment. scope.Load reads os.Environ() wholesale, so anything left
 // over from the host (CI, USER, a stray VERSION) would otherwise leak into
-// scope and silently change a test's result — the existing subprocess-based
-// tests each hand-scrubbed CI= slightly differently, which this replaces.
+// scope and silently change a test's result.
 // CI is deliberately not restored: defaultNoPrompts() must be driven solely
 // by Case.TTY.
 func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 	t.Helper()
+	setenv := func(key, val string) {
+		if err := os.Setenv(key, val); err != nil {
+			t.Fatalf("setenv %s: %v", key, err)
+		}
+	}
 	for _, forbidden := range []string{"PATH", "HOME"} {
 		if _, ok := env[forbidden]; ok {
 			t.Fatalf("Case.Env must not set %s — every scope var is exported into the child shell (see envWithScopeOverrides), so overriding it breaks sh -c itself, not hobnob", forbidden)
@@ -306,29 +332,27 @@ func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 	origPath, origHome, origTmp := os.Getenv("PATH"), os.Getenv("HOME"), os.Getenv("TMPDIR")
 
 	os.Clearenv()
-	os.Setenv("PATH", origPath)
-	os.Setenv("HOME", origHome)
+	setenv("PATH", origPath)
+	setenv("HOME", origHome)
 	if origTmp != "" {
-		os.Setenv("TMPDIR", origTmp)
+		setenv("TMPDIR", origTmp)
 	}
 	for k, v := range env {
-		os.Setenv(k, v)
+		setenv(k, v)
 	}
 
 	return func() {
 		os.Clearenv()
 		for _, kv := range orig {
 			if key, val, ok := strings.Cut(kv, "="); ok {
-				os.Setenv(key, val)
+				setenv(key, val)
 			}
 		}
 	}
 }
 
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining
-// both concurrently so output past the ~64KB pipe buffer can't deadlock (the
-// bug in the harness this replaces, internal/runner/runner_test.go's old
-// captureStdout, closed the pipe before draining it).
+// both concurrently so output past the ~64KB pipe buffer can't deadlock.
 func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
 	t.Helper()
 	rOut, wOut, err := os.Pipe()
@@ -428,7 +452,10 @@ type promptState struct {
 	answers map[string][]string
 	textIdx map[string]int
 	selIdx  map[string]int
+	pathIdx map[string]int
 	calls   []PromptCall
+	dir     string   // the temp root, for resolving probe paths
+	probe   []string // see Case.Probe
 }
 
 func newPromptState(t *testing.T, answers map[string][]string) *promptState {
@@ -437,6 +464,7 @@ func newPromptState(t *testing.T, answers map[string][]string) *promptState {
 		answers: answers,
 		textIdx: map[string]int{},
 		selIdx:  map[string]int{},
+		pathIdx: map[string]int{},
 	}
 }
 
@@ -491,4 +519,60 @@ func (s *promptState) sel(ctx context.Context, varName, info string, items []str
 		return value.Of(parts), nil
 	}
 	return value.Str(raw), nil
+}
+
+// path implements runner.PathPromptFunc. Each call consumes the next
+// not-yet-used answer for prompt.VarName, like sel: a path (comma-separated
+// under multi:), relative ones taken from the invocation directory the way
+// the real picker returns absolute paths. An empty answer on an optional
+// picker is the escape key: no answer. internal/runner's own check:/re-open
+// loop is what drives repeat calls.
+func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task string, secret bool) (value.Value, bool, error) {
+	s.t.Helper()
+	answers := s.answers[prompt.VarName]
+	idx := s.pathIdx[prompt.VarName]
+	if idx >= len(answers) {
+		s.t.Fatalf("unexpected picker for %q (task %q, visit %d) — only %d answer(s) provided", prompt.VarName, task, idx+1, len(answers))
+	}
+	raw := answers[idx]
+	s.pathIdx[prompt.VarName] = idx + 1
+	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type}
+	for _, p := range s.probe {
+		full := filepath.Join(s.dir, p)
+		info, err := os.Stat(full)
+		if err != nil {
+			s.t.Fatalf("probe path %q: %v", p, err)
+		}
+		if prompt.Included != nil {
+			if call.Included == nil {
+				call.Included = map[string]bool{}
+			}
+			call.Included[p] = prompt.Included(full, info.IsDir())
+		}
+		if prompt.Excluded != nil {
+			if call.Excluded == nil {
+				call.Excluded = map[string]bool{}
+			}
+			call.Excluded[p] = prompt.Excluded(full, info.IsDir())
+		}
+	}
+	s.record(call)
+	abs := func(p string) string {
+		if filepath.IsAbs(p) {
+			return p
+		}
+		return filepath.Join(prompt.Invoke, p)
+	}
+	if raw == "" && prompt.Optional {
+		return value.Value{}, false, nil
+	}
+	if prompt.Multi {
+		parts := []any{}
+		for _, p := range strings.Split(raw, ",") {
+			parts = append(parts, abs(p))
+		}
+		return value.Of(parts), true, nil
+	}
+	return value.Str(abs(raw)), true, nil
 }

@@ -84,9 +84,11 @@ argument. See [Running commands](../guide/commands.md).
 | Key         | Meaning                                                           |
 | ----------- | ----------------------------------------------------------------- |
 | `info:`     | Prompt text.                                                      |
-| `default:`  | Pre-filled value, used as-is when prompts are off.                |
+| `type:`     | `text` (the default), `file` or `dir`. `file` and `dir` turn it into a picker that stores absolute paths. Not with `options:`. |
+| `default:`  | Pre-filled value, used as-is when prompts are off. For `type: file`, a directory is where to start browsing; for `type: dir`, a directory is the answer, already selected. |
 | `options:`  | Turns it into a select. A list literal or a variable holding one. |
-| `multi:`    | Multi-select; the result is an array.                             |
+| `multi:`    | Multi-select, or several picks with `type: file\|dir`; the result is an array. |
+| `match:`    | One pattern, a list, or a variable holding a list. The answer must match: menus and pickers hide what doesn't, text is asked again. |
 | `check:`    | Shell condition the answer must satisfy (exit 0).                 |
 | `secret:`   | Mask wherever hobnob shows it; command output is not.             |
 | `optional:` | Skip silently if unanswered, leaving the variable empty.          |

@@ -34,7 +34,7 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
   <div class="l-feature">
     <span class="l-icon">📝</span>
     <h3>Prompts are just steps</h3>
-    <p>Ask anywhere in a task: a text box, a menu or a multi-select, built from an earlier step's output.</p>
+    <p>Ask anywhere in a task: a text box, a menu, a multi-select or a file picker, built from an earlier step's output.</p>
   </div>
   <div class="l-feature">
     <span class="l-icon">🧬</span>
@@ -147,27 +147,26 @@ tasks:
     info: Build an OS image with Packer.
     steps:
       - call: _pick-image
-      - run: packer build images/{{.IMAGE}}
+      - run: packer build -var out=output/os.img {{.IMAGE}}
 
   flash:
-    info: Flash a built image to a disk.
+    info: Flash the built image to a disk.
     steps:
-      - call: _pick-image
       - call: _pick-disk
       - run: sudo wipefs --all /dev/{{.DISK}}
-      - run: sudo dd if=output/{{.IMAGE}}.img of=/dev/{{.DISK}} bs=4M status=progress conv=fsync
+      - run: sudo dd if=output/os.img of=/dev/{{.DISK}} bs=4M status=progress conv=fsync
 
   _pick-image:
     once: true
     results: [IMAGE]
     steps:
-      - run: ls images
-        into:
-          - IMAGES: stdout | lines
+      # Opens in images/ and offers only Packer templates.
       - get:
           - IMAGE:
               info: Which image?
-              options: .IMAGES
+              type: file
+              default: images/
+              match: "*.pkr.hcl"
 
   _pick-disk:
     once: true

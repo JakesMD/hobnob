@@ -55,8 +55,8 @@ Every change must preserve these. Each is explained in the section named.
   reaches `into:` or a `quiet:` buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
-- **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel)
-  (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`.
+- **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel, path)
+  (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`/`promptPathFn`.
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
   `keys`, `join` and accessors error on a String, naming `| json`, rather
@@ -79,7 +79,9 @@ internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
+internal/glob/    match: path patterns compiled to a matcher (doublestar)
 internal/e2e/     end-to-end CLI suite (test files only)
+tools/testconventions/  golangci-lint plugin enforcing the test shape (its own Go module)
 ```
 
 Imports run one way. An arrow means "imports":
@@ -101,6 +103,7 @@ flowchart TD
     runner --> config
     runner --> tui
     runner --> literal
+    runner --> glob
     scope --> config
     scope --> tui
     config --> literal
@@ -116,8 +119,10 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure,
-  so the prompt layer never learns how a shell condition works.
+- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure
+  and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
+  from `internal/glob`, so the prompt layer never learns how a shell condition
+  or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask`.
@@ -297,22 +302,28 @@ evaluator:
 
 ### `internal/scope`: the runtime scope and file scopes
 
-`Scope` keeps four private maps, so no write skips the bookkeeping:
+`Scope` keeps five private maps, so no write skips the bookkeeping:
 
 | Map       | Holds                                                                   |
 | --------- | ----------------------------------------------------------------------- |
 | `vars`    | the values, read through `Vars()` (live map, read-only by convention)   |
 | `secrets` | names flagged secret, read through `IsSecret`                           |
 | `ambient` | names whose value still comes only from the OS env base layer           |
+| `fromCLI` | names whose value is a command-line argument nothing has overwritten   |
 | `carried` | secret values `Adopt` brought up from a `call:` child, without a name   |
 
 Writes go through four methods:
 
-- `Set` overwrites, propagates the secret flag, and clears `ambient`.
+- `Set` overwrites, propagates the secret flag, and clears `ambient` and `fromCLI`.
 - `SetIfDefault` fills only an unclaimed name.
 - `MarkSecret` flags a name already in scope (a `get: secret:` on a set var).
 - `Bind(key, val) (restore func())` sets a `loop:` iterator; `restore` puts
   back the prior value and flags, or removes the key.
+
+`resolve` sets `fromCLI` for the root's `cliVars`; `Copy` carries it and `Bind`'s `restore` puts it back. The one
+query, `FromInvocation(key)`, is true for a `fromCLI` or `ambient` name: the
+value still comes from where hobnob was run, so a relative path in it resolves
+against `HOBNOB_INVOCATION_DIR` (see `get:`'s path checks).
 
 **The claimed rule.** A name is _claimed_ when present and not ambient. Only
 `Load`'s base layer marks ambient; every `Set` clears it. That one rule decides
@@ -342,7 +353,7 @@ Masking covers only text hobnob renders itself. A `run:` process's own
 stdout and stderr reach the terminal unmasked; `secret:` promises nothing
 about what a command chooses to print.
 
-`Copy()` deep-copies all four maps: every `call:` gets an isolated sandbox.
+`Copy()` deep-copies all five maps: every `call:` gets an isolated sandbox.
 
 **`Load(ctx, cfg, cliVars, invocationDir)`** returns the root `*Scope` and
 `FileScopes`. The private `resolve` holds the one copy of the
@@ -539,13 +550,36 @@ The memo is load-bearing in three ways:
 A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
-`KEY=VALUE` satisfies a prompt. Otherwise it uses `default:`, aborts, or
-prompts through `promptTextFn`/`promptSelectFn`. A preset, a default and an
+`KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `promptTextFn`/`promptSelectFn`, or `promptPathFn` for a `type: file|dir` entry. A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
 `multi:` variable is always an Array. Parsing there isn't sniffing: `multi:`
 declares the type.
+`match:` patterns (rendered like `options:`, compiled by `internal/glob`; `tui` never
+imports it, and for a `type: file|dir` picker the runner builds the
+`Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
+before it is shown (nothing left fails, or is empty under `optional:`), and
+join `check:` in the closure handed to `PromptText`. A value nobody typed at a
+prompt is checked by `validateGetValue`, per item under `multi:`, before
+`check:`.
+
+A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
+runs its value through `acceptPath` before `check:`: empty is no answer
+(`optional:` sets it empty and skips `check:`, otherwise it fails), then per
+item (each under `multi:`) absolute, exists, right kind (`os.Stat`, so a
+symlink is judged by its target and stored as given), `match:` (`glob.Path`).
+A relative path resolves against the invocation dir when
+`Scope.FromInvocation` says the value came from the CLI or shell, else against
+the task's working directory (`execCtx.dir`); `filepath.Clean` and `~`
+expansion apply. With prompts off, a `type: file` `default:` that is a
+directory counts as no default (`isDirDefault`). With prompts on,
+`getPathInteractive` opens the picker through `promptPathFn` (the task's
+working directory as `WorkDir`, the `default:` as written, `match:` as
+`Included`/`Excluded` predicates). A pick goes through the same per-item
+checks, and a failing `check:` re-opens the picker, as `promptSelectUntilValid`
+does for menus. An escaped optional picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -595,10 +629,11 @@ end of the run.
 ### `internal/tui`
 
 `linewriter.go` (the prefixing writer for `run:` output),
-`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go` (bubbletea
-models), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
-and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText` and
-`PromptSelect`; `app` injects `PromptTaskSelect` as the picker.
+`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
+(bubbletea models; `prompt_path.go` is the file/directory picker, which takes
+`Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
+and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
+`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the picker.
 
 ### `internal/app`: the CLI body
 
@@ -662,6 +697,9 @@ Matchers live on `e2e.Result` (`.OK`, `.Fails`, `.Out`, `.Lines`, `.Masked`,
   working directory, all process-global.
 - **Real prompts.** Drive interactive paths through `runner.SetPrompts`, not
   `--no-input`, so `get:`'s prompt mechanics stay covered.
+- **Linted shape.** `hobnob go:lint` fails any test without a
+  given/when/then (why: …) comment or the `// Arrange`, `// Act`, `// Assert`
+  markers. The rules live in `tools/testconventions`.
 
 The **mutation checklist** atop `internal/e2e/harness_test.go` lists
 one-statement breaks some test must catch. Walk it after changing the harness,
@@ -680,5 +718,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly four test seams: `runner.SetPrompts`,
+Production code exposes exactly four test seams: `runner.SetPrompts` (text, select and path prompts together),
 `runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.

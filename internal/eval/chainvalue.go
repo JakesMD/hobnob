@@ -20,7 +20,7 @@ func EvalValue(expr string, vars map[string]value.Value) (value.Value, error) {
 	if err != nil {
 		return value.Value{}, err
 	}
-	if pipe, ok := singleActionPipeline(tmpl.Tree.Root); ok {
+	if pipe, ok := singleActionPipeline(tmpl.Root); ok {
 		if result, matched, err := evalTypedPipeline(pipe, vars); matched {
 			if err != nil {
 				return value.Value{}, err

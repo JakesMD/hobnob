@@ -25,6 +25,10 @@ var (
 	SHint    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	SStep    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
 
+	sPathMatch = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
+	sPathDir   = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
+	sPathInput = lipgloss.NewStyle().Bold(true)
+
 	TaskPalette = []lipgloss.Color{"2", "3", "4", "5", "6", "10", "11", "12", "13", "14"}
 )
 

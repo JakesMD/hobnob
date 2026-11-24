@@ -38,6 +38,13 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 			switch fieldKey {
 			case "info":
 				entry.Info = fieldVal.Value
+			case "type":
+				switch fieldVal.Value {
+				case GetTypeText, GetTypeFile, GetTypeDir:
+					entry.Type = fieldVal.Value
+				default:
+					return nil, fmt.Errorf("get entry %q: type: must be text, file or dir, got %q", entry.VarName, fieldVal.Value)
+				}
 			case "options":
 				if fieldVal.Kind == yaml.SequenceNode {
 					for _, option := range fieldVal.Content {
@@ -49,6 +56,18 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 						return nil, fmt.Errorf("get entry %q options: %w", entry.VarName, err)
 					}
 					entry.FromTmpl = tmpl
+				}
+			case "match":
+				if fieldVal.Kind == yaml.SequenceNode {
+					for _, pattern := range fieldVal.Content {
+						entry.MatchList = append(entry.MatchList, pattern.Value)
+					}
+				} else {
+					tmpl, err := literal.Single(fieldVal.Value)
+					if err != nil {
+						return nil, fmt.Errorf("get entry %q match: %w", entry.VarName, err)
+					}
+					entry.MatchTmpl = tmpl
 				}
 			case "multi":
 				entry.Multi = parseBool(fieldVal)
@@ -65,6 +84,9 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 			case "optional":
 				entry.Optional = parseBool(fieldVal)
 			}
+		}
+		if entry.IsPath() && (len(entry.FromList) > 0 || !entry.FromTmpl.IsZero()) {
+			return nil, fmt.Errorf("get entry %q: options: can't be used with type: %s; leave out type: for a menu of paths", entry.VarName, entry.Type)
 		}
 		entries = append(entries, entry)
 	}

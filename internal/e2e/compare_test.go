@@ -2,24 +2,23 @@ package e2e
 
 import "testing"
 
-// eq/ne/lt/le/gt/ge override text/template's builtins (see
-// internal/eval/template.go) so a bare .VAR compares by its actual
-// value.Value kind instead of always looking like a Struct to reflect.
-// These tests drive the comparisons through real hobnob.yml runs — echoed
-// into run: output, and gating an if: — rather than calling the funcs
-// directly, matching this suite's end-to-end style (see values_test.go).
-
 func TestE2E_Compare_StringVarAgainstStringLiteral(t *testing.T) {
 	// given a String var, when compared eq against a matching string
 	// literal, then true (why: guard — the original bug this override fixed)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - NAME: ada
 		      - run: 'echo {{ eq .NAME "ada" }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -29,7 +28,8 @@ func TestE2E_Compare_NumberVarAgainstNumericLiteral(t *testing.T) {
 	// eq against a template numeric literal, then true (why: a literal 3
 	// stringifies via coerce today, so comparing it against a real Number
 	// errors "incompatible types for comparison: number, string")
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -39,7 +39,12 @@ func TestE2E_Compare_NumberVarAgainstNumericLiteral(t *testing.T) {
 		      - set:
 		          - COUNT: .RESP.count
 		      - run: 'echo {{ eq .COUNT 3 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"count":3}`, "true")
 }
@@ -47,7 +52,8 @@ func TestE2E_Compare_NumberVarAgainstNumericLiteral(t *testing.T) {
 func TestE2E_Compare_NumericOrderingOnCapturedNumber(t *testing.T) {
 	// given a Number var, when compared gt against a numeric literal, then
 	// true (why: same literal-loses-its-kind bug, ordering variant)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -57,7 +63,12 @@ func TestE2E_Compare_NumericOrderingOnCapturedNumber(t *testing.T) {
 		      - set:
 		          - COUNT: .RESP.count
 		      - run: 'echo {{ gt .COUNT 1 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"count":3}`, "true")
 }
@@ -66,12 +77,18 @@ func TestE2E_Compare_NumericStringsOrderNumerically(t *testing.T) {
 	// given two CLI args that are numeric text (never structured — see
 	// guide/structured-data.md), when compared lt, then ordering is numeric,
 	// not lexical (why: "10" < "9" lexically, but 10 is not less than 9)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ lt .A .B }}'
-	`, "t", "A=9", "B=10")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=9", "B=10")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -80,7 +97,8 @@ func TestE2E_Compare_BoolVarAgainstBoolLiteral(t *testing.T) {
 	// given a Bool var (from an accessor), when compared eq against a bool
 	// literal, then true (why: literal true stringifies via coerce today,
 	// so comparing it against a real Bool errors)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -90,7 +108,12 @@ func TestE2E_Compare_BoolVarAgainstBoolLiteral(t *testing.T) {
 		      - set:
 		          - ACTIVE: .RESP.active
 		      - run: 'echo {{ eq .ACTIVE true }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"active":true}`, "true")
 }
@@ -99,7 +122,8 @@ func TestE2E_Compare_BoolVarAgainstQuotedText(t *testing.T) {
 	// given the same Bool var, when compared eq against the quoted string
 	// "true", then still true (why: comparison is lenient on representation
 	// — a Bool's String() is "true"/"false", so it matches the text form too)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -109,7 +133,12 @@ func TestE2E_Compare_BoolVarAgainstQuotedText(t *testing.T) {
 		      - set:
 		          - ACTIVE: .RESP.active
 		      - run: 'echo {{ eq .ACTIVE "true" }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"active":true}`, "true")
 }
@@ -119,7 +148,8 @@ func TestE2E_Compare_LargeIntegersNotCollapsedByFloat(t *testing.T) {
 	// when compared eq, then false (why: value.Value deliberately holds
 	// json.Number, not float64, to avoid precision loss — routing comparison
 	// through Float64() would silently collapse these to equal)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -130,7 +160,12 @@ func TestE2E_Compare_LargeIntegersNotCollapsedByFloat(t *testing.T) {
 		          - A: .RESP.a
 		          - B: .RESP.b
 		      - run: 'echo {{ eq .A .B }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"a":9007199254740993,"b":9007199254740992}`, "false")
 }
@@ -140,12 +175,18 @@ func TestE2E_Compare_MissingVarEqualsEmptyString(t *testing.T) {
 	// IsEmpty() treats a missing var and an explicit empty string alike
 	// everywhere else in hobnob — comparison should too, rather than erroring
 	// "incompatible types for comparison: nil, string")
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ eq .MISSING "" }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -154,14 +195,20 @@ func TestE2E_Compare_LenResultAgainstNumericLiteral(t *testing.T) {
 	// given len's Number result, when compared gt against a numeric literal,
 	// then true (why: len is a filter that returns a real Number — the same
 	// literal-coercion bug breaks any {{ gt (.X | len) 0 }} guard)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - TAGS: [a, b]
 		      - run: 'echo {{ gt (.TAGS | len) 0 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -169,14 +216,20 @@ func TestE2E_Compare_LenResultAgainstNumericLiteral(t *testing.T) {
 func TestE2E_Compare_NeMirrorsEq(t *testing.T) {
 	// given a String var, when compared ne against a non-matching literal,
 	// then true (why: guard — ne is eq's negation, not independently broken)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - NAME: ada
 		      - run: 'echo {{ ne .NAME "grace" }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -188,7 +241,8 @@ func TestE2E_Compare_BoolOrderingRejected(t *testing.T) {
 	// run fails naming the unorderable kind (why: bools are equality-only,
 	// matching text/template stdlib's own rule — false < true would be an
 	// arbitrary invented ordering, not something JSON/shell semantics define)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -199,7 +253,12 @@ func TestE2E_Compare_BoolOrderingRejected(t *testing.T) {
 		          - A: .RESP.a
 		          - B: .RESP.b
 		      - run: 'echo {{ lt .A .B }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "bool")
 }
@@ -210,7 +269,8 @@ func TestE2E_Compare_StructuredValueRejected(t *testing.T) {
 	// value's String() returns its original raw text verbatim — two
 	// structurally-identical objects captured with different whitespace
 	// would then compare unequal, which is worse than refusing)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -221,7 +281,12 @@ func TestE2E_Compare_StructuredValueRejected(t *testing.T) {
 		        into:
 		          - Y: stdout
 		      - run: 'echo {{ eq .X .Y }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "object")
 }
@@ -232,7 +297,8 @@ func TestE2E_Compare_YAMLIntLiteralComparesNumerically(t *testing.T) {
 	// an accessor surfaces a Go int, not json.Number; asNumber's raw
 	// Any().(string) assertion panics on it, recovered by text/template into
 	// "interface conversion: interface {} is int, not string")
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -241,7 +307,12 @@ func TestE2E_Compare_YAMLIntLiteralComparesNumerically(t *testing.T) {
 		      - set:
 		          - PORT: .CFG.port
 		      - run: 'echo {{ eq .PORT 8080 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -250,7 +321,8 @@ func TestE2E_Compare_YAMLFloatLiteralOrdersNumerically(t *testing.T) {
 	// given a YAML float nested in a set: map literal, when accessed and
 	// compared gt against a numeric literal, then true (why: same
 	// non-canonical-underlying-type bug as the int case, float variant)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -259,7 +331,12 @@ func TestE2E_Compare_YAMLFloatLiteralOrdersNumerically(t *testing.T) {
 		      - set:
 		          - RATIO: .CFG.ratio
 		      - run: 'echo {{ gt .RATIO 1 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -271,7 +348,8 @@ func TestE2E_Compare_MixedIntFloatKeepsPrecision(t *testing.T) {
 	// isn't a clean integer collapses 9007199254740993 to …992, giving the
 	// wrong answer — see TestE2E_Compare_LargeIntegersNotCollapsedByFloat for
 	// the all-integer case this one complements)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -282,7 +360,12 @@ func TestE2E_Compare_MixedIntFloatKeepsPrecision(t *testing.T) {
 		          - A: .RESP.a
 		          - B: .RESP.b
 		      - run: 'echo {{ gt .A .B }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"a":9007199254740993,"b":9007199254740992.5}`, "true")
 }
@@ -292,12 +375,18 @@ func TestE2E_Compare_InfAndNaNTextCompareAsText(t *testing.T) {
 	// compared eq, then they're compared as text, not numerically (why:
 	// strconv.ParseFloat accepts "inf"/"Infinity" case-insensitively, so the
 	// old gate silently treated these as equal numbers)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ eq .A .B }}'
-	`, "t", "A=inf", "B=Infinity")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=inf", "B=Infinity")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "false")
 }
@@ -307,12 +396,18 @@ func TestE2E_Compare_HexFloatTextComparesAsText(t *testing.T) {
 	// the same numeric value, when compared eq, then they're compared as
 	// text, not numerically (why: strconv.ParseFloat accepts Go hex-float
 	// syntax, which is not valid JSON number text)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ eq .A .B }}'
-	`, "t", "A=0x10p0", "B=16")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=0x10p0", "B=16")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "false")
 }
@@ -322,12 +417,18 @@ func TestE2E_Compare_LeadingZerosCompareAsText(t *testing.T) {
 	// they're compared as text, not numerically (why: "007" is not valid
 	// JSON number text — JSON numbers forbid leading zeros — so the numeric
 	// gate must reject it even though strconv/big.Rat would happily parse it)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ eq .A .B }}'
-	`, "t", "A=007", "B=7")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=007", "B=7")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "false")
 }
@@ -335,12 +436,18 @@ func TestE2E_Compare_LeadingZerosCompareAsText(t *testing.T) {
 func TestE2E_Compare_LeOrdersNumerically(t *testing.T) {
 	// given two numeric-text CLI args, when compared le, then numeric
 	// ordering applies (why: le has no dedicated coverage today)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ le .A .B }}'
-	`, "t", "A=9", "B=10")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=9", "B=10")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "true")
 }
@@ -348,12 +455,18 @@ func TestE2E_Compare_LeOrdersNumerically(t *testing.T) {
 func TestE2E_Compare_GeOrdersNumerically(t *testing.T) {
 	// given two numeric-text CLI args, when compared ge, then numeric
 	// ordering applies (why: ge has no dedicated coverage today)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: 'echo {{ ge .A .B }}'
-	`, "t", "A=9", "B=10")
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "A=9", "B=10")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "false")
 }
@@ -363,14 +476,20 @@ func TestE2E_Compare_EqWithSingleArgumentErrors(t *testing.T) {
 	// run fails naming the missing argument (why: stdlib's own eq errors
 	// "missing argument for comparison" on this shape; templateEq's variadic
 	// loop over zero args silently returned false instead)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - X: ada
 		      - run: 'echo {{ eq .X }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "argument")
 }
@@ -381,7 +500,8 @@ func TestE2E_Compare_IfConditionGatesOnNumericComparison(t *testing.T) {
 	// (why: if:'s rendered true/false is executed as a shell builtin — see
 	// hobnob.yml's own {{eq .OS "darwin"}} usage — so the template-level fix
 	// must also hold end-to-end through a real if: gate)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -394,7 +514,12 @@ func TestE2E_Compare_IfConditionGatesOnNumericComparison(t *testing.T) {
 		        if: '{{ gt .COUNT 1 }}'
 		      - run: echo skipped
 		        if: '{{ lt .COUNT 1 }}'
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `{"count":3}`, "gated")
 }

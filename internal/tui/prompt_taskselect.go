@@ -9,8 +9,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ── task select model ────────────────────────────────────────────────
-
 type TaskItem struct {
 	Name string
 	Info string

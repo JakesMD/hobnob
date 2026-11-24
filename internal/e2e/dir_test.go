@@ -7,8 +7,10 @@ import (
 
 func TestE2E_Dir_TaskLevelSetsRunCwd(t *testing.T) {
 	// given a task-level dir:, when a run: step has no dir: of its own, then
-	// it executes in the task's dir
-	res := Run(t, Case{
+	// it executes in the task's dir (why: one dir: should cover a whole task
+	// without repeating it per step)
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -23,7 +25,12 @@ func TestE2E_Dir_TaskLevelSetsRunCwd(t *testing.T) {
 			"sub/.keep": "", // dir: must exist on disk before sh -c can chdir into it
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "sub")
 	res.Lines(t, want, "pwd="+want)
@@ -31,12 +38,14 @@ func TestE2E_Dir_TaskLevelSetsRunCwd(t *testing.T) {
 
 func TestE2E_Dir_AbsolutePathUsedVerbatim(t *testing.T) {
 	// given a step's dir: is an absolute path, when it runs, then that exact
-	// path is used rather than being resolved against the taskfile dir
+	// path is used rather than being resolved against the taskfile dir (why:
+	// only relative paths are anchored to the taskfile)
+	// Arrange
 	absDir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatalf("EvalSymlinks: %v", err)
 	}
-	res := Run(t, Case{
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -50,7 +59,12 @@ func TestE2E_Dir_AbsolutePathUsedVerbatim(t *testing.T) {
 			`,
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := absDir
 	res.Lines(t, want, "pwd="+want)
@@ -58,8 +72,10 @@ func TestE2E_Dir_AbsolutePathUsedVerbatim(t *testing.T) {
 
 func TestE2E_Dir_StepLevelOverridesTaskLevel(t *testing.T) {
 	// given both a task-level dir: and a step-level dir:, when that step
-	// runs, then the step's own dir: wins for that one step only
-	res := Run(t, Case{
+	// runs, then the step's own dir: wins for that one step only (why: the
+	// more specific setting wins, without changing its neighbours)
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -73,10 +89,15 @@ func TestE2E_Dir_StepLevelOverridesTaskLevel(t *testing.T) {
 				      - run: echo pwd={{._PWD}}
 			`,
 			"step-dir/.keep": "",
-			"task-dir/.keep": "", // the 2nd run: step has no dir: of its own, so it inherits task-dir
+			"task-dir/.keep": "",
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "step-dir")
 	res.Lines(t, want, "pwd="+want)
@@ -88,7 +109,8 @@ func TestE2E_Dir_RelativePathResolvesAgainstTaskfileDir(t *testing.T) {
 	// resolves against the taskfile's own directory, not the inherited
 	// caller dir (why: every relative dir: anchors to one fixed point, the
 	// taskfile location, regardless of how deep the call chain is)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -105,10 +127,15 @@ func TestE2E_Dir_RelativePathResolvesAgainstTaskfileDir(t *testing.T) {
 				      - run: echo pwd={{._PWD}}
 			`,
 			"sub/.keep":       "",
-			"elsewhere/.keep": "", // the 2nd run: step has no dir: of its own, so it inherits "elsewhere"
+			"elsewhere/.keep": "",
 		},
 		Args: []string{"grandparent"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	// "sub" must resolve against the taskfile dir (res.Dir), not against
 	// "elsewhere" — the inherited dir grandparent's call: set for parent.
@@ -120,7 +147,8 @@ func TestE2E_Dir_CallStepDirOverridesCalledTasksOwnDir(t *testing.T) {
 	// given a call: step with its own dir: and the called task also
 	// declaring a dir:, when the call runs, then the call site's dir: wins
 	// (why: the caller's override is more specific than the callee's default)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -139,7 +167,12 @@ func TestE2E_Dir_CallStepDirOverridesCalledTasksOwnDir(t *testing.T) {
 			"call-site-dir/.keep": "",
 		},
 		Args: []string{"parent"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "call-site-dir")
 	res.Lines(t, want, "pwd="+want)
@@ -148,8 +181,10 @@ func TestE2E_Dir_CallStepDirOverridesCalledTasksOwnDir(t *testing.T) {
 func TestE2E_Dir_CalledTaskInheritsCallerDirWhenNeitherOverrides(t *testing.T) {
 	// given a call: step with no dir: and a called task with no dir: either,
 	// when the call runs, then the callee inherits whatever dir: the caller
-	// was already running in
-	res := Run(t, Case{
+	// was already running in (why: a helper task should run where its caller
+	// works)
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -167,7 +202,12 @@ func TestE2E_Dir_CalledTaskInheritsCallerDirWhenNeitherOverrides(t *testing.T) {
 			"parent-dir/.keep": "",
 		},
 		Args: []string{"parent"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "parent-dir")
 	res.Lines(t, want, "pwd="+want)
@@ -178,7 +218,8 @@ func TestE2E_Dir_DisplayLineShowsRelativeDirWhenOverridden(t *testing.T) {
 	// its command is echoed, then the "run:" chrome line notes the dir
 	// relative to the invocation dir (why: the user should see at a glance
 	// which steps ran somewhere other than the default)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -190,7 +231,12 @@ func TestE2E_Dir_DisplayLineShowsRelativeDirWhenOverridden(t *testing.T) {
 			"sub/.keep": "",
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "(dir: ./sub)")
 }

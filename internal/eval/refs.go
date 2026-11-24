@@ -60,6 +60,6 @@ func ReferencedVars(expr string) ([]string, error) {
 			walk(node.ElseList)
 		}
 	}
-	walk(tmpl.Tree.Root)
+	walk(tmpl.Root)
 	return names, nil
 }

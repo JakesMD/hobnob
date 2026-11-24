@@ -12,6 +12,9 @@ import (
 )
 
 func TestListTasks(t *testing.T) {
+	// given public, internal or no tasks, when listed, then public tasks show
+	// with their info and an empty list explains itself (why: --list is how
+	// people discover tasks)
 	tests := []struct {
 		name       string
 		fixture    string
@@ -84,6 +87,8 @@ func TestListTasks(t *testing.T) {
 }
 
 func TestCollectSelectableTasks(t *testing.T) {
+	// given public and internal tasks, when collected for the picker, then
+	// only public tasks come back, sorted (why: the picker must match --list)
 	tests := []struct {
 		name        string
 		fixture     string

@@ -6,6 +6,9 @@ import (
 )
 
 func TestCompletionScript(t *testing.T) {
+	// given each shell, when a completion script is generated, then it uses
+	// that shell's mechanism, and an unknown shell errors (why: a wrong
+	// script silently breaks tab completion)
 	tests := []struct {
 		name      string
 		shell     string

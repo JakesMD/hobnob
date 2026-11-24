@@ -3,44 +3,16 @@ package runner
 import (
 	"context"
 	"errors"
-	"io"
-	"os"
-	"strings"
 	"testing"
 
 	"hobnob/internal/scope"
-	"hobnob/internal/value"
 )
 
-func copyVars(src map[string]value.Value) map[string]value.Value {
-	out := make(map[string]value.Value, len(src))
-	for key, val := range src {
-		out[key] = val
-	}
-	return out
-}
-
-func captureStdout(t *testing.T, f func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("os.Pipe: %v", err)
-	}
-	orig := os.Stdout
-	os.Stdout = w
-	defer func() { os.Stdout = orig }()
-
-	f()
-
-	w.Close()
-	var buf strings.Builder
-	if _, err := io.Copy(&buf, r); err != nil {
-		t.Fatalf("io.Copy: %v", err)
-	}
-	return buf.String()
-}
-
 func TestDisplayDirPath(t *testing.T) {
+	// given dirs inside and outside the invocation dir, when formatted, then
+	// inside ones read as ./ paths and outside ones in full (why: mirror the
+	// dir: path style where it reads well)
+	// Arrange
 	tests := []struct {
 		name          string
 		dir           string

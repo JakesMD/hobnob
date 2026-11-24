@@ -119,7 +119,7 @@ func finishCall(callerCfg *config.ConfigFile, taskName string, task config.Task,
 	entries := config.CallInto(step, task)
 	for _, entry := range entries {
 		if callerCfg.DeclaresConst(entry.ParentKey) {
-			return fmt.Errorf("call %s: result %q would overwrite the const: of the same name; pull other values with into:", taskName, entry.ParentKey)
+			return fmt.Errorf("call %s: result %q would overwrite the const: of the same name; use into: to pull other values", taskName, entry.ParentKey)
 		}
 	}
 	return captureInto("call", entries, source, scope, child)

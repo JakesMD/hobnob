@@ -11,14 +11,20 @@ func TestE2E_RunArgv_InjectionIsInert(t *testing.T) {
 	// form element, then it arrives as one literal argument rather than being
 	// parsed by a shell (why: this is the whole point of the argv form — no
 	// sh -c means no word-splitting, no command substitution)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - NAME: "a; touch pwned"
 		      - run: [echo, .NAME]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "a; touch pwned")
 	if _, err := os.Stat(filepath.Join(res.Dir, "pwned")); !os.IsNotExist(err) {
@@ -28,16 +34,22 @@ func TestE2E_RunArgv_InjectionIsInert(t *testing.T) {
 
 func TestE2E_RunArgv_SpaceStaysOneArgument(t *testing.T) {
 	// given a var containing a space, when passed as a list-form element,
-	// then it's word-split into zero shell tokens — it stays exactly one
-	// argument
-	res := Yml(t, `
+	// then it isn't word-split and stays exactly one argument (why: avoiding
+	// shell quoting pitfalls is the point of the list form)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - NAME: "a b"
 		      - run: [echo, .NAME]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "a b")
 }
@@ -47,14 +59,20 @@ func TestE2E_RunArgv_ArrayElementSplices(t *testing.T) {
 	// runs, then it splices into one argument per element rather than being
 	// stringified into one (why: this is the direct payoff of typed values —
 	// "-s -w" arrives as one argument, not two)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - FLAGS: ["-ldflags", "-s -w"]
 		      - run: [printf, "%s\n", .FLAGS]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "-ldflags", "-s -w")
 }
@@ -64,7 +82,8 @@ func TestE2E_RunArgv_EmptyElementPreserved(t *testing.T) {
 	// element positioned between two non-empty ones, then it's preserved as
 	// an empty argument rather than dropped (why: dropping it would silently
 	// shift every later positional argument)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -73,73 +92,105 @@ func TestE2E_RunArgv_EmptyElementPreserved(t *testing.T) {
 		          - B: ""
 		          - C: "3"
 		      - run: ["printf", "%s|%s|%s\n", .A, .B, .C]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "1||3")
 }
 
 func TestE2E_RunArgv_EmptyArraySplicesToNothing(t *testing.T) {
 	// given an empty Array used as a list-form element, when the step runs,
-	// then it contributes zero arguments rather than one empty argument
-	res := Yml(t, `
+	// then it contributes zero arguments rather than one empty argument (why:
+	// an empty list of flags means no flags, not a blank one)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - FLAGS: []
 		      - run: ["printf", "%s|%s\n", "a", .FLAGS, "b"]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "a|b")
 }
 
 func TestE2E_RunArgv_ObjectElementErrors(t *testing.T) {
 	// given an Object-typed var used as a list-form element, when the step
-	// runs, then it errors instead of being silently stringified — an
-	// argument boundary should never be a guess
-	res := Yml(t, `
+	// runs, then it errors instead of being silently stringified (why: an
+	// argument boundary should never be a guess)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - set:
 		          - RESP: { a: 1 }
 		      - run: [echo, .RESP]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "select the field")
 }
 
 func TestE2E_RunArgv_EmptyListIsParseError(t *testing.T) {
 	// given run: as an empty YAML sequence, when the file is parsed, then it
-	// fails rather than silently running nothing
-	res := Yml(t, `
+	// fails (why: silently running nothing hides a broken step)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: []
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "run: list form needs at least one element")
 }
 
 func TestE2E_RunArgv_MappingIsParseError(t *testing.T) {
 	// given run: as a YAML mapping, when the file is parsed, then it fails
-	// rather than silently becoming an empty command (the old behavior of
-	// step.Command staying "")
-	res := Yml(t, `
+	// rather than silently becoming an empty command (why: silently running
+	// nothing hides a broken step)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: { a: b }
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "expected a command string or a list of arguments, got a mapping")
 }
 
 func TestE2E_RunArgv_IntoWorks(t *testing.T) {
 	// given a list-form run: step, when into: captures its stdout, then
-	// capture behaves identically to the string form
-	res := Yml(t, `
+	// capture behaves identically to the string form (why: the two forms
+	// differ only in how the command is built)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -147,15 +198,22 @@ func TestE2E_RunArgv_IntoWorks(t *testing.T) {
 		        into:
 		          - OUT: stdout | trim
 		      - run: [echo, .OUT]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "hello", "hello")
 }
 
 func TestE2E_RunArgv_DirWorks(t *testing.T) {
 	// given a list-form run: step with dir:, when it runs, then dir:
-	// resolution behaves identically to the string form
-	res := Run(t, Case{
+	// resolution behaves identically to the string form (why: the two forms
+	// differ only in how the command is built)
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -170,7 +228,12 @@ func TestE2E_RunArgv_DirWorks(t *testing.T) {
 			"sub/.keep": "",
 		},
 		Args: []string{"t"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "sub")
 	res.Lines(t, want, want)
@@ -178,25 +241,34 @@ func TestE2E_RunArgv_DirWorks(t *testing.T) {
 
 func TestE2E_RunArgv_IfWorks(t *testing.T) {
 	// given a list-form run: step with if:, when the condition is false, then
-	// the step is skipped, same as the string form
-	res := Yml(t, `
+	// the step is skipped, same as the string form (why: the two forms differ
+	// only in how the command is built)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: [echo, should-not-print]
 		        if: '[ 1 -eq 2 ]'
 		      - run: [echo, ran]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "ran")
 }
 
 func TestE2E_RunArgv_SecretMasked(t *testing.T) {
 	// given a secret var referenced as a list-form element, when the step's
-	// command is displayed, then it's masked, same as the string form (uses
-	// true, not echo — echo would print the real value to stdout, which
-	// masking never touches; only the displayed command line is masked)
-	res := Yml(t, `
+	// command is displayed, then it's masked, same as the string form (why:
+	// secrets must not leak through the displayed command line; the test runs
+	// true, not echo, because masking only covers the displayed command, not
+	// the command's own output)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -205,7 +277,12 @@ func TestE2E_RunArgv_SecretMasked(t *testing.T) {
 		              value: hunter2
 		              secret: true
 		      - run: [true, .TOKEN]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "hunter2")
 }
@@ -214,12 +291,18 @@ func TestE2E_RunArgv_DisplayLineQuotesOnlyWhenNeeded(t *testing.T) {
 	// given a list-form run: step with a plain element and a space-containing
 	// element, when the command is echoed, then only the ambiguous element is
 	// quoted (why: keeps the common case pasteable without noise)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: [echo, "hello world"]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "run: [t] echo 'hello world'")
 }

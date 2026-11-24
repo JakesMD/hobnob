@@ -128,7 +128,6 @@ func RegisterModuleTasks(cfg *ConfigFile, module ModuleEntry, moduleCfg *ConfigF
 
 		if flatten && !isInternal {
 			if _, exists := cfg.Tasks[taskName]; !exists {
-				// flat alias becomes the visible name; prefixed is a hidden alias
 				cfg.Tasks[taskName] = task
 				cfg.TaskNames = append(cfg.TaskNames, taskName)
 
@@ -137,7 +136,6 @@ func RegisterModuleTasks(cfg *ConfigFile, module ModuleEntry, moduleCfg *ConfigF
 				cfg.Tasks[prefixedName] = taskHidden
 				cfg.TaskNames = append(cfg.TaskNames, prefixedName)
 			} else {
-				// collision with existing task — register prefixed name as visible
 				cfg.Tasks[prefixedName] = task
 				cfg.TaskNames = append(cfg.TaskNames, prefixedName)
 			}

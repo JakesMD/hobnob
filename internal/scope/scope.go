@@ -28,6 +28,11 @@ type Scope struct {
 	// var it inherited, without being able to see which layer actually
 	// produced that inherited value.
 	ambient map[string]bool
+	// fromCLI holds true for a key whose current value is a command-line
+	// argument nothing has overwritten since: resolve marks it, every Set
+	// clears it, like ambient. Together they say a value came from where
+	// hobnob was run, which is what a relative path resolves against.
+	fromCLI map[string]bool
 	// carried holds secret values Adopt brought across from a child scope
 	// without the child's name for them — a secret leaf of a call:'s into:
 	// literal, say — keyed by their string form. Mask redacts them just like
@@ -41,6 +46,7 @@ func New() *Scope {
 		vars:    make(map[string]value.Value),
 		secrets: make(map[string]bool),
 		ambient: make(map[string]bool),
+		fromCLI: make(map[string]bool),
 		carried: make(map[string]value.Value),
 	}
 }
@@ -62,6 +68,7 @@ func (scope *Scope) Set(key string, val value.Value, secret bool) {
 		scope.secrets[key] = true
 	}
 	delete(scope.ambient, key)
+	delete(scope.fromCLI, key)
 }
 
 // SetIfDefault assigns val to key only when key is unclaimed (see claimed) —
@@ -92,7 +99,7 @@ func (scope *Scope) IsSecret(key string) bool {
 // exactly as it found it.
 func (scope *Scope) Bind(key string, val value.Value) (restore func()) {
 	prev, had := scope.vars[key]
-	wasSecret, wasAmbient := scope.secrets[key], scope.ambient[key]
+	wasSecret, wasAmbient, wasCLI := scope.secrets[key], scope.ambient[key], scope.fromCLI[key]
 	scope.Set(key, val, false)
 	return func() {
 		if had {
@@ -105,6 +112,9 @@ func (scope *Scope) Bind(key string, val value.Value) (restore func()) {
 		}
 		if wasAmbient {
 			scope.ambient[key] = true
+		}
+		if wasCLI {
+			scope.fromCLI[key] = true
 		}
 	}
 }
@@ -208,8 +218,17 @@ func (scope *Scope) Copy() *Scope {
 		vars:    eval.CloneMap(scope.vars),
 		secrets: eval.CloneMap(scope.secrets),
 		ambient: eval.CloneMap(scope.ambient),
+		fromCLI: eval.CloneMap(scope.fromCLI),
 		carried: eval.CloneMap(scope.carried),
 	}
+}
+
+// FromInvocation reports whether key's value still comes from where hobnob
+// was run: a command-line argument or the OS environment, with nothing
+// written over it since. A relative path in such a value is relative to
+// HOBNOB_INVOCATION_DIR rather than to a task.
+func (scope *Scope) FromInvocation(key string) bool {
+	return scope.fromCLI[key] || scope.ambient[key]
 }
 
 // InvocationDir returns the built-in HOBNOB_INVOCATION_DIR: the directory

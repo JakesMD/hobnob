@@ -1,18 +1,20 @@
 package app
 
 import (
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
 
 func TestFindTaskfile(t *testing.T) {
+	// given taskfiles in various places, when searching from a directory,
+	// then the nearest one is found, walking up (why: hobnob works from any
+	// subdirectory of a project)
 	t.Run("given hobnob.yml in start dir, when searching, then returns it (why: nearest file wins)", func(t *testing.T) {
 		// Arrange
 		dir := t.TempDir()
 		expected := filepath.Join(dir, "hobnob.yml")
-		os.WriteFile(expected, []byte("tasks: {}"), 0644)
+		writeFile(t, expected, "tasks: {}")
 
 		// Act
 		got, err := findTaskfile(dir)
@@ -30,7 +32,7 @@ func TestFindTaskfile(t *testing.T) {
 		// Arrange
 		dir := t.TempDir()
 		expected := filepath.Join(dir, "hobnob.yaml")
-		os.WriteFile(expected, []byte("tasks: {}"), 0644)
+		writeFile(t, expected, "tasks: {}")
 
 		// Act
 		got, err := findTaskfile(dir)
@@ -48,8 +50,8 @@ func TestFindTaskfile(t *testing.T) {
 		// Arrange
 		dir := t.TempDir()
 		expected := filepath.Join(dir, "hobnob.yml")
-		os.WriteFile(expected, []byte("tasks: {}"), 0644)
-		os.WriteFile(filepath.Join(dir, "hobnob.yaml"), []byte("tasks: {}"), 0644)
+		writeFile(t, expected, "tasks: {}")
+		writeFile(t, filepath.Join(dir, "hobnob.yaml"), "tasks: {}")
 
 		// Act
 		got, err := findTaskfile(dir)
@@ -67,9 +69,9 @@ func TestFindTaskfile(t *testing.T) {
 		// Arrange
 		parent := t.TempDir()
 		expected := filepath.Join(parent, "hobnob.yml")
-		os.WriteFile(expected, []byte("tasks: {}"), 0644)
+		writeFile(t, expected, "tasks: {}")
 		child := filepath.Join(parent, "subdir")
-		os.Mkdir(child, 0755)
+		mkdirAll(t, child)
 
 		// Act
 		got, err := findTaskfile(child)
@@ -86,11 +88,11 @@ func TestFindTaskfile(t *testing.T) {
 	t.Run("given taskfile in both start dir and parent, when searching, then returns start dir file (why: nearest file takes priority)", func(t *testing.T) {
 		// Arrange
 		parent := t.TempDir()
-		os.WriteFile(filepath.Join(parent, "hobnob.yml"), []byte("tasks: {}"), 0644)
+		writeFile(t, filepath.Join(parent, "hobnob.yml"), "tasks: {}")
 		child := filepath.Join(parent, "subdir")
-		os.Mkdir(child, 0755)
+		mkdirAll(t, child)
 		expected := filepath.Join(child, "hobnob.yml")
-		os.WriteFile(expected, []byte("tasks: {}"), 0644)
+		writeFile(t, expected, "tasks: {}")
 
 		// Act
 		got, err := findTaskfile(child)
@@ -119,6 +121,9 @@ func TestFindTaskfile(t *testing.T) {
 }
 
 func TestParseTaskArgs(t *testing.T) {
+	// given CI, a terminal and flags in various mixes, when args are parsed,
+	// then prompts are off whenever nobody can answer (why: a blocked prompt
+	// hangs CI)
 	tests := []struct {
 		name          string
 		args          []string
@@ -227,6 +232,9 @@ func TestParseTaskArgs(t *testing.T) {
 // three call sites checked CI but not IsTerminal, so piped/non-terminal
 // stdin still tried to open a prompt instead of failing fast.
 func TestDefaultNoPrompts(t *testing.T) {
+	// given CI and terminal states, when checked, then prompts are off unless
+	// a human is at a real terminal (why: a blocked prompt hangs any caller
+	// that can't answer)
 	tests := []struct {
 		name       string
 		ciEnv      string
@@ -271,6 +279,9 @@ func TestDefaultNoPrompts(t *testing.T) {
 }
 
 func TestExtractFileFlag(t *testing.T) {
+	// given --file anywhere or nowhere in the args, when extracted, then its
+	// value is taken out and the rest kept (why: --file is order-independent
+	// and must not reach the task as an arg)
 	tests := []struct {
 		name     string
 		args     []string

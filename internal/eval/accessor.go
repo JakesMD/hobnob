@@ -10,7 +10,7 @@ import (
 // .A.b, .A[0], .A[.KEY], .A[1:3], .A[*], .A["quoted key"], (.A | json)[0]
 // — into a call to hobnob's own hbpath function, leaving all other bytes,
 // including text outside actions and the contents of string/rune/raw-string
-// literals, byte-identical. See DESIGN-PATH.md.
+// literals, byte-identical.
 //
 // Deliberately does not track source positions through the rewrite: a
 // malformed accessor is reported with an exact offset into the ORIGINAL
@@ -19,8 +19,7 @@ import (
 // successful rewrite (unbalanced {{, bad quoting elsewhere) reports against
 // the rewritten text instead — accepted because the bytes before the first
 // rewritten term are identical, and text/template's own error already
-// quotes the offending token. Do not retrofit a position map without
-// re-reading DESIGN-PATH.md's "Position mapping" section first.
+// quotes the offending token.
 func rewriteAccessors(src string) (string, error) {
 	var out strings.Builder
 	i := 0

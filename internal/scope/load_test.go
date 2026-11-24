@@ -27,6 +27,9 @@ func writeFiles(t *testing.T, files map[string]string) string {
 }
 
 func TestLoadAndApply(t *testing.T) {
+	// given root and module files with each layer, when loaded and applied,
+	// then every variable lands with its documented precedence (why: scope
+	// resolution is the core of what a task sees)
 	tests := []struct {
 		name    string
 		files   map[string]string

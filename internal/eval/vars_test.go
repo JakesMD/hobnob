@@ -22,8 +22,11 @@ func TestCloneMap(t *testing.T) {
 
 func TestCloneMap_NilSourceReturnsNonNil(t *testing.T) {
 	// given nil source map, when CloneMap called, then returns a non-nil empty map (why: callers write into the result unconditionally)
+	// Arrange
+	var src map[string]string
+
 	// Act
-	dst := CloneMap[string, string](nil)
+	dst := CloneMap(src)
 
 	// Assert
 	if dst == nil {

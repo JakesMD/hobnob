@@ -38,7 +38,7 @@ func waitGone(t *testing.T, pid int) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	syscall.Kill(pid, syscall.SIGKILL)
+	_ = syscall.Kill(pid, syscall.SIGKILL)
 	t.Fatalf("job %d still running after the run", pid)
 }
 

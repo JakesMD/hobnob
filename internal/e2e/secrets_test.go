@@ -2,11 +2,6 @@ package e2e
 
 import "testing"
 
-// Most secret-masking behavior is proven right next to the feature that
-// produces it — set: in set_test.go, get: in get_test.go, with: in
-// call_test.go. This file covers the masking behaviors that cut across
-// features rather than belonging to any one of them.
-
 func TestE2E_Secrets_JSONEscapedFormAlsoMasked(t *testing.T) {
 	// given a secret value containing a double quote, when it's embedded as
 	// a leaf of a set: JSON literal and the resulting object is referenced
@@ -15,7 +10,8 @@ func TestE2E_Secrets_JSONEscapedFormAlsoMasked(t *testing.T) {
 	// flowing through a JSON literal is marshaled once — its escaped text in
 	// the displayed command can differ byte-for-byte from the raw secret, and
 	// both must be caught)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -26,16 +22,22 @@ func TestE2E_Secrets_JSONEscapedFormAlsoMasked(t *testing.T) {
 		          - OBJ:
 		              token: "{{.TOKEN}}"
 		      - run: ": {{.OBJ}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, `ab"cd`)
 }
 
 func TestE2E_Secrets_AllOccurrencesInOneCommandMasked(t *testing.T) {
 	// given a secret referenced twice in the same run: command, when the
-	// command is displayed, then every occurrence is masked, not just the
-	// first
-	res := Yml(t, `
+	// command is displayed, then every occurrence is masked (why: masking
+	// only the first occurrence would still leak the secret)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -44,7 +46,12 @@ func TestE2E_Secrets_AllOccurrencesInOneCommandMasked(t *testing.T) {
 		              value: hunter2
 		              secret: true
 		      - run: ": {{.PASS}} {{.PASS}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "hunter2")
 	// Belt and braces beyond .Masked's single-absence check: confirm there
@@ -66,7 +73,8 @@ func TestE2E_Secrets_NonSecretVarWithSameValueAsUnrelatedSecretNotAssumedSafe(t 
 	// on the value stored under a secret key, not on which var name a
 	// template happens to reference (why: this is a documented tradeoff, not
 	// a bug — see runner.maskSecrets)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -76,7 +84,12 @@ func TestE2E_Secrets_NonSecretVarWithSameValueAsUnrelatedSecretNotAssumedSafe(t 
 		              secret: true
 		          - PLAIN_TWO: shared-value
 		      - run: ": {{.PLAIN_TWO}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "shared-value")
 }
@@ -86,7 +99,8 @@ func TestE2E_Secrets_CommandOutputPrintedAsIs(t *testing.T) {
 	// echoed command line is masked but the command's own output is not
 	// (why: secret: covers what hobnob displays, not what a command chooses
 	// to print — the docs promise exactly that much)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -95,7 +109,12 @@ func TestE2E_Secrets_CommandOutputPrintedAsIs(t *testing.T) {
 		              value: hunter2
 		              secret: true
 		      - run: printf 'got %s\n' "{{.TOKEN}}"
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "****", "got hunter2")
 	res.NotOut(t, `"hunter2"`)

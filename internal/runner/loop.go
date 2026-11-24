@@ -32,8 +32,6 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if err != nil {
 		return err
 	}
-	// items == nil means the source var/list resolved to empty — zero iterations
-	// is the correct semantic result (e.g. loop: .FILES where FILES is empty).
 	return execForList(execState, items, step.ForSteps, scope)
 }
 

@@ -7,10 +7,12 @@ import (
 )
 
 func TestE2E_Call_WithAndIntoRoundTrip(t *testing.T) {
-	// given a call: step that passes a var in via with: and maps one back
-	// via into:, when it completes, then the parent sees the child's result
-	// under the parent's own var name
-	res := Yml(t, `
+	// given a call: step that passes a var in via with: and maps one back via
+	// into:, when it completes, then the parent sees the child's result under
+	// the parent's own var name (why: with: and into: are the only doors
+	// between caller and callee)
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -26,18 +28,23 @@ func TestE2E_Call_WithAndIntoRoundTrip(t *testing.T) {
 		    steps:
 		      - set:
 		          - OUTPUT: "{{.MSG}}_processed"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "result=hello_processed")
 }
 
 func TestE2E_Call_IntoFilterChainOnBareKey(t *testing.T) {
 	// given a bare into: leaf with a filter chain ("KEY | filter"), when the
-	// call completes, then the chain actually applies (regression: this used
-	// to build an unbraced ".KEY | chain" template, which text/template
-	// parses as literal text with no action at all — so the filter silently
-	// never ran and the raw source string ".KEY | chain" leaked into the var)
-	res := Yml(t, `
+	// call completes, then the chain actually applies (why: regression; this
+	// used to build an unbraced ".KEY | chain" template, which text/template
+	// treats as literal text, so the raw source string leaked into the var)
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -49,15 +56,22 @@ func TestE2E_Call_IntoFilterChainOnBareKey(t *testing.T) {
 		    steps:
 		      - set:
 		          - OUTPUT: hello
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "result=HELLO")
 }
 
 func TestE2E_Call_IntoAccessorOnBareKey(t *testing.T) {
 	// given a bare into: leaf combining an accessor and a filter chain
-	// ("KEY.field | filter"), when the call completes, then both apply
-	res := Yml(t, `
+	// ("KEY.field | filter"), when the call completes, then both apply (why:
+	// into: on a call: must accept the same expressions as anywhere else)
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -69,7 +83,12 @@ func TestE2E_Call_IntoAccessorOnBareKey(t *testing.T) {
 		    steps:
 		      - set:
 		          - OUTPUT: { name: ada }
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "result=ADA")
 }
@@ -78,7 +97,8 @@ func TestE2E_Call_LaterIntoEntryTemplatesOverEarlier(t *testing.T) {
 	// given two into: entries in one call: step, when the second templates
 	// over the first, then it sees the first entry's already-mapped value
 	// (why: into: resolves top-to-bottom, same as set:)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -91,7 +111,12 @@ func TestE2E_Call_LaterIntoEntryTemplatesOverEarlier(t *testing.T) {
 		    steps:
 		      - set:
 		          - LOG_FILE: /var/log/app.log
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "path=/var/log/app.log archive=/var/log/app.log/archive")
 }
@@ -102,7 +127,8 @@ func TestE2E_Call_ScopeIsolation(t *testing.T) {
 	// the parent — everything else the child set stays sandboxed (why:
 	// Scope.Copy() before every call: means child mutations don't leak
 	// unless the caller opted in)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -115,15 +141,22 @@ func TestE2E_Call_ScopeIsolation(t *testing.T) {
 		      - set:
 		          - OUTPUT: processed
 		          - CHILD_ONLY: should-not-leak
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "result=processed leaked=no output=no")
 }
 
 func TestE2E_Call_IntoDotPrefixIsOptional(t *testing.T) {
-	// given into: written with a leading dot (".OUTPUT") vs without, when
-	// the call completes, then both resolve to the same child var
-	res := Yml(t, `
+	// given into: written with a leading dot (".OUTPUT") vs without, when the
+	// call completes, then both resolve to the same child var (why: authors
+	// write both, and neither should silently fail)
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -135,7 +168,12 @@ func TestE2E_Call_IntoDotPrefixIsOptional(t *testing.T) {
 		    steps:
 		      - set:
 		          - OUTPUT: ok
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "result=ok")
 }
@@ -145,7 +183,8 @@ func TestE2E_Call_IntoNestedObjectMixesBareAndTemplateLeaves(t *testing.T) {
 	// template leaf, when the call completes, then both resolve into a
 	// single assembled JSON var (why: into:'s nested form reuses the same
 	// dual-mode leaf grammar as the flat form, not a third one)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -161,7 +200,12 @@ func TestE2E_Call_IntoNestedObjectMixesBareAndTemplateLeaves(t *testing.T) {
 		    steps:
 		      - set:
 		          - OUTPUT: ok
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "output=ok label=log-entry")
 }
@@ -172,7 +216,8 @@ func TestE2E_Call_WithMapLiteralQuoteEscaped(t *testing.T) {
 	// escaped rather than corrupting the JSON (why: with: shares parseSetNode
 	// with set:, so it inherited — and must stay fixed for — the same
 	// marshal-after-eval discipline)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -190,7 +235,12 @@ func TestE2E_Call_WithMapLiteralQuoteEscaped(t *testing.T) {
 		    steps:
 		      - set:
 		          - RESOLVED: .CUSTOM.name
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, `he said "hi"`)
 }
@@ -201,7 +251,8 @@ func TestE2E_Call_SecretPassedThroughWithStaysMaskedUnderNewName(t *testing.T) {
 	// still masked (why: masking matches on value, not var name — with:
 	// takes no secret: flag of its own precisely because Scope.Copy() already
 	// carries the parent's secret-ness across)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -215,7 +266,12 @@ func TestE2E_Call_SecretPassedThroughWithStaysMaskedUnderNewName(t *testing.T) {
 		  child:
 		    steps:
 		      - run: ": {{.TOKEN}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "s3cr3t-value")
 }
@@ -223,8 +279,9 @@ func TestE2E_Call_SecretPassedThroughWithStaysMaskedUnderNewName(t *testing.T) {
 func TestE2E_Call_ComposedSecretThroughWithMasksOnlySecretComponent(t *testing.T) {
 	// given a with: value composing a secret and a non-secret var, when the
 	// child displays the run: command, then only the secret component is
-	// masked, keeping the rest of the line readable
-	res := Yml(t, `
+	// masked (why: the rest of the line must stay readable)
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -239,7 +296,12 @@ func TestE2E_Call_ComposedSecretThroughWithMasksOnlySecretComponent(t *testing.T
 		  child:
 		    steps:
 		      - run: "true # {{.DSN}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "postgres://admin:****@db")
 	res.NotOut(t, "hunter2")
@@ -250,7 +312,8 @@ func TestE2E_Call_ChildOnlySecretIntoLiteralLeafStaysMasked(t *testing.T) {
 	// assembles it as a leaf of a map literal and a later run: references
 	// that leaf, then it's masked (why: the caller never had the child's name
 	// for the secret, so its value must travel across with it)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -265,7 +328,12 @@ func TestE2E_Call_ChildOnlySecretIntoLiteralLeafStaysMasked(t *testing.T) {
 		          - TOKEN:
 		              value: hunter2
 		              secret: true
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "hunter2")
 }
@@ -275,7 +343,8 @@ func TestE2E_Call_ChildOnlySecretIntoAccessorLeafStaysMasked(t *testing.T) {
 	// the caller's into: reaches into it with an accessor and a later run:
 	// references the result, then it's masked (why: the object itself isn't
 	// secret, but the value pulled out of it is one)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -291,7 +360,12 @@ func TestE2E_Call_ChildOnlySecretIntoAccessorLeafStaysMasked(t *testing.T) {
 		              secret: true
 		          - CREDS:
 		              token: "{{.TOKEN}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "hunter2")
 }
@@ -301,7 +375,8 @@ func TestE2E_Call_ChildOnlySecretStaysMaskedInALaterCall(t *testing.T) {
 	// literal, when the caller then calls another task that displays it,
 	// then it's masked there too (why: a carried secret must survive the
 	// next call:'s scope copy, like a named one does)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -319,7 +394,12 @@ func TestE2E_Call_ChildOnlySecretStaysMaskedInALaterCall(t *testing.T) {
 		  _show:
 		    steps:
 		      - run: ": {{.CARD.token}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Masked(t, "hunter2")
 }
@@ -329,7 +409,8 @@ func TestE2E_Call_SecretInWithRejectedAtParseTime(t *testing.T) {
 	// rejected rather than silently ignored (why: with: doesn't need its own
 	// secret: flag — see the masking tests above — so allowing one would
 	// just be a confusing dead knob)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -341,7 +422,12 @@ func TestE2E_Call_SecretInWithRejectedAtParseTime(t *testing.T) {
 		  child:
 		    steps:
 		      - run: echo hi
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "secret")
 }
@@ -351,7 +437,8 @@ func TestE2E_Call_DirTemplateUsesWithVar(t *testing.T) {
 	// the call runs, then dir: resolves using that with: value (why: the
 	// child's scope — including with: vars — is populated before dir: is
 	// evaluated)
-	res := Run(t, Case{
+	// Arrange
+	c := Case{
 		Files: Files{
 			"hobnob.yml": `
 				tasks:
@@ -371,7 +458,12 @@ func TestE2E_Call_DirTemplateUsesWithVar(t *testing.T) {
 			"target/.keep": "",
 		},
 		Args: []string{"parent"},
-	})
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
 	res.OK(t)
 	want := filepath.Join(res.Dir, "target")
 	res.Lines(t, want, "pwd="+want)
@@ -379,9 +471,10 @@ func TestE2E_Call_DirTemplateUsesWithVar(t *testing.T) {
 
 func TestE2E_Call_SoftSwallowsOrdinaryChildFailure(t *testing.T) {
 	// given a soft: true call: step whose child fails with an ordinary
-	// command error, when executed, then the error is swallowed and
-	// execution continues past it
-	res := Yml(t, `
+	// command error, when executed, then the error is swallowed and execution
+	// continues past it (why: soft: means the same on call: as on run:)
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
@@ -391,7 +484,12 @@ func TestE2E_Call_SoftSwallowsOrdinaryChildFailure(t *testing.T) {
 		  child:
 		    steps:
 		      - run: exit 1
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "after")
 }
@@ -483,7 +581,8 @@ func TestE2E_Call_IntoUnspacedPipeAppliesFilter(t *testing.T) {
 	// around the pipe, when the call completes, then the filter applies
 	// exactly as it does with spaces (why: into: has one leaf grammar, parsed
 	// as a template pipeline rather than split on a literal " | ")
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -495,7 +594,12 @@ func TestE2E_Call_IntoUnspacedPipeAppliesFilter(t *testing.T) {
 		    steps:
 		      - set:
 		          - NAME: "  padded  "
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "out=[padded]")
 }
@@ -505,7 +609,8 @@ func TestE2E_Call_IntoMissingKeyErrors(t *testing.T) {
 	// call completes, then the run fails with "not found" rather than
 	// mapping an empty value (why: a typo in into: must not pass silently,
 	// the same strictness every accessor has)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -517,7 +622,12 @@ func TestE2E_Call_IntoMissingKeyErrors(t *testing.T) {
 		    steps:
 		      - set:
 		          - NAME: bob
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `"NAEM" not found`)
 }
@@ -527,7 +637,8 @@ func TestE2E_Call_IntoMissingKeyWithAccessorErrorsNotFound(t *testing.T) {
 	// accessor, when the call completes, then the error says "not found",
 	// not a wrong-kind "cannot index" (why: absence and wrong kind are
 	// different errors, and only absence is the data's fault)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -538,7 +649,12 @@ func TestE2E_Call_IntoMissingKeyWithAccessorErrorsNotFound(t *testing.T) {
 		    steps:
 		      - set:
 		          - NAME: bob
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `"NAEM" not found`)
 }
@@ -547,7 +663,8 @@ func TestE2E_Call_IntoMissingKeyCaughtByDefault(t *testing.T) {
 	// given a call: into: leaf naming a var the child may not set, piped
 	// through default, when the child didn't set it, then the default is
 	// mapped (why: default is the one escape hatch for absence)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -559,7 +676,12 @@ func TestE2E_Call_IntoMissingKeyCaughtByDefault(t *testing.T) {
 		    steps:
 		      - set:
 		          - NAME: bob
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "out=none")
 }
@@ -569,7 +691,8 @@ func TestE2E_Call_IntoDynamicKeyReadsCallerScope(t *testing.T) {
 	// var of the same name, then the key still resolves against the
 	// caller's scope (why: the child scope is only the leaf's source, same
 	// as the captured streams are for run: into:)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -584,7 +707,12 @@ func TestE2E_Call_IntoDynamicKeyReadsCallerScope(t *testing.T) {
 		      - set:
 		          - KEY: a
 		          - RESULT: { a: from-child-key, b: from-caller-key }
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "out=from-caller-key")
 }
@@ -594,7 +722,8 @@ func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) 
 	// leaf, when a second call hits the cache, then the cache-hit summary
 	// masks that var (why: the var is flagged secret because its value holds
 	// one, whatever the leaf's shape, not only for a bare key)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -614,7 +743,12 @@ func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) 
 		              secret: true
 		          - CREDS:
 		              token: "{{.TOKEN}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Out(t, "cached")
 	res.Masked(t, "hunter2")
@@ -625,7 +759,8 @@ func TestE2E_Call_IntoBareNamePullsSameName(t *testing.T) {
 	// then the parent gets the child's var under the same name (why: a bare
 	// name is shorthand for NAME: .NAME, the common case of pulling a
 	// prompt task's answer back unchanged)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -636,7 +771,12 @@ func TestE2E_Call_IntoBareNamePullsSameName(t *testing.T) {
 		    steps:
 		      - set:
 		          - DISK: /dev/disk4
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "disk=/dev/disk4")
 }
@@ -645,7 +785,8 @@ func TestE2E_Call_IntoBareNameMixesWithMapEntries(t *testing.T) {
 	// given an into: mixing a bare name with a NAME: expr entry, when the
 	// call completes, then both apply, top to bottom (why: a bare name is
 	// only shorthand, so it must sit anywhere a full entry can)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -660,7 +801,12 @@ func TestE2E_Call_IntoBareNameMixesWithMapEntries(t *testing.T) {
 		      - set:
 		          - DISK: /dev/disk4
 		          - INFO: { size: 32G }
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "disk=/dev/disk4 dev=/dev/disk4s1 size=32G")
 }
@@ -668,7 +814,8 @@ func TestE2E_Call_IntoBareNameMixesWithMapEntries(t *testing.T) {
 func TestE2E_Call_IntoBareNameMissingErrors(t *testing.T) {
 	// given a bare into: name the child never set, when the call completes,
 	// then the run fails with "not found" (why: same strictness as NAME: .NAME)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -678,7 +825,12 @@ func TestE2E_Call_IntoBareNameMissingErrors(t *testing.T) {
 		    steps:
 		      - set:
 		          - DISK: /dev/disk4
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, `"DSIK" not found`)
 }
@@ -687,13 +839,19 @@ func TestE2E_Call_IntoBareNameOnRunRejectedAtParseTime(t *testing.T) {
 	// given a bare name in a run: step's into:, when parsed, then it's
 	// rejected (why: a run: step has no variables to pull by name, only
 	// stdout, stderr and exit, so a bare name there is always a mistake)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  t:
 		    steps:
 		      - run: echo hi
 		        into: [OUT]
-	`, "t")
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "into:", "OUT", "call:")
 }
@@ -703,7 +861,8 @@ func TestE2E_Call_IntoCannotReadPrivateChildVar(t *testing.T) {
 	// names it, then the run fails naming it private, and | default does not
 	// catch it (why: _ marks a task's scratch vars, which a caller must not
 	// depend on)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -714,7 +873,12 @@ func TestE2E_Call_IntoCannotReadPrivateChildVar(t *testing.T) {
 		    steps:
 		      - set:
 		          - _RAW: secret-sauce
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "_RAW", "private")
 }
@@ -723,7 +887,8 @@ func TestE2E_Call_IntoBareNameCannotReadPrivateChildVar(t *testing.T) {
 	// given a bare _-prefixed name in into:, when the call completes, then
 	// the run fails naming it private (why: the shorthand must not be a way
 	// around the privacy rule)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -733,7 +898,12 @@ func TestE2E_Call_IntoBareNameCannotReadPrivateChildVar(t *testing.T) {
 		    steps:
 		      - set:
 		          - _RAW: secret-sauce
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.Fails(t)
 	res.Err(t, "_RAW", "private")
 }
@@ -743,7 +913,8 @@ func TestE2E_Call_PrivateVarsStillFlowDown(t *testing.T) {
 	// and without with:, and an into: template reads the caller's own _ var,
 	// then all of it works (why: privacy is upward only — inheritance,
 	// with: and the caller's own scope are unaffected)
-	res := Yml(t, `
+	// Arrange
+	yml := `
 		tasks:
 		  parent:
 		    steps:
@@ -760,7 +931,12 @@ func TestE2E_Call_PrivateVarsStillFlowDown(t *testing.T) {
 		    steps:
 		      - set:
 		          - MOUNT: "{{._BASE}}/{{._SUB}}"
-	`, "parent")
+	`
+
+	// Act
+	res := Yml(t, yml, "parent")
+
+	// Assert
 	res.OK(t)
 	res.Lines(t, "mount=/mnt/usb label=/mnt-label")
 }
