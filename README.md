@@ -26,8 +26,8 @@
 A task runner where prompts are steps, JSON stays data and tasks return values.
 It reads like a book, and runs like one.
 
-- **Prompts are just steps.** Ask anywhere in a task: a text box, a menu or a
-  multi-select, built from an earlier step's output.
+- **Prompts are just steps.** Ask anywhere in a task: a text box, a menu, a
+  multi-select or a file picker, built from an earlier step's output.
 - **JSON stays data.** Dot into it ten steps later, at any depth. No `jq`, no
   parsing step.
 - **Tasks return values.** Call a helper and use what it returns in the next

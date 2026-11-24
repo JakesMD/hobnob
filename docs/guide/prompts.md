@@ -82,10 +82,47 @@ tasks:
               check: "[ {{.COUNT}} -le 10 ]"
 ```
 
+## Picking a file or directory
+
+`type: file` turns the prompt into a picker that browses your files, and
+`type: dir` does the same for directories. The variable holds the full path
+of what was picked:
+
+```yaml
+tasks:
+  count-questions:
+    steps:
+      - get:
+          - QUESTIONS:
+              info: Which questions file?
+              type: file
+      - run: jq length {{.QUESTIONS}}
+```
+
+Type to narrow the list, `/` to step into a directory, ← to go back up and
+enter to pick. A path you pass yourself works too, and is turned into a full
+path the same way:
+
+```bash
+hobnob count-questions QUESTIONS=questions/history.json
+```
+
+```
+$ hobnob count-questions QUESTIONS=questions/history.json
+run: [count-questions] jq length …/questions/history.json
+[count-questions] 3
+✓ [count-questions] done
+```
+
+The picker starts in the task's working directory. Give a directory as
+`default:` to start somewhere else, or a file to have it picked already.
+With `multi: true`, tab marks each pick and enter takes them all.
+
 ## Narrowing what's offered
 
 `match:` limits what an answer can be. A menu shows only the options that
-match, and a text answer that doesn't match is asked for again:
+match, a text answer that doesn't match is asked for again, and a picker hides
+the files that don't match (directories stay, so you can still browse):
 
 ```yaml
 tasks:
@@ -104,6 +141,13 @@ tasks:
 `TAG` offers `v1.0` and `v1.5`. `BRANCH` accepts `feature/login` but not
 `main` or `feature/wip-login`.
 
+In a picker, a pattern with no `/` matches the name, as in `"*.json"`. A
+pattern with a `/` matches the end of the path, as in `"lib/*"`. Start it with
+`/` or `~/` to match the whole path, or with `./` to match from the task's
+working directory. A pattern starting with `!` hides directories too, so
+`"!.*"` hides `.git/`. In a `type: dir` picker, directories that don't match
+can still be opened but not picked.
+
 `match:` is one pattern, a list of them, or a variable holding a list
 (`match: .PATTERNS`). Each pattern can use `{{ }}`, like `"*.{{.EXT}}"`.
 
@@ -115,10 +159,11 @@ Each entry under `get:` is a variable name. On its own, as in
 | Option      | Does                                                                                   |
 | ----------- | -------------------------------------------------------------------------------------- |
 | `info:`     | The question to show.                                                                  |
-| `default:`  | The answer filled in to start with.                                                    |
-| `options:`  | Turns it into a menu. A list, or a variable holding one.                               |
-| `multi:`    | Lets the person pick several options. The answer is a list.                            |
-| `match:`    | Patterns the answer must match. A menu hides the options that don't.                   |
+| `type:`     | `file` or `dir` turns it into a picker (see [Picking a file or directory](#picking-a-file-or-directory)). `text` is the default. |
+| `default:`  | The answer filled in to start with. In a picker, a directory says where to start.      |
+| `options:`  | Turns it into a menu. A list, or a variable holding one. Not with `type:`.             |
+| `multi:`    | Lets the person pick several options or paths. The answer is a list.                   |
+| `match:`    | Patterns the answer must match. A menu or picker hides what doesn't.                   |
 | `check:`    | A shell condition the answer must pass.                                                |
 | `secret:`   | Hides the answer as it's typed and wherever hobnob prints it (see [Secrets](./secrets.md)). |
 | `optional:` | Allows no answer.                                                                      |
@@ -157,6 +202,38 @@ tells you which variable to pass.
 - **With `multi:`, each item must match on its own.**
 - **Put `get:` steps early**, so nobody waits on a slow command before
   they're asked anything.
+
+### Files and directories
+
+- **Every `type: file|dir` value is stored as a full path**, each item under
+  `multi:`. That includes a value that's already set: it is rewritten, so
+  later steps see one form.
+- **A relative path resolves by where it came from.** From a command-line
+  argument or your shell's environment, it is relative to where you ran
+  hobnob. Anywhere written in a taskfile (`vars:`, `const:`, `default:`, an
+  earlier step), it is relative to the task's working directory (`dir:`, else
+  the taskfile's directory).
+- **Paths are tidied**: `./`, `..` and a trailing `/` are dropped, and a
+  leading `~` becomes your home directory. Symbolic links are kept as given,
+  and judged by what they point to.
+- **A picker names existing paths only.** To ask for a new file, ask for a
+  `type: dir` and a text prompt for the name.
+- **A value nobody picked** (already set, or a `default:` used when prompts
+  are off) must exist, be the right kind (a file for `type: file`, a directory
+  for `type: dir`), match `match:` and pass `check:`, or the step fails naming
+  the variable. This holds with prompts on or off, and the picker never opens
+  for it.
+- **A directory as the `default:` of `type: file`** only says where to start
+  browsing. With prompts off it counts as no default.
+- **A `default:` that's missing or the wrong kind** doesn't block the picker:
+  it opens in the nearest directory that exists, with nothing picked.
+- **With `optional: true` and no answer**, esc in the picker gives no answer,
+  and the variable is set empty. An empty value never becomes the working
+  directory.
+- **A failing `check:` opens the picker again.**
+- **The picker lists hidden files** like any other. Only operating-system
+  clutter such as `.DS_Store` and `Thumbs.db` is never listed, whatever
+  `match:` says.
 
 ### Patterns in `match:`
 

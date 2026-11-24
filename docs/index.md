@@ -34,7 +34,7 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
   <div class="l-feature">
     <span class="l-icon">📝</span>
     <h3>Prompts are just steps</h3>
-    <p>Ask anywhere in a task: a text box, a menu or a multi-select, built from an earlier step's output.</p>
+    <p>Ask anywhere in a task: a text box, a menu, a multi-select or a file picker, built from an earlier step's output.</p>
   </div>
   <div class="l-feature">
     <span class="l-icon">🧬</span>
