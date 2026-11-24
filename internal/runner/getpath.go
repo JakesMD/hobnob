@@ -124,7 +124,7 @@ func acceptPath(execState execCtx, getEntry config.GetEntry, scope *scope.Scope,
 // isDirDefault reports whether a type: file entry's default names a
 // directory, which means "start browsing here" and not an answer.
 func isDirDefault(getEntry config.GetEntry, val value.Value, base string) bool {
-	if getEntry.Type != config.GetTypeFile || getEntry.Multi || val.IsEmpty() {
+	if getEntry.Type != config.GetTypeFile || val.IsEmpty() {
 		return false
 	}
 	abs, err := absPath(val.String(), base)

@@ -271,7 +271,7 @@ func TestE2E_GetPath_EachMultiItemMustMatch(t *testing.T) {
 	`
 
 	// Act
-	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", `SRCS=["sub/f.txt","sub/g.md"]`}})
+	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", `SRCS=["sub/g.md","sub/f.txt"]`}})
 
 	// Assert
 	res.Fails(t)
@@ -321,7 +321,7 @@ func TestE2E_GetPath_CheckRunsLastAndFails(t *testing.T) {
 	`
 
 	// Act
-	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", `SRCS=["sub/f.txt","sub/g.md"]`}})
+	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", `SRCS=["sub/g.md","sub/f.txt"]`}})
 
 	// Assert
 	res.Fails(t)
@@ -436,6 +436,56 @@ func TestE2E_GetPath_DirectoryDefaultOptionalIsEmptyWithPromptsOff(t *testing.T)
 		              optional: true
 		              default: sub/
 		      - run: echo conf=[{{.CONF}}]
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", "--no-input"}})
+
+	// Assert
+	res.OK(t)
+	res.Lines(t, "conf=[]")
+}
+
+func TestE2E_GetPath_MultiDirectoryDefaultIsNoAnswerWithPromptsOff(t *testing.T) {
+	// given a multi: type: file entry whose default: is a directory, when run
+	// --no-input, then it fails like the single entry does (why: a directory
+	// only says where browsing would start, however many files are wanted)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              multi: true
+		              default: sub/
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), Args: []string{"t", "--no-input"}})
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, "CONF requires input", "its default is a directory")
+}
+
+func TestE2E_GetPath_MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff(t *testing.T) {
+	// given an optional multi: type: file entry whose default: is a
+	// directory, when run --no-input, then the variable is empty (why: no
+	// default means an optional entry is left empty)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              multi: true
+		              optional: true
+		              default: sub/
+		      - run: echo conf={{.CONF}}
 	`
 
 	// Act

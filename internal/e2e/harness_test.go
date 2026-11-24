@@ -88,7 +88,7 @@
 // 68. resolve a CLI-arg path against the task dir, not the invocation dir -> get_path_test.go (CLIArgResolvesAgainstInvocationDir, ShellEnvResolvesAgainstInvocationDir)
 // 69. skip the right-kind check in the path pipeline                  -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails)
 // 70. resolve symlinks before storing a picked path                   -> get_path_test.go (SymlinkKeptAsGiven)
-// 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff)
+// 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff, MultiDirectoryDefaultIsNoAnswerWithPromptsOff, MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
 // 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
 // 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
