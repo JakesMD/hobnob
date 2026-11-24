@@ -82,6 +82,31 @@ tasks:
               check: "[ {{.COUNT}} -le 10 ]"
 ```
 
+## Narrowing what's offered
+
+`match:` limits what an answer can be. A menu shows only the options that
+match, and a text answer that doesn't match is asked for again:
+
+```yaml
+tasks:
+  release:
+    steps:
+      - get:
+          - TAG:
+              info: Which tag?
+              options: [v1.0, v1.5, v2.0, main]
+              match: "v1.*"
+          - BRANCH:
+              info: Which branch?
+              match: ["feature/*", "!feature/wip*"]
+```
+
+`TAG` offers `v1.0` and `v1.5`. `BRANCH` accepts `feature/login` but not
+`main` or `feature/wip-login`.
+
+`match:` is one pattern, a list of them, or a variable holding a list
+(`match: .PATTERNS`). Each pattern can use `{{ }}`, like `"*.{{.EXT}}"`.
+
 ## Prompt options
 
 Each entry under `get:` is a variable name. On its own, as in
@@ -93,6 +118,7 @@ Each entry under `get:` is a variable name. On its own, as in
 | `default:`  | The answer filled in to start with.                                                    |
 | `options:`  | Turns it into a menu. A list, or a variable holding one.                               |
 | `multi:`    | Lets the person pick several options. The answer is a list.                            |
+| `match:`    | Patterns the answer must match. A menu hides the options that don't.                   |
 | `check:`    | A shell condition the answer must pass.                                                |
 | `secret:`   | Hides the answer as it's typed and wherever hobnob prints it (see [Secrets](./secrets.md)). |
 | `optional:` | Allows no answer.                                                                      |
@@ -113,13 +139,33 @@ tells you which variable to pass.
 
 ## Rules
 
-- **A value that's already set still has to pass `check:`**, or the step
-  fails. When prompts are off, it must also be one of the `options:`.
+- **A value that's already set still has to pass `match:` and `check:`**, or
+  the step fails, with prompts on or off. The same goes for a `default:` used
+  when prompts are off. When prompts are off, it must also be one of the
+  `options:`.
+- **`check:` never filters.** It only judges the final answer, and with
+  `multi:` it sees the whole list. `match:` is what narrows the menu.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
   stops the task. An empty value means no picks.
 - **With `optional: true` and no answer**, the variable is set but empty
-  (`[]` with `multi:`), and `check:` is skipped.
+  (`[]` with `multi:`), and `match:` and `check:` are skipped.
+- **A menu with nothing left after `match:`** stops the task, naming the
+  variable and the patterns. With `optional: true` the variable is set empty
+  instead, without asking.
+- **With `multi:`, each item must match on its own.**
 - **Put `get:` steps early**, so nobody waits on a slow command before
   they're asked anything.
+
+### Patterns in `match:`
+
+- **A value is kept** if it matches any plain pattern (or there are none) and
+  no pattern starting with `!`. The order doesn't matter.
+- **Matching ignores case.** `*` and `?` stay within one `/`-separated part,
+  `**` crosses `/`, `[abc]` matches one of the letters, and `{yml,yaml}`
+  matches either word.
+- **Menu items and text answers are matched whole.** `feature/*` matches
+  `feature/login` but not `feature/a/b`, and `v1` doesn't match `v10`.
+- **A pattern that isn't valid**, such as `[abc`, stops the task naming the
+  variable.

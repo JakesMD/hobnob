@@ -547,6 +547,12 @@ it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
 `multi:` variable is always an Array. Parsing there isn't sniffing: `multi:`
 declares the type.
+`match:` patterns (rendered like `options:`, compiled by `internal/glob`, which
+`tui` and the picker can use without importing `eval`) narrow a menu's items
+before it is shown (nothing left fails, or is empty under `optional:`), and
+join `check:` in the closure handed to `PromptText`. A value nobody typed at a
+prompt is checked by `validateGetValue`, per item under `multi:`, before
+`check:`.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
