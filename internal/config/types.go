@@ -85,6 +85,8 @@ type GetEntry struct {
 	Info        string
 	FromList    []string
 	FromTmpl    literal.Expr
+	MatchList   []string     // match: patterns, parsed like options:
+	MatchTmpl   literal.Expr // match: as one pattern or a bare reference to a list
 	Multi       bool
 	Check       string
 	DefaultTmpl literal.Expr

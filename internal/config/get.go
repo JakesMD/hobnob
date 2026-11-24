@@ -50,6 +50,18 @@ func parseGetNode(node *yaml.Node) ([]GetEntry, error) {
 					}
 					entry.FromTmpl = tmpl
 				}
+			case "match":
+				if fieldVal.Kind == yaml.SequenceNode {
+					for _, pattern := range fieldVal.Content {
+						entry.MatchList = append(entry.MatchList, pattern.Value)
+					}
+				} else {
+					tmpl, err := literal.Single(fieldVal.Value)
+					if err != nil {
+						return nil, fmt.Errorf("get entry %q match: %w", entry.VarName, err)
+					}
+					entry.MatchTmpl = tmpl
+				}
 			case "multi":
 				entry.Multi = parseBool(fieldVal)
 			case "check":
