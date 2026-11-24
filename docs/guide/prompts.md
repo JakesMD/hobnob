@@ -160,7 +160,7 @@ Each entry under `get:` is a variable name. On its own, as in
 | ----------- | -------------------------------------------------------------------------------------- |
 | `info:`     | The question to show.                                                                  |
 | `type:`     | `file` or `dir` turns it into a picker (see [Picking a file or directory](#picking-a-file-or-directory)). `text` is the default. |
-| `default:`  | The answer filled in to start with. In a picker, a directory says where to start.      |
+| `default:`  | The answer filled in to start with. For `type: file`, a directory says where to start; for `type: dir`, a directory is the answer, already selected. |
 | `options:`  | Turns it into a menu. A list, or a variable holding one. Not with `type:`.             |
 | `multi:`    | Lets the person pick several options or paths. The answer is a list.                   |
 | `match:`    | Patterns the answer must match. A menu or picker hides what doesn't.                   |
@@ -232,8 +232,10 @@ tells you which variable to pass.
   directory.
 - **A failing `check:` opens the picker again.**
 - **The picker lists hidden files** like any other. Only operating-system
-  clutter such as `.DS_Store` and `Thumbs.db` is never listed, whatever
-  `match:` says.
+  clutter is never listed, whatever `match:` says: `.DS_Store`, `._*`,
+  `.Spotlight-V100`, `.Trashes`, `.fseventsd`, `.TemporaryItems`, `Icon\r`,
+  `Thumbs.db`, `desktop.ini`, `$RECYCLE.BIN` and `System Volume Information`.
+  Names are compared ignoring case.
 
 ### Patterns in `match:`
 

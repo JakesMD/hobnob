@@ -353,7 +353,7 @@ Masking covers only text hobnob renders itself. A `run:` process's own
 stdout and stderr reach the terminal unmasked; `secret:` promises nothing
 about what a command chooses to print.
 
-`Copy()` deep-copies all four maps: every `call:` gets an isolated sandbox.
+`Copy()` deep-copies all five maps: every `call:` gets an isolated sandbox.
 
 **`Load(ctx, cfg, cliVars, invocationDir)`** returns the root `*Scope` and
 `FileScopes`. The private `resolve` holds the one copy of the
@@ -557,8 +557,9 @@ it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
 `multi:` variable is always an Array. Parsing there isn't sniffing: `multi:`
 declares the type.
-`match:` patterns (rendered like `options:`, compiled by `internal/glob`, which
-`tui` and the picker can use without importing `eval`) narrow a menu's items
+`match:` patterns (rendered like `options:`, compiled by `internal/glob`; `tui` never
+imports it, and for a `type: file|dir` picker the runner builds the
+`Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
 before it is shown (nothing left fails, or is empty under `optional:`), and
 join `check:` in the closure handed to `PromptText`. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before

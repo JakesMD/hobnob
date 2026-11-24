@@ -1,7 +1,7 @@
 // Package glob is the matcher behind a get: entry's match:. It knows nothing
 // of prompts or the picker: a Matcher answers "does this text, or this path,
-// pass the patterns?", and the picker can hand Path to its listing as a
-// predicate.
+// pass the patterns?". The runner wraps Included and Excluded as the
+// predicates it gives the picker, which never imports this package.
 //
 // A value passes if it matches any plain pattern (or there are none) and no
 // "!" pattern. Matching is case-insensitive; * and ? stop at "/", ** crosses
