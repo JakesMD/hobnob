@@ -746,9 +746,10 @@ the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` s
 started and whether it is held (`quiet:`), each line of a command's output
 (`RunLog.Tap`, wrapped around the step's destination writers in `execRun`, so
 `--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
-and ANSI-stripped), each variable line, and the run ending (`RunSucceeded`,
+and ANSI-stripped; an unfinished last line is flushed when the step's output
+ends), each variable line, and the run ending (`RunSucceeded`,
 `RunFailed`, `RunCancelled`, called by `app`; `RunFailed` carries the first
-failed step's task and reason). Terminal output is unchanged.
+failed step's task and reason, except that a soft-failed step is forgiven). Terminal output is unchanged.
 
 **State and snapshots.** `web.state` turns those events into a `Snapshot`
 (`snapshot.go`): the screen (progress, done or failed), the task, the rail
