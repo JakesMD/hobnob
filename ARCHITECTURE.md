@@ -780,8 +780,12 @@ as in the terminal); a refusal is stored in the open prompt and comes back in
 the next snapshot, an accepted answer adds a rail answer (masked for
 `secret:`) and releases the caller. A secret's default never reaches the page
 (`hasDefault` says there is one). Context cancellation returns `ctx.Err()`,
-which `tui.IsInterrupted` counts as an interrupt. Menus and pickers add a
-`Kind`, fields and a `judge`; they are not in the page yet and `browserPrompts`
+which `tui.IsInterrupted` counts as an interrupt. A menu
+(`prompt_menu.go`, `PromptSelect`) is the same `ask` with `KindMenu`, its
+`Options`, `Multi` and `Defaults`, and a `judge` that reads a string (one
+choice) or a list (`multi:`), refuses anything not offered, and runs the
+runner's `check:` closure on the chosen value or list. Pickers add their own
+`Kind`, fields and `judge`; they are not in the page yet and `browserPrompts`
 refuses them.
 
 **Requests.** Every request must carry the token (constant-time compare).

@@ -33,6 +33,11 @@ type Prompt struct {
 	Optional   bool   `json:"optional,omitempty"`
 	// Refusal is why the last answer was refused, empty when none was.
 	Refusal string `json:"refusal,omitempty"`
+	// Options, Multi and Defaults belong to a menu: what it offers, whether
+	// several may be chosen, and the options ticked to start with.
+	Options  []string `json:"options,omitempty"`
+	Multi    bool     `json:"multi,omitempty"`
+	Defaults []string `json:"defaults,omitempty"`
 }
 
 // judge decides an answer's JSON value: a non-empty refusal keeps the prompt

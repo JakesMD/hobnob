@@ -73,6 +73,16 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .field { width: 100%; max-width: 560px; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--t1); }
 .field:focus { outline: 2px solid var(--brand-2); border-color: transparent; }
 .refusal { margin-top: 10px; color: var(--red); font-size: 14px; }
+.search.menu { max-width: 360px; border-radius: 999px; margin-bottom: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); text-align: left; transition: border-color .15s, background .15s; }
+.card:hover { border-color: var(--border); background: var(--bg-soft); }
+.card.on { border-color: var(--brand-2); background: var(--brand-soft); }
+.card .dot, .card .box { width: 18px; height: 18px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 12px; color: var(--btn-text); }
+.card .dot { border-radius: 50%; }
+.card .box { border-radius: 5px; }
+.card.on .dot { border-color: var(--brand-1); background: radial-gradient(var(--brand-1) 40%, transparent 45%); }
+.card.on .box { border-color: var(--brand-1); background: var(--brand-1); }
 .actions { display: flex; gap: 10px; }
 .solo { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--t2); }
 </style>
@@ -155,8 +165,47 @@ function tasks(s) {
 
 let draft = { id: null, text: '', touched: false };
 
+let menuDraft = { id: null, picks: [], filter: '' };
+
+function menu(s) {
+  const p = s.prompt;
+  if (menuDraft.id !== p.id) menuDraft = { id: p.id, picks: p.multi ? [...(p.defaults || [])] : (p.hasDefault ? [p.default] : []), filter: '' };
+  const cards = el('div', { class: 'cards', role: p.multi ? 'group' : 'radiogroup' });
+  const count = el('span', { class: 'note', id: 'count' });
+  const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
+  const fill = () => {
+    const needle = menuDraft.filter.trim().toLowerCase();
+    const shown = p.options.filter(o => o.toLowerCase().includes(needle));
+    cards.replaceChildren(...(shown.length ? shown.map(o => {
+      const on = menuDraft.picks.includes(o);
+      return el('button', { class: 'card' + (on ? ' on' : ''), role: p.multi ? 'checkbox' : 'radio', 'aria-checked': String(on),
+        onclick: () => {
+          if (!p.multi) menuDraft.picks = [o];
+          else menuDraft.picks = menuDraft.picks.includes(o) ? menuDraft.picks.filter(x => x !== o) : [...menuDraft.picks, o];
+          fill();
+        } }, el('span', { class: p.multi ? 'box' : 'dot' }, p.multi && on ? '✓' : ''), o);
+    }) : [el('div', { class: 'empty' }, 'No options match.')]));
+    count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
+  };
+  fill();
+  const body = [el('h1', {}, p.info || p.varName)];
+  if (p.options.length > 6) {
+    const search = el('input', { class: 'search menu', type: 'search', placeholder: 'Search', 'aria-label': 'Search options', autocomplete: 'off' });
+    search.value = menuDraft.filter;
+    search.addEventListener('input', () => { menuDraft.filter = search.value; fill(); });
+    body.push(search);
+    setTimeout(() => search.focus(), 0);
+  }
+  body.push(cards, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null);
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
+}
+
 function ask(s) {
   const p = s.prompt;
+  if (p.kind === 'menu') return menu(s);
   if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
   const send = () => post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text });
   const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',

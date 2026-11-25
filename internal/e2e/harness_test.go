@@ -212,6 +212,10 @@
 // 187. drop the isOpen re-check once web.state.answer holds the prompt's busy lock -> web_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
 // 188. treat an untouched secret default as a skip in web.state.PromptText -> web_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
 // 189. drop the required-answer refusal in web.state.PromptText            -> web_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
+// 190. drop the check: judgement from web.state.PromptSelect's judge   -> web_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
+// 191. take every option a multi menu is answered with, offered or not, in web.menuPicks -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 192. drop the multi menu's ticked defaults from web.state.PromptSelect -> web_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
+// 193. let a required multi menu go through with nothing ticked in web.state.PromptSelect -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
 package e2e
 
 import (

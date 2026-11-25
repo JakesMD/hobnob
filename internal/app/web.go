@@ -15,15 +15,12 @@ import (
 	"hobnob/internal/web"
 )
 
-// browserPrompts is what a --web run asks its answers through. Menus and
-// pickers aren't in the page yet.
+// browserPrompts is what a --web run asks its answers through. Pickers
+// aren't in the page yet.
 func browserPrompts(server *web.Server) runner.Prompts {
 	return runner.Prompts{
-		Text: server.PromptText,
-		Select: func(context.Context, string, string, []string, bool, string, string, bool, bool,
-			func(value.Value) (bool, error), string) (value.Value, error) {
-			return value.Value{}, errNotInBrowser
-		},
+		Text:   server.PromptText,
+		Select: server.PromptSelect,
 		Path: func(context.Context, tui.PathPrompt, string, bool) (value.Value, bool, error) {
 			return value.Value{}, false, errNotInBrowser
 		},

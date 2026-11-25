@@ -67,8 +67,18 @@ by the entry's `info:` (its variable name without one). A secret shows masked.
 A prompt skipped, or settled by a `KEY=VALUE` preset, has no entry; presets
 skip their prompts as in the terminal.
 
-There are no admin prompts in browser mode, and menus and pickers aren't
-supported on the page yet.
+A [menu](./prompts.md) (`options:`) shows its options as cards you click: radio
+cards for one choice, checkbox cards under `multi:`. With more than six options a
+search box filters the cards. The `default:` starts chosen; under `multi:` it is
+a JSON list, or one option, and those options start ticked, with a running count
+in the bottom bar. A required menu needs a choice (at least one under `multi:`),
+and `check:` judges the choice, or the whole list under `multi:`, as in the
+terminal; a refusal shows under the cards. Continue on an untouched menu takes
+its default. **Skip**, or Continue with nothing ticked on an optional `multi:`
+menu, gives no answer.
+
+There are no admin prompts in browser mode, and pickers aren't supported on the
+page yet.
 
 ## How a run ends
 
