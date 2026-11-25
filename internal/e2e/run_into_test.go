@@ -287,7 +287,7 @@ func TestE2E_Run_EnvVarNotInScopeStillVisible(t *testing.T) {
 
 func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 	// given a run: step whose if: evaluates false, when executed, then the
-	// command doesn't run and a skip line explains why (why: a silently
+	// command doesn't run and a skip line names it (why: a silently
 	// skipped step looks like a bug)
 	// Arrange
 	yml := `
@@ -303,8 +303,8 @@ func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "run:", "[t]", "skipped")
-	res.NotOut(t, "should-not-run")
+	res.Out(t, "t ⊘ echo should-not-run\n")
+	res.NotOut(t, "t $", "t │")
 }
 
 func TestE2E_Run_SoftSwallowsFailure(t *testing.T) {

@@ -45,7 +45,7 @@
 // 30. narrow eval.IsBareRef back to ^\.[A-Z][A-Z0-9_]*$               -> accessor_test.go (BraceFreeOptionsForm, BraceFreeDirForm)
 //
 // 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
-// 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
+// 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorIsMasked)
 // 33. return an empty value for an unset name in config.CallSource   -> call_test.go (IntoMissingKeyErrors)
 //
 // 34. drop signalGroupTerm from stopLeftovers                       -> run_background_test.go (JobGetsSigtermWhenHobnobExitsAndItsOutputIsKept)
@@ -101,6 +101,11 @@
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
 // 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
 // 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
+// 84. print no call line in runner.execCall                          -> log_lines_test.go (CallPrintsTheCallLine, CallToASkippedTaskPrintsTheCallThenTheSkip)
+// 85. skip DoneEarlier on a once: cache hit                          -> log_lines_test.go (CallToAnAlreadyRunOnceTaskIsDoneEarlier)
+// 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
+// 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
+// 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
 package e2e
 
 import (

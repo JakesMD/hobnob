@@ -15,6 +15,19 @@ import (
 	"hobnob/internal/value"
 )
 
+// skippedRunText is the command a skipped run: step would have run, for the
+// skip line; "skipped" when it can't be rendered.
+func skippedRunText(step config.Step, scope *scope.Scope) string {
+	if !step.Argv.IsZero() {
+		if argv, err := step.Argv.Resolve(scope.Vars()); err == nil && len(argv) > 0 {
+			return scope.Mask(displayArgv(argv))
+		}
+	} else if cmd, err := step.Command.Text(scope.Vars()); err == nil {
+		return scope.Mask(cmd)
+	}
+	return "skipped"
+}
+
 func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var shellCmd *osExec.Cmd
 	var displayCmd string
@@ -46,14 +59,22 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	}
 
 	displayCmd = scope.Mask(displayCmd)
-	execState.log.Run(execState.task, displayCmd, displayDir)
+	var notes []string
+	if displayDir != "" {
+		notes = append(notes, "in "+strings.TrimSuffix(displayDir, "/")+"/")
+	}
 	if step.Quiet {
 		quietMsg, err := step.QuietMsg.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("quiet template: %w", err)
 		}
-		execState.log.Note(execState.task, scope.Mask(quietMsg))
+		hint := "output hidden"
+		if msg := scope.Mask(quietMsg); msg != "" {
+			hint = msg + "… (" + hint + ")"
+		}
+		notes = append(notes, hint)
 	}
+	execState.log.Run(execState.task, displayCmd, notes...)
 	stdoutLineWriter, stderrLineWriter := execState.log.Output(execState.task)
 	// setProcAttr (unix) puts the child in its own process group so
 	// cancelFunc can signal the whole group — otherwise SIGTERM only reaches

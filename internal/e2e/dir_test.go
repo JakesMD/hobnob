@@ -238,5 +238,5 @@ func TestE2E_Dir_DisplayLineShowsRelativeDirWhenOverridden(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "(dir: ./sub)")
+	res.Out(t, "t $ echo hi # in ./sub/")
 }
