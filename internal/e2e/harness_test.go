@@ -21,7 +21,7 @@
 // 10. make a later env: entry lose to an earlier one                 -> env_test.go
 // 11. resolve relative dir: against cwd instead of TaskfileDir       -> dir_test.go
 // 12. make value.Capture always return a String                     -> values_test.go
-// 13. swallow the check: re-prompt loop in get.go                    -> get_test.go
+// 13. drop the check: validator handed to the select prompt in get.go -> get_test.go (InteractiveSelectRepromptsUntilCheckPasses)
 // 14. make step-level dir: lose to task-level                        -> dir_test.go
 // 15. drop the missing-env-file warning in scope/envfiles.go         -> env_test.go stderr
 //
@@ -96,7 +96,7 @@
 // 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
 // 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
 // 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
-// 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
+// 79. print a secret value in full in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom, secret cases)
 // 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
 // 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
@@ -506,29 +506,37 @@ func (s *promptState) text(ctx context.Context, info, varName string, validate f
 	return "", errors.New("unreachable")
 }
 
-// sel implements runner.SelectPromptFunc. Each call consumes the next
-// not-yet-used answer for varName; internal/runner's own check:/re-prompt
-// loop (promptSelectUntilValid) is what drives repeat calls, not this func.
-func (s *promptState) sel(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (value.Value, error) {
+// sel implements runner.SelectPromptFunc. Like text it consumes answers for
+// varName until one satisfies validate, as the real menu stays open until
+// its check passes. An empty answer on an optional menu is the escape key.
+func (s *promptState) sel(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret, optional bool, validate func(value.Value) (bool, error), checkDesc string) (value.Value, error) {
 	s.t.Helper()
 	answers := s.answers[varName]
-	idx := s.selIdx[varName]
-	if idx >= len(answers) {
-		s.t.Fatalf("unexpected select prompt for %q (task %q, visit %d) — only %d answer(s) provided", varName, task, idx+1, len(answers))
-	}
-	raw := answers[idx]
-	s.selIdx[varName] = idx + 1
-	s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Items: items, Multi: multi, Secret: secret, Task: task})
-	if multi {
-		parts := []any{}
-		if raw != "" {
-			for _, p := range strings.Split(raw, ",") {
-				parts = append(parts, p)
+	for i := s.selIdx[varName]; i < len(answers); i++ {
+		raw := answers[i]
+		var val value.Value
+		if multi {
+			parts := []any{}
+			if raw != "" {
+				for _, p := range strings.Split(raw, ",") {
+					parts = append(parts, p)
+				}
+			}
+			val = value.Of(parts)
+		} else {
+			val = value.Str(raw)
+		}
+		if validate != nil && !(optional && val.IsEmpty()) {
+			if ok, _ := validate(val); !ok {
+				continue
 			}
 		}
-		return value.Of(parts), nil
+		s.selIdx[varName] = i + 1
+		s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Items: items, Multi: multi, Secret: secret, Optional: optional, Task: task})
+		return val, nil
 	}
-	return value.Str(raw), nil
+	s.t.Fatalf("unexpected select prompt for %q (task %q) - none of the %d answer(s) left satisfied check: %q, or none were provided", varName, task, len(answers)-s.selIdx[varName], checkDesc)
+	return value.Value{}, errors.New("unreachable")
 }
 
 // path implements runner.PathPromptFunc. Each call consumes the next

@@ -136,9 +136,10 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 			}
 			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
 		}
-		val, err = promptSelectUntilValid(execState, getEntry, fromItems, info, defaultVal, scope.Vars())
+		val, err = promptSelectFn(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret,
+			getEntry.Optional, selectValidator(execState.ctx, getEntry, scope.Vars()), getEntry.Check)
 		if err != nil {
-			return err
+			return wrapPromptErr(getEntry.VarName, err)
 		}
 	} else {
 		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
@@ -247,26 +248,15 @@ func checkValidator(ctx context.Context, getEntry config.GetEntry, vars map[stri
 	}
 }
 
-// promptSelectUntilValid re-prompts the select menu until the chosen value
-// passes getEntry.Check (or there's no check to pass). Errors come back ready
-// to return: a prompt failure through wrapPromptErr, a check failure with its
-// own context — wrapping again at the call site would double the "get X:" prefix.
-func promptSelectUntilValid(execState execCtx, getEntry config.GetEntry, fromItems []string, info, defaultVal string, vars map[string]value.Value) (value.Value, error) {
-	for {
-		val, err := promptSelectFn(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret)
-		if err != nil {
-			return value.Value{}, wrapPromptErr(getEntry.VarName, err)
-		}
-		if getEntry.Check == "" || (getEntry.Optional && val.IsEmpty()) {
-			return val, nil
-		}
-		ok, err := eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, vars, getEntry.VarName, val)
-		if err != nil {
-			return value.Value{}, fmt.Errorf("get %s check: %w", getEntry.VarName, err)
-		}
-		if ok {
-			return val, nil
-		}
+// selectValidator returns the check: judge handed to tui.PromptSelect, or nil
+// when there is no check. The prompt shows its refusal in place, so it never
+// reopens.
+func selectValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value) func(value.Value) (bool, error) {
+	if getEntry.Check == "" {
+		return nil
+	}
+	return func(candidate value.Value) (bool, error) {
+		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, candidate)
 	}
 }
 

@@ -51,9 +51,13 @@ func (c card) outerWidth() int {
 	return min(width, cardMaxWidth)
 }
 
+func (c card) innerWidth() int {
+	return c.outerWidth() - sideBorders - 2*cardPadding
+}
+
 func (c card) render() string {
 	outer := c.outerWidth()
-	inner := outer - sideBorders - 2*cardPadding
+	inner := c.innerWidth()
 
 	var content []string
 	if c.info != "" {
