@@ -50,6 +50,7 @@ func PrintUsage(out io.Writer, version string) {
 		{"--select", "Interactively select a task to run"},
 		{"--help", "Show this help"},
 		{"--no-input", "Skip interactive prompts; fail if a required variable is missing"},
+		{"--quiet, -q", "Print only each command and each task's end (or set HOBNOB_QUIET=1)"},
 		{"--version", "Print version and exit"},
 		{"--upgrade", "Upgrade hobnob to the latest release"},
 	} {

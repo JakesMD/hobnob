@@ -123,8 +123,9 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var stdoutDest, stderrDest io.Writer
+	holdOutput := step.Quiet || execState.log.Quiet()
 	switch {
-	case step.Quiet:
+	case holdOutput:
 		// Buffered only — never teed to the LineWriters live. On failure,
 		// below, the buffers are replayed through them so a hidden step
 		// never fails silently.
@@ -169,7 +170,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	// shows under the step's prefix, but goes into neither into: nor a quiet
 	// step's buffers.
 	var lateStdout, lateStderr io.Writer = stdoutLineWriter, stderrLineWriter
-	if step.Quiet {
+	if holdOutput {
 		lateStdout, lateStderr = io.Discard, io.Discard
 	}
 	kept := &leftover{reap: shellCmd.Wait, pipes: pipes, flush: func() {
@@ -206,7 +207,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	}
 
 	pipes.withLock(func() {
-		if step.Quiet && waitErr != nil {
+		if holdOutput && waitErr != nil {
 			stdoutLineWriter.Write(stdoutBuf.Bytes())
 			stderrLineWriter.Write(stderrBuf.Bytes())
 		}

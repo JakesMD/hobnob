@@ -222,8 +222,8 @@ tells you which variable to pass.
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
   stops the task. An empty value means no picks.
 - **Every `get:` value is logged** as `deploy » ENV=prod`. A value nobody
-  typed carries a grey note, `# from the command line` or `# from the
-  environment`, and a `secret:` shows `****`. An optional entry with no answer
+  typed carries a grey note, `# from the command line`, `# from the
+  environment` or, with `--no-input`, `# default`, and a `secret:` shows `****`. An optional entry with no answer
   logs `deploy ⊘ REPLICAS` instead, for every kind of prompt.
 - **With `optional: true` and no answer**, the variable is set but empty
   (`[]` with `multi:`), and `match:` and `check:` are skipped.

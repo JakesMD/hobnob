@@ -134,6 +134,13 @@
 // 112. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
 // 113. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
 // 114. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
+// 115. skip the "!" line for a failed soft call: in runner.executeSteps -> log_ends_test.go (SoftCallThatFailsEndsTheCallingStepWithABang)
+// 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
+// 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
+// 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 120. drop the HOBNOB_QUIET=1 check in app.Run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
+// 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
 package e2e
 
 import (

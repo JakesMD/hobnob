@@ -445,7 +445,8 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
 4. Every failure is logged once, where it happens. `execRun` ends its step with
    `StepDone`, `StepFailed` or `StepSoftFailed`; an error from anywhere else
    (a template, a missing task) is logged by `executeSteps` as a time-less
-   `StepError`. Either way the error is wrapped as `reportedError`, which
+   `StepError`; a soft `call:` whose callee failed gets a `StepSoftFailed`
+   `→ callee: failed` line there too. Either way the error is wrapped as `reportedError`, which
    `runner.Reported` detects, so `app` prints nothing more for it. A step that
    can't start reads `task ✗ <step as written>: <why>` (`stepMessage`); template
    noise is stripped where it arises (`eval.plainTemplateError`). Errors before

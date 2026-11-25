@@ -135,3 +135,30 @@ func TestE2E_Log_InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped(t *testi
 	res.streamMatches(t, "stdout", res.Stdout, `(?m)^top → leaf\nleaf ! stopping, ctrl\+c again to force\n$`)
 	res.streamMatches(t, "stderr", res.Stderr, `(?m)^leaf ✗ stopped after `+secs+`\ntop ✗ stopped after `+secs+`\n$`)
 }
+
+func TestE2E_Log_SoftCallThatFailsEndsTheCallingStepWithABang(t *testing.T) {
+	// given a soft: true call: whose callee fails, when executed, then the
+	// callee's end lines come first, then the caller's step ends with "!" and
+	// the task counts it (why: a soft call failing must not pass silently)
+	// Arrange
+	yml := `
+		tasks:
+		  deploy:
+		    steps:
+		      - call: lint
+		        soft: true
+		      - run: echo after
+		  lint:
+		    steps:
+		      - run: exit 1
+	`
+
+	// Act
+	res := Yml(t, yml, "deploy")
+
+	// Assert
+	res.OK(t)
+	res.streamMatches(t, "stderr", res.Stderr, `lint ✗ failed after `+secs+`\n`)
+	res.streamMatches(t, "stdout", res.Stdout, `deploy ! `+secs+` → lint: failed\ndeploy \$ echo after\n`)
+	res.streamMatches(t, "stdout", res.Stdout, `deploy ✓ done after `+secs+` • 1 soft failure\n$`)
+}
