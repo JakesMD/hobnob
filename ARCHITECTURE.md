@@ -626,7 +626,7 @@ second CTRL+C never hits a reused PID.
 person watches: `app` gives it `App.Screen()`, which is `tui.StdoutScreen`
 (nil unless stdout is a terminal). `RunLog.PTYSize` then gives a step's PTY
 the screen's width less the output prefix and its height less the two rows
-the status line (#61) will take; piped, it reports no size and `execRun` asks
+the status line takes; piped, it reports no size and `execRun` asks
 `attachPipes` for pipes alone. `stepio_unix.go`'s `newPTYPipe` makes a PTY
 whose slave is stdout's write end and whose master, non-blocking like a pipe's
 read end, goes through the same copy, `handoff` and leftover code. stderr is
@@ -660,6 +660,22 @@ traps SIGINT. The forwarder polls, so it never holds a read that would
 swallow the next prompt's keys. The terminal is restored when the shell exits
 (`stop`, deferred in `execRun` too) and by `RestoreTerminal`, which `main.go`
 calls before the forced exit.
+
+**The status line (`tui/live.go`).** When watched, `RunLog.Watch` makes a
+`liveArea` and routes every write to the terminal through it: hobnob's own
+lines (`lineSink`, whole lines) and the command's output (`liveWriter`, from
+the `LineWriter`s). The area is the command's unfinished line, a blank row and
+the rule, erased and redrawn in one write on each line and on a 100ms clock;
+lines above it are only ever appended. `Enter` of the outermost task starts
+it, its `leave` ends it; `Run` starts the step clock and each step-end method
+stops it; `Stopping` puts the note on the rule's left; `RunLog.Pause` (around
+each card prompt in `get.go`, `getpath.go`) clears it. A chunk with a cursor
+movement hides the area until the step ends, and an unfinished line unchanged
+for 200ms is a prompt: the rule is drawn once below it, its clock frozen,
+and the answer's echo (the stdin PTY's) continues the prompt's line. Unwatched,
+none of this exists, so pipes get plain lines. `internal/termsim` replays the
+stream onto a grid for tests; with a `Screen`, the e2e harness's `Stdout` is that
+grid and `Raw` the bytes.
 
 **Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
 copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block
