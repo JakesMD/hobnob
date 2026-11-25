@@ -9,9 +9,9 @@ tasks:
       - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1"
 ```
 
-What the command prints shows as it runs. If the command fails, the task
-stops there (see [Errors](./errors.md) to carry on instead). To keep what it
-printed in a variable, see [Capturing output](./capturing-output.md).
+If the command fails, the task stops there (see [Errors](./errors.md) to carry
+on instead). To keep what it printed in a variable, see
+[Capturing output](./capturing-output.md).
 
 ## Two ways to write a command
 
@@ -118,7 +118,7 @@ what went wrong.
 
 A command can start a job in the background with `&`, such as a server or an
 app you want open while the task goes on. The job keeps running while later
-steps run, and what it prints still shows under the task's name. When hobnob
+steps run. When hobnob
 finishes, it stops the job.
 
 ```yaml

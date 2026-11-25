@@ -24,12 +24,6 @@ ask-trivia ✓ 0.0s
 ask-trivia ✓ done after 0.0s
 ```
 
-hobnob prints each command on a `task $` line before running it, then what
-the command prints on `task │` lines, then ends the step with its own line, `task ✓ 1.6s`, and the task with
-`task ✓ done after 1.6s`. A command
-of several lines continues under its first, and a `dir:` or `quiet:` shows as a
-grey `# …` note after the command.
-
 ## Describing a task
 
 `info:` is a one-line description. hobnob shows it beside the task's name in
