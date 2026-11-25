@@ -5,6 +5,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -43,6 +44,7 @@ type LineWriter struct {
 	width    func() int       // watched: the terminal's width; 0 means no wrapping
 	now      func() time.Time // watched: the clock for drawIdle
 	col      int              // watched: visible width of the open line's text
+	restart  atomic.Bool      // Restart was called since col was last set
 	drawing  bool             // watched: a tool is drawing its own display
 	lastMove time.Time        // watched: when the tool last moved the cursor
 
@@ -63,6 +65,9 @@ func (writer *LineWriter) Watch(width func() int) {
 func (writer *LineWriter) Write(p []byte) (int, error) {
 	total := len(p)
 	defer writer.send()
+	if writer.restart.Swap(false) {
+		writer.col = 0
+	}
 	if !writer.watched {
 		writer.lines(p)
 		return total, nil
@@ -168,8 +173,9 @@ func (writer *LineWriter) newline() {
 }
 
 // Restart tells the writer its open line was ended behind its back: wrapping
-// starts again from the line's first column.
-func (writer *LineWriter) Restart() { writer.col = 0 }
+// starts again from the line's first column. It may be called from another
+// goroutine, so it only flags; the next Write resets col.
+func (writer *LineWriter) Restart() { writer.restart.Store(true) }
 
 // Flush ends a partial line. Errors from out are discarded: a failing
 // terminal stream leaves nothing useful to do about it.

@@ -359,3 +359,35 @@ func TestLiveStatusLineNeverReachesAPipe(t *testing.T) {
 		t.Errorf("piped output has live-area furniture: %q", out.String())
 	}
 }
+
+func TestLiveRestartingTheOtherStreamsWriterIsRaceFree(t *testing.T) {
+	// given stdout and stderr writers on two goroutines, when hobnob's own
+	// lines end the open line so stderr's next write restarts stdout's writer,
+	// then nothing races (why: Restart reached into the other stream's wrap
+	// column while it was being written; run under -race)
+
+	// Arrange
+	rig := newLiveRig(t, 40)
+	rig.log.Enter("t")
+	rig.log.Run("t", "tool")
+	stdout, stderr := rig.log.Output("t")
+	done := make(chan struct{})
+
+	// Act
+	go func() {
+		defer close(done)
+		for range 300 {
+			stdout.Write([]byte("aaaa"))
+		}
+	}()
+	for range 300 {
+		rig.log.Var("t", "X", "1", "")
+		stderr.Write([]byte("b"))
+	}
+	<-done
+
+	// Assert
+	if rig.out.Len() == 0 {
+		t.Error("nothing was written")
+	}
+}
