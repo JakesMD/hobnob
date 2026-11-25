@@ -87,7 +87,16 @@ func TestPrintHelp(t *testing.T) {
 
 	// Assert
 	output := buf.String()
+	if strings.Index(output, "Tasks\n") < strings.Index(output, "Docs\n") {
+		t.Errorf("tasks should come last\n%s", output)
+	}
 	for _, want := range []string{
+		"Usage\n",
+		"hobnob [--file <path>] --list | --select | --help",
+		"hobnob --demo | --version | --upgrade",
+		"Flags\n",
+		"Docs\n",
+		"Tasks\n",
 		"--file",
 		"--list",
 		"--help",
@@ -95,7 +104,7 @@ func TestPrintHelp(t *testing.T) {
 		"--version",
 		"hobnob v2.0.0",
 		"https://jakesmd.github.io/hobnob/docs/guide/",
-		"adopt",
+		"  adopt",
 	} {
 		if !strings.Contains(output, want) {
 			t.Errorf("output missing %q\ngot:\n%s", want, output)

@@ -2,8 +2,6 @@ package tui
 
 import (
 	"errors"
-	"fmt"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -19,11 +17,15 @@ func IsInterrupted(err error) bool {
 var (
 	SLabel   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	SInfo    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	SBold    = lipgloss.NewStyle().Bold(true)
 	SArrow   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
 	SChecked = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	SError   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	SHint    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	SStep    = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
+
+	colorBorder      = lipgloss.Color("8")
+	colorBorderError = lipgloss.Color("9")
 
 	sPathMatch = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
 	sPathDir   = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
@@ -46,62 +48,14 @@ func TaskStyle(task string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(TaskPalette[checksum%len(TaskPalette)])
 }
 
-func TaskPrefix(task string) string {
-	return "[" + TaskStyle(task).Render(task) + "] "
+// lead is the start of every log line: the task in its colour, then the
+// mark that says what the line is, then a space. mark is rendered by the
+// caller, so a line that carries its own colour (a grey │, a green ✓) keeps it.
+func lead(task, mark string) string {
+	return TaskStyle(task).Render(task) + " " + mark + " "
 }
 
-func printGetLine(task, varName, displayVal string) {
-	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(varName+": "+displayVal))
-}
-
-func SkipLine(task string) string {
-	return SInfo.Render("⊘") + " " + TaskPrefix(task) + SInfo.Render("skipped")
-}
-
-func RunSkipLine(task string) string {
-	return SStep.Render("run:") + " " + TaskPrefix(task) + SInfo.Render("skipped (if: false)")
-}
-
-// RunQuietLine reports a quiet: run: step's suppressed output in its place —
-// otherwise a hidden step reads as if nothing happened. msg is the rendered
-// quiet: message; empty when the step used the bare quiet: true form.
-func RunQuietLine(task, msg string) string {
-	hint := "output hidden"
-	if msg != "" {
-		hint = msg + "… (" + hint + ")"
-	}
-	return SInfo.Render("⊙") + " " + TaskPrefix(task) + SInfo.Render(hint)
-}
-
-// CallCacheHitLine reports a call: step to a once: true task reusing its
-// cached result instead of re-running — otherwise a memoized call: is
-// silent, and the only way to tell it happened is a missing prompt or a
-// command that didn't run. summary is the masked "KEY=val KEY2=val2"
-// rendering of what the task's first run produced (see
-// runner.summarizeCallDelta); empty if it produced nothing new.
-func CallCacheHitLine(task, calledTask, summary string) string {
-	line := SStep.Render("call:") + " " + TaskPrefix(task) + SStep.Render(calledTask)
-	hint := "cached"
-	if summary != "" {
-		hint += " — " + summary
-	}
-	return line + " " + SHint.Render("("+hint+")")
-}
-
-func RunDisplayLines(cmd, task, dir string) []string {
-	prefix := TaskPrefix(task)
-	lines := strings.Split(cmd, "\n")
-	result := make([]string, len(lines))
-	for i, line := range lines {
-		if i == 0 {
-			first := SStep.Render("run:") + " " + prefix + SStep.Render(line)
-			if dir != "" {
-				first += " " + SHint.Render("(dir: "+dir+")")
-			}
-			result[i] = first
-		} else {
-			result[i] = SStep.Render(line)
-		}
-	}
-	return result
+// taskMark renders a mark bold in the task's colour.
+func taskMark(task, mark string) string {
+	return TaskStyle(task).Bold(true).Render(mark)
 }

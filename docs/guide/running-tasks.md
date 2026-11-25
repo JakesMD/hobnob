@@ -7,13 +7,16 @@ hobnob ask-trivia
 ```
 
 You can run it from anywhere in your project. hobnob looks for `hobnob.yml`
-in the current directory, then in each parent directory in turn, and uses the
+in the current directory, then in each folder above it in turn, and uses the
 first one it finds.
 
 ## Picking a task
 
 Run `hobnob` on its own and you don't need to remember any task names. It
-opens a menu of every task, with its `info:`, and you pick one.
+opens a menu of every task, with its `info:`, and you pick one. Type to filter
+it the way you filter a [prompt's menu](./prompts.md#menus): the
+best match comes first, and enter runs the highlighted task. CTRL+C quits;
+`q` is just a letter to filter by.
 
 If the taskfile has a task called `default`, bare `hobnob` runs that
 instead. These flags help either way:
@@ -62,5 +65,10 @@ The [CLI reference](../reference/cli.md) lists every flag.
   terminal or `CI` is set, bare `hobnob` prints the help and the task list
   instead, and `--select` prints the task list. `--select --no-input` does
   the same.
-- **Every argument after the task name must be `NAME=value`** or
+- **`--quiet` (`-q`) or `HOBNOB_QUIET=1` makes a quiet run**: only each
+  `run:` command's `$` line and every task's end line print, plus the output
+  of a step that fails or soft-fails, before its `✗` or `!` line. A prompt a
+  command prints with no newline (`read`, `sudo`, `[y/N]`) shows as it
+  arrives. Nothing else turns it on. It can go anywhere after `hobnob`.
+- **Every other argument after the task name must be `NAME=value`** or
   `--no-input`. Anything else is an error.

@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,25 +13,10 @@ import (
 // expression's own text) purely for display, so tui never needs to know how
 // a check is evaluated or what a var's type is.
 func PromptText(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
-	textInput := textinput.New()
-	textInput.Prompt = SArrow.Render("› ")
-	if secret {
-		textInput.EchoMode = textinput.EchoPassword
-	}
-	if defaultVal != "" {
-		textInput.SetValue(defaultVal)
-	}
-	textInput.Focus()
-	model := textModel{
-		info:       info,
-		validate:   validate,
-		checkDesc:  checkDesc,
-		varName:    varName,
-		defaultVal: defaultVal,
-		textInput:  textInput,
-		secret:     secret,
-		optional:   optional,
-	}
+	model := newTextModel(
+		card{task: task, varName: varName, optional: optional, info: info},
+		textOptions{validate: validate, checkDesc: checkDesc, defaultVal: defaultVal, secret: secret},
+	)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
@@ -42,32 +26,59 @@ func PromptText(ctx context.Context, info, varName string, validate func(string)
 	if final.quit {
 		return "", fmt.Errorf("aborted")
 	}
-	displayVal := final.value
-	if secret {
-		displayVal = SecretMask
-	}
-	printGetLine(task, final.varName, displayVal)
 	return final.value, nil
 }
 
-type textModel struct {
-	info       string
+type textOptions struct {
 	validate   func(string) (bool, error)
 	checkDesc  string
-	varName    string
+	defaultVal string
+	secret     bool
+}
+
+const secretDefaultMask = "••••"
+
+type textModel struct {
+	frame      card
+	validate   func(string) (bool, error)
+	checkDesc  string
 	defaultVal string
 	textInput  textinput.Model
-	errMsg     string
-	value      string
-	quit       bool
-	secret     bool
-	optional   bool
-	done       bool
+	// maskedDefault is set for a secret default, which shows as a fixed
+	// mask until edited so its length isn't revealed.
+	maskedDefault bool
+	value         string
+	quit          bool
+	done          bool
+}
+
+func newTextModel(frame card, opts textOptions) textModel {
+	textInput := textinput.New()
+	textInput.Prompt = SArrow.Render("› ")
+	if opts.secret {
+		textInput.EchoMode = textinput.EchoPassword
+		textInput.EchoCharacter = '•'
+	}
+	textInput.SetValue(opts.defaultVal)
+	textInput.Focus()
+	return textModel{
+		frame:      frame,
+		validate:   opts.validate,
+		checkDesc:  opts.checkDesc,
+		defaultVal: opts.defaultVal,
+		textInput:  textInput,
+
+		maskedDefault: opts.secret && opts.defaultVal != "",
+	}
 }
 
 func (model textModel) Init() tea.Cmd { return textinput.Blink }
 
 func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		model.frame.termWidth = size.Width
+		return model, nil
+	}
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		var cmd tea.Cmd
@@ -78,19 +89,32 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		model.quit = true
 		return model, tea.Quit
-	case tea.KeyEnter:
-		val := model.textInput.Value()
-		if model.optional && val == "" {
+	case tea.KeyEsc:
+		if model.frame.optional {
 			model.done = true
 			return model, tea.Quit
 		}
-		if val == "" && model.defaultVal != "" {
+		return model, nil
+	case tea.KeyEnter:
+		val := model.textInput.Value()
+		if model.frame.optional && val == "" {
+			model.done = true
+			return model, tea.Quit
+		}
+		if val == "" {
 			val = model.defaultVal
+		}
+		if val == "" {
+			return model, nil
 		}
 		if model.validate != nil {
 			ok, err := model.validate(val)
-			if err != nil || !ok {
-				model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
+			if err != nil {
+				model.frame.errMsg = fmt.Sprintf("check failed: %v", err)
+				return model, nil
+			}
+			if !ok {
+				model.frame.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 				return model, nil
 			}
 		}
@@ -107,19 +131,15 @@ func (model textModel) View() string {
 	if model.done {
 		return ""
 	}
-	header := "\nEnter a value for " + SLabel.Render(model.varName) + "."
-	if model.optional {
-		header += " " + SHint.Render("(optional, leave blank to skip)")
+	hints := []hint{{"enter", "confirm"}}
+	if model.frame.optional {
+		hints = append(hints, hint{"esc", "skip"})
 	}
-	if model.info != "" {
-		header += "\n" + SInfo.Render(model.info)
+	frame := model.frame
+	frame.body = model.textInput.View()
+	if model.maskedDefault && model.textInput.Value() == model.defaultVal {
+		frame.body = model.textInput.Prompt + secretDefaultMask
 	}
-	var builder strings.Builder
-	builder.WriteString(header + "\n")
-	builder.WriteString(model.textInput.View() + "\n")
-	if model.errMsg != "" {
-		builder.WriteString(SError.Render(model.errMsg) + "\n")
-	}
-	builder.WriteString(SHint.Render("enter ↵"))
-	return builder.String()
+	frame.hints = hints
+	return frame.render()
 }

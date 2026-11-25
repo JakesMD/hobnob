@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
@@ -20,6 +21,20 @@ import (
 // by ctx cancellation (first CTRL+C), so callers can distinguish a graceful
 // shutdown from an ordinary command failure.
 var ErrInterrupted = errors.New("interrupted")
+
+// reportedError marks an error whose failure has already been written to the
+// log, so the caller prints nothing more for it: as a step's ✗ line, or, for
+// an interrupt between steps, as the tasks' end lines alone.
+type reportedError struct{ err error }
+
+func (e reportedError) Error() string { return e.err.Error() }
+func (e reportedError) Unwrap() error { return e.err }
+
+// Reported reports whether err has already been logged by the run.
+func Reported(err error) bool {
+	var reported reportedError
+	return errors.As(err, &reported)
+}
 
 // wrapPromptErr classifies a promptTextFn/promptSelectFn error: one caused by
 // ctx cancellation (the prompt was torn down mid-input, e.g. a SIGTERM
@@ -93,6 +108,12 @@ func displayArgv(argv []string) string {
 	return strings.Join(parts, " ")
 }
 
+// writtenArgv is a run: argv as written, before its templates render, for the
+// skip line and the error line alike.
+func writtenArgv(argv literal.Argv) string {
+	return displayArgv(argv.Raw())
+}
+
 // execCtx bundles the state threaded through every step-execution function.
 // scope is kept separate — a call step swaps in a childScope while
 // cfg/task/noPrompts/dir change together as a unit. memo is shared across the
@@ -108,12 +129,14 @@ type execCtx struct {
 	noPrompts  bool
 	dir        string
 	memo       *callMemo
+	log        *tui.RunLog
+	softs      *int
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
 	task, ok := cfg.Tasks[taskName]
 	if !ok {
-		return config.Task{}, nil, fmt.Errorf("task %q not found", taskName)
+		return config.Task{}, nil, fmt.Errorf("no task %q", taskName)
 	}
 	execCfg := cfg
 	if task.Cfg != nil {
@@ -129,11 +152,16 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer, and the jobs its run: steps leave running, which
 // get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
-func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog) error {
+	if _, _, err := resolveTask(taskName, cfg); err != nil {
+		return err
+	}
 	defer stopLeftovers()
 	stopTerm := context.AfterFunc(ctx, termLeftovers)
 	defer stopTerm()
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, literal.Expr{}, scope)
+	stopSay := context.AfterFunc(ctx, log.Stopping)
+	defer stopSay()
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log}, taskName, literal.Expr{}, scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
@@ -150,6 +178,30 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	if err != nil {
 		return err
 	}
+	defer execState.log.Enter(taskName)()
+	began := time.Now()
+	softs := 0
+	skipped, err := runTask(execState, task, execCfg, taskName, callDirTmpl, scope, &softs)
+	switch {
+	case err == nil && !skipped:
+		execState.log.TaskDone(taskName, time.Since(began), softs)
+	case err != nil:
+		if !Reported(err) {
+			execState.log.StepError(taskName, false, err.Error())
+		}
+		stopped := errors.Is(err, ErrInterrupted)
+		if stopped {
+			execState.log.Stopping()
+		}
+		execState.log.TaskFailed(taskName, time.Since(began), stopped)
+		return reportedError{err}
+	}
+	return nil
+}
+
+// runTask does everything executeTask does except end the task in the log;
+// skipped is true when the task's own if: was false.
+func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, taskName string, callDirTmpl literal.Expr, scope *scope.Scope, softs *int) (skipped bool, err error) {
 	if task.Cfg != nil {
 		execState.fileScopes.Apply(scope, task.Cfg)
 	}
@@ -158,67 +210,106 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	case !callDirTmpl.IsZero():
 		resolved, err := callDirTmpl.Text(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("dir template: %w", err)
+			return false, fmt.Errorf("dir: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
 	case !task.Dir.IsZero():
 		resolved, err := task.Dir.Text(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("task %q dir: %w", taskName, err)
+			return false, fmt.Errorf("dir: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
 	if task.IfExpr != "" {
 		ok, err := eval.EvalCondition(execState.ctx, task.IfExpr, scope.Vars(), currentDir)
 		if err != nil {
-			return fmt.Errorf("task %q if: %w", taskName, err)
+			return false, fmt.Errorf("if %s: %w", task.IfExpr, err)
 		}
 		if !ok {
-			fmt.Println(tui.SkipLine(taskName))
-			return nil
+			execState.log.TaskSkipped(taskName)
+			return true, nil
 		}
 	}
-	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
+	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, softs: softs}, task.Steps, scope)
+}
+
+// stepMessage is what a step that can't start reports: the step as written,
+// then why.
+func stepMessage(step config.Step, err error) string {
+	var written string
+	switch step.Kind {
+	case config.KindRun:
+		written = step.Command.String()
+		if !step.Argv.IsZero() {
+			written = writtenArgv(step.Argv)
+		}
+	case config.KindCall:
+		written = step.CallTarget
+	}
+	if written == "" {
+		return err.Error()
+	}
+	return written + ": " + err.Error()
+}
+
+func execStep(execState execCtx, step config.Step, scope *scope.Scope) error {
+	switch step.Kind {
+	case config.KindRun:
+		return execRun(execState, step, scope)
+	case config.KindSet:
+		return execSet(step, scope)
+	case config.KindCall:
+		return execCall(execState, step, scope)
+	case config.KindFor:
+		return execFor(execState, step, scope)
+	case config.KindGet:
+		return execGet(execState, step, scope)
+	}
+	return nil
 }
 
 func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) error {
 	for _, step := range steps {
 		if execState.ctx.Err() != nil {
-			return fmt.Errorf("%w: %v", ErrInterrupted, execState.ctx.Err())
+			return reportedError{fmt.Errorf("%w: %v", ErrInterrupted, execState.ctx.Err())}
 		}
+		var err error
 		if step.IfExpr != "" {
-			ok, err := eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars(), execState.dir)
+			var ok bool
+			ok, err = eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars(), execState.dir)
 			if err != nil {
-				return fmt.Errorf("if condition: %w", err)
-			}
-			if !ok {
-				if step.Kind == config.KindRun {
-					fmt.Println(tui.RunSkipLine(execState.task))
+				err = fmt.Errorf("if %s: %w", step.IfExpr, err)
+			} else if !ok {
+				switch step.Kind {
+				case config.KindRun:
+					execState.log.RunSkipped(execState.task, skippedRunText(step, scope))
+				case config.KindCall:
+					execState.log.RunSkipped(execState.task, step.CallTarget)
 				}
 				continue
 			}
 		}
 
-		var err error
-		switch step.Kind {
-		case config.KindRun:
-			err = execRun(execState, step, scope)
-		case config.KindSet:
-			err = execSet(step, scope)
-		case config.KindCall:
-			err = execCall(execState, step, scope)
-		case config.KindFor:
-			err = execFor(execState, step, scope)
-		case config.KindGet:
-			err = execGet(execState, step, scope)
+		began := time.Now()
+		if err == nil {
+			err = execStep(execState, step, scope)
+		}
+		if err == nil {
+			continue
+		}
+		soft := step.Soft && !errors.Is(err, ErrInterrupted)
+		if soft && step.Kind == config.KindCall && Reported(err) {
+			execState.log.StepSoftFailed(execState.task, time.Since(began), "→ "+step.CallTarget, "failed")
+		}
+		if !Reported(err) {
+			execState.log.StepError(execState.task, soft, stepMessage(step, err))
+			err = reportedError{err}
 		}
 		// Only the kinds that take soft: can have it set (config.stepKinds).
-		if err != nil && step.Soft && !errors.Is(err, ErrInterrupted) {
-			err = nil
-		}
-		if err != nil {
+		if !soft {
 			return err
 		}
+		*execState.softs++
 	}
 	return nil
 }

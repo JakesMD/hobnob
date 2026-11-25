@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -30,7 +28,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-sigCh
-		fmt.Fprintln(os.Stderr, tui.SStep.Render("!")+" shutting down, press CTRL+C again to force")
 		cancel()
 		<-sigCh
 		// ctx cancellation already asked the running step to terminate
@@ -42,14 +39,13 @@ func main() {
 		// restore the terminal before the process exits instead of racing an
 		// unconditional os.Exit against its (async) teardown.
 		if runner.KillRunningStep() {
+			runner.RestoreTerminal()
+			tui.ClearStatusLine()
 			os.Exit(1)
 		}
 	}()
 
 	if err := app.New(version).Run(ctx, os.Args[1:]); err != nil {
-		if !errors.Is(err, app.ErrSilent) {
-			fmt.Fprintln(os.Stderr, "error:", err)
-		}
 		os.Exit(1)
 	}
 }

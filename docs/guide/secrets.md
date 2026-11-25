@@ -17,8 +17,10 @@ tasks:
 
 ```
 $ hobnob announce
-run: [announce] curl -s -X POST "****" -d '{"text":"quiz is ready"}'
-✓ [announce] done
+announce $ curl -s -X POST "****" -d '{"text":"quiz is ready"}'
+announce │ ok
+announce ✓ 0.0s
+announce ✓ done after 0.0s
 ```
 
 The command itself still gets the real value.
@@ -58,8 +60,10 @@ tasks:
 
 ```
 $ hobnob leak
-run: [leak] echo "****"
-[leak] https://hooks.example.com/abc
+leak $ echo "****"
+leak │ https://hooks.example.com/abc
+leak ✓ 0.0s
+leak ✓ done after 0.0s
 ```
 
 A secret stays masked wherever it goes: into another variable with `into:`,

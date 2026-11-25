@@ -98,15 +98,19 @@ pull requests:
 
 ```
 $ hobnob review
-run: [review] gh pr list --json headRefName
-⊙ [review] output hidden
+review $ gh pr list --json headRefName # output hidden
+review ✓ 0.0s
 
-Select a value for BRANCH.
-Which pull request?
-▶ fix-login
-  add-search
-  bump-deps
-↑↓ move  enter select
+╭─ review » BRANCH ────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Which pull request?                                                     │
+│                                                                          │
+│  ▶ fix-login                                                             │
+│    add-search                                                            │
+│    bump-deps                                                             │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • enter select
 ```
 
 The differences:

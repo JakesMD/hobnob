@@ -3,13 +3,10 @@ package runner
 import (
 	"fmt"
 	"reflect"
-	"sort"
-	"strings"
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/scope"
-	"hobnob/internal/tui"
 )
 
 // callMemo is the per-run cache backing once: true tasks. It lives for one
@@ -24,11 +21,6 @@ type callMemo struct {
 	// into:, so two sites can pull different things from one cached run; a
 	// delta would need to already guess what every future site wants.
 	scopes map[uintptr]*scope.Scope
-	// summaries holds a masked "KEY=val KEY2=val2" rendering of what each
-	// once: task's first run actually produced or changed, computed once at
-	// write time (before/after aren't available on a later cache hit) — the
-	// cache-hit log line's only content.
-	summaries map[uintptr]string
 	// running guards against a once: task (directly or transitively) calling
 	// itself before its first run has completed, which would otherwise
 	// recurse forever since nothing is in scopes yet.
@@ -37,9 +29,8 @@ type callMemo struct {
 
 func newCallMemo() *callMemo {
 	return &callMemo{
-		scopes:    make(map[uintptr]*scope.Scope),
-		summaries: make(map[uintptr]string),
-		running:   make(map[uintptr]bool),
+		scopes:  make(map[uintptr]*scope.Scope),
+		running: make(map[uintptr]bool),
 	}
 }
 
@@ -58,13 +49,15 @@ func callCacheID(task config.Task) uintptr {
 func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars())
 	if err != nil {
-		return fmt.Errorf("call target template: %w", err)
+		return err
 	}
 
 	task, _, err := resolveTask(taskName, execState.cfg)
 	if err != nil {
 		return err
 	}
+
+	execState.log.Call(execState.task, taskName)
 
 	if !task.Once || len(task.Steps) == 0 {
 		childScope, err := buildCallScope(scope, step.CallVars)
@@ -79,7 +72,7 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	id := callCacheID(task)
 	if cached, ok := execState.memo.scopes[id]; ok {
-		fmt.Println(tui.CallCacheHitLine(execState.task, taskName, execState.memo.summaries[id]))
+		execState.log.DoneEarlier(taskName)
 		return finishCall(execState.cfg, taskName, task, step, scope, cached)
 	}
 	if execState.memo.running[id] {
@@ -90,7 +83,6 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if err != nil {
 		return err
 	}
-	before := childScope.Copy()
 	execState.memo.running[id] = true
 	err = executeTask(execState, taskName, step.DirTmpl, childScope)
 	delete(execState.memo.running, id)
@@ -99,7 +91,6 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 	}
 
 	execState.memo.scopes[id] = childScope
-	execState.memo.summaries[id] = summarizeCallDelta(before, childScope)
 	return finishCall(execState.cfg, taskName, task, step, scope, childScope)
 }
 
@@ -123,27 +114,6 @@ func finishCall(callerCfg *config.ConfigFile, taskName string, task config.Task,
 		}
 	}
 	return captureInto("call", entries, source, scope, child)
-}
-
-// summarizeCallDelta renders the vars a once: task's first run produced or
-// changed, relative to before it ran, as a masked "KEY=val KEY2=val2"
-// summary for the cache-hit log line — otherwise a replayed call: is
-// invisible, the exact complaint the old use: memo drew (see the guide's
-// former "Sharp edge" note). Sorted by key for a stable line across runs.
-func summarizeCallDelta(before, after *scope.Scope) string {
-	var keys []string
-	beforeVars := before.Vars()
-	for key, val := range after.Vars() {
-		if prior, existed := beforeVars[key]; !existed || !reflect.DeepEqual(prior, val) {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	parts := make([]string, len(keys))
-	for i, key := range keys {
-		parts[i] = key + "=" + after.Display(key)
-	}
-	return strings.Join(parts, " ")
 }
 
 // buildCallScope deep-copies scope and evaluates with: entries into it. No

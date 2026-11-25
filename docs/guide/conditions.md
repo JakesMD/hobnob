@@ -13,17 +13,20 @@ tasks:
 
 ```
 $ hobnob lab-check CATEGORY=science
-run: [lab-check] echo "lab coats on"
-[lab-check] lab coats on
-run: [lab-check] echo "let's go"
-[lab-check] let's go
-✓ [lab-check] done
+lab-check $ echo "lab coats on"
+lab-check │ lab coats on
+lab-check ✓ 0.0s
+lab-check $ echo "let's go"
+lab-check │ let's go
+lab-check ✓ 0.0s
+lab-check ✓ done after 0.0s
 
 $ hobnob lab-check CATEGORY=history
-run: [lab-check] skipped (if: false)
-run: [lab-check] echo "let's go"
-[lab-check] let's go
-✓ [lab-check] done
+lab-check ⊘ echo "lab coats on"
+lab-check $ echo "let's go"
+lab-check │ let's go
+lab-check ✓ 0.0s
+lab-check ✓ done after 0.0s
 ```
 
 ## How a condition works
@@ -65,8 +68,7 @@ tasks:
 
 ```
 $ hobnob explain-answer CATEGORY=history
-⊘ [explain-answer] skipped
-✓ [explain-answer] done
+explain-answer ⊘ skipped
 ```
 
 ## Calling a task that skips

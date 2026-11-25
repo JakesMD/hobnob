@@ -146,7 +146,7 @@ func isDirDefault(getEntry config.GetEntry, val value.Value, base string) bool {
 
 // getPathInteractive opens the picker for a type: file|dir entry. A picked
 // path goes through the same checks as a preset one; a failing check:
-// re-opens the picker, as promptSelectUntilValid does for menus.
+// re-opens the picker, showing the evaluation error when the check errored.
 func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	name := getEntry.VarName
 	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars())
@@ -188,7 +188,9 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		prompt.Excluded = func(abs string, _ bool) bool { return checker.matcher.Excluded(abs, checker.workDir, checker.home) }
 	}
 	for {
+		resume := execState.log.Pause()
 		picked, answered, err := promptPathFn(execState.ctx, prompt, execState.task, getEntry.Secret)
+		resume()
 		if err != nil {
 			return wrapPromptErr(name, err)
 		}
@@ -199,6 +201,7 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 				picked = value.Str("")
 			}
 			scope.Set(name, picked, getEntry.Secret)
+			logVar(execState, getEntry, scope, "")
 			return nil
 		}
 		picked, err = resolvePaths(checker, getEntry, picked, prompt.Invoke)
@@ -208,13 +211,16 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		if getEntry.Check != "" {
 			ok, err := eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, scope.Vars(), name, picked)
 			if err != nil {
-				return fmt.Errorf("get %s check: %w", name, err)
+				prompt.Error = fmt.Sprintf("check failed: %v", err)
+				continue
 			}
 			if !ok {
+				prompt.Error = ""
 				continue
 			}
 		}
 		scope.Set(name, picked, getEntry.Secret)
+		logVar(execState, getEntry, scope, "")
 		return nil
 	}
 }

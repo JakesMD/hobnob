@@ -21,7 +21,7 @@
 // 10. make a later env: entry lose to an earlier one                 -> env_test.go
 // 11. resolve relative dir: against cwd instead of TaskfileDir       -> dir_test.go
 // 12. make value.Capture always return a String                     -> values_test.go
-// 13. swallow the check: re-prompt loop in get.go                    -> get_test.go
+// 13. drop the check: validator handed to the select prompt in get.go -> get_test.go (InteractiveSelectRepromptsUntilCheckPasses)
 // 14. make step-level dir: lose to task-level                        -> dir_test.go
 // 15. drop the missing-env-file warning in scope/envfiles.go         -> env_test.go stderr
 //
@@ -45,7 +45,7 @@
 // 30. narrow eval.IsBareRef back to ^\.[A-Z][A-Z0-9_]*$               -> accessor_test.go (BraceFreeOptionsForm, BraceFreeDirForm)
 //
 // 31. drop the ambient-flag clear in scope.Scope.Set                 -> modules_test.go (SetStepOnOSEnvNameBeatsModuleVarsDefault)
-// 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorMaskedInCacheHitLine)
+// 32. drop the secret flag from runner.captureInto's Set            -> call_test.go (ChildSecretPulledByAccessorIsMasked)
 // 33. return an empty value for an unset name in config.CallSource   -> call_test.go (IntoMissingKeyErrors)
 //
 // 34. drop signalGroupTerm from stopLeftovers                       -> run_background_test.go (JobGetsSigtermWhenHobnobExitsAndItsOutputIsKept)
@@ -96,8 +96,84 @@
 // 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
 // 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
 // 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
-// 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
+// 79. print a secret value in full in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom, secret cases)
 // 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
+// 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
+// 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
+// 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
+// 84. print no call line in runner.execCall                          -> log_lines_test.go (CallPrintsTheCallLine, CallToASkippedTaskPrintsTheCallThenTheSkip)
+// 85. skip DoneEarlier on a once: cache hit                          -> log_lines_test.go (CallToAnAlreadyRunOnceTaskIsDoneEarlier)
+// 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
+// 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
+// 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
+// 88a. print an unrenderable skipped run: step as "skipped" in runner.skippedRunText -> run_into_test.go (SkippedStepWhoseCommandCannotRenderPrintsItAsWritten)
+// 89. leave the source note off a variable line in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom)
+// 90. print a skipped optional get: as an empty value, not ⊘ NAME -> log_lines_test.go (SkippedOptionalPromptPrintsAMarkedName, SkippedOptionalWithPromptsOffPrintsAMarkedName)
+// 90a. log any empty get: value as ⊘ NAME, not only an optional one's in runner.logVar -> log_lines_test.go (EmptyValueForARequiredVariablePrintsAVariableLine)
+// 91. let enter pick a task when the picker's filter matches nothing, in tui.taskSelectModel.Update -> prompt_taskselect_test.go (EnterWithNothingMatchingStaysOpen)
+// 92. skip the step end line in runner.endRunStep                    -> log_ends_test.go (StepAndTaskEndWithTheirOwnLines)
+// 93. skip the task end line for a called task in runner.executeTask -> log_ends_test.go (FailureTwoCallsDeepEndsEveryTaskInnermostFirst)
+// 94. log a soft failure with StepFailed in runner.endRunStep        -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 95. drop the soft count increment in runner.executeSteps           -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 96. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
+// 97. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
+// 98. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
+// 99. drop the Stopping call in runner.executeTask                    -> log_ends_test.go (InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped)
+// 100. print a stopped task's end as "failed" in runner.executeTask   -> log_ends_test.go (InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped)
+// 101. drop the step as written from the message in runner.stepMessage -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 102. skip eval.plainTemplateError on a template's Execute error     -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 103. report a missing dir as the command's fork/exec error in runner.startFailure -> log_errors_test.go (CommandThatCannotStartEndsLikeAnyFailedStep)
+// 104. print an App.Run error without the hobnob ✗ line               -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace)
+// 105. print the missing env file warning with the old warning: word in scope.loadEnvFiles -> log_errors_test.go (MissingEnvFileWarnsAsHobnobAndTheRunCarriesOn)
+// 106. print the demo notice without hobnob » in app.announceDemo     -> log_errors_test.go (DemoNoticeIsAHobnobNote)
+// 107. write the installer's output without the hobnob │ prefix in app.runInstaller -> internal/app/upgrade_test.go (TestUpgradeWritesInTheLogsStyle)
+// 108. drop `shellCmd.Stdin = os.Stdin` in runner.execRun             -> run_pty_test.go (CommandInheritsStdin)
+// 109. pass no ptySize to attachPipes in runner.execRun              -> run_pty_test.go (WatchedCommandSeesATTYOnStdoutOnly)
+// 110. drop the prefix width from tui.RunLog.PTYSize                 -> run_pty_test.go (WidthIsTheTerminalsLessThePrefix)
+// 111. drop the pipes.resize call from the OnResize callback         -> run_pty_test.go (ResizeReachesTheRunningCommand)
+// 112. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
+// 113. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
+// 114. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
+// 115. skip the "!" line for a failed soft call: in runner.executeSteps -> log_ends_test.go (SoftCallThatFailsEndsTheCallingStepWithABang)
+// 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
+// 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
+// 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 120. drop the HOBNOB_QUIET=1 check in app.run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
+// 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
+//
+// 122. forward a CTRL+C byte to the PTY instead of signalling hobnob    -> runner/run_stdin_test.go (CtrlCReachesHobnobNotTheCommand)
+// 123. drop the terminal restore in runner.attachStdin's stop           -> runner/run_stdin_test.go (ForwardsKeysToTheCommand)
+//
+// 124. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
+// 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
+// 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 127. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
+// 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
+// 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
+// 130. write the rule to a piped stdout (create the live area without a Screen in tui.RunLog.Watch) -> log_status_test.go (NeverAppearsInPipedOutput), live_test.go (NeverReachesAPipe)
+// 131. drop the live.begin call from tui.RunLog.Enter                 -> log_status_test.go (RuleShowsUnderTheRunningCommandAndIsGoneAfter), live_test.go
+// 132. drop the live.end call from the leave func of tui.RunLog.Enter -> live_test.go (IsGoneWhenTheRunEnds), log_status_test.go
+// 133. drop the step clock (live.stepBegin in tui.RunLog.Run)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
+// 134. drop the note from tui.RunLog.Stopping                         -> live_test.go (SaysStoppingOnItsLeftAfterCtrlC)
+// 135. drop the clear in tui.liveArea.pause                          -> live_test.go (IsClearedWhileACardPromptIsOpen)
+// 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
+// 137. never notice a waiting prompt in tui.liveArea.redrawLocked     -> live_test.go (StaysUnderAPromptWaitingForInputWithItsClockFrozen)
+// 138. drop the partial-line write in runner.promptWriter.Write       -> log_quiet_test.go (QuietRunStillShowsAPromptButNotWholeLines)
+// 139. drop the field as written from execSet, execFor or execGet errors -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 140. print Go's raw JSON syntax error from value.filterJSON            -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 141. write a piped partial line only at its newline in tui.LineWriter.text -> log_quiet_test.go (PipedPartialLineContinuesAsOnePrefixedLine), linewriter_test.go
+// 142. drop the prefix of lines before a cursor move in tui.LineWriter.Write -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
+// 143. never unhide in tui.liveArea.write after drawIdle                   -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
+// 144. write once per grapheme in tui.LineWriter.text                       -> linewriter_test.go (ReachesTheTerminalInOneWritePerChunk)
+// 145. take the owed prefix from the area, not the writing step, in tui.liveArea.write -> live_test.go (LateWriteFromAnEarlierStepUsesItsOwnPrefix)
+// 146. drop tui.ClearStatusLine from the forced exit in cmd/hobnob/main.go -> live_test.go (ClearStatusLineLeavesNoRuleBehind)
+// 147. discard the stdin PTY's output in runner.attachStdin instead of copying it to the terminal -> runner/run_stdin_test.go (ShowsWhatTheCommandWritesToItsTerminalWhenStdoutIsPiped)
+// 148. make tui.LineWriter.Restart write col directly instead of flagging -> live_test.go (RestartingTheOtherStreamsWriterIsRaceFree, under -race)
+// 149. drop the leading blank line in tui.card.render -> frame_test.go (OpensWithOneBlankLine)
+// 150. stop skipping the opening sequences in runner.conPTYFilter.Write -> runner/conptyfilter_test.go (OpeningSequencesLeaveTheOutputPrefixedOnBothStreams)
+// 151. drop the empty-answer refusal on enter in tui.textModel.Update -> tui/prompt_text_test.go (Update_Answers, required prompt on an empty field)
+// 152. drop the empty-picks refusal in tui.selectModel.confirm -> tui/prompt_select_test.go (MultiEnter_NoSelections)
 package e2e
 
 import (
@@ -111,8 +187,11 @@ import (
 	"sync"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"hobnob/internal/app"
 	"hobnob/internal/runner"
+	"hobnob/internal/termsim"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
@@ -139,9 +218,47 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Probe    []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
-	Cwd      string   // subdir of the temp root to chdir into (default: the root itself)
-	Discover bool     // omit --file, exercise findTaskfile's upward walk
+	Interrupt string      // var name whose text prompt ends as if CTRL+C had torn it down
+	Probe     []string    // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd       string      // subdir of the temp root to chdir into (default: the root itself)
+	Discover  bool        // omit --file, exercise findTaskfile's upward walk
+	Screen    *tui.Screen // the terminal the run is watched on (default nil: stdout is piped)
+	Stdin     string      // what hobnob's stdin holds, which a run: command inherits (default: nothing)
+
+	// WhileRunning, with a Screen, runs alongside the run and gets a func
+	// returning the rows of the terminal as they are right now. It must end
+	// by letting the run finish (a command waiting for a file, say).
+	WhileRunning func(rows func() []string)
+}
+
+// screenOf is a Screen of fixed size, resized by calling the returned func
+// with the new size.
+func screenOf(cols, rows int) (screen *tui.Screen, resize func(cols, rows int)) {
+	var mu sync.Mutex
+	var watchers []func()
+	screen = &tui.Screen{
+		Size: func() (int, int) {
+			mu.Lock()
+			defer mu.Unlock()
+			return cols, rows
+		},
+		OnResize: func(fn func()) func() {
+			mu.Lock()
+			defer mu.Unlock()
+			watchers = append(watchers, fn)
+			return func() {}
+		},
+	}
+	resize = func(c, r int) {
+		mu.Lock()
+		cols, rows = c, r
+		fns := append([]func(){}, watchers...)
+		mu.Unlock()
+		for _, fn := range fns {
+			fn()
+		}
+	}
+	return screen, resize
 }
 
 // PromptCall records one prompt the run actually made.
@@ -155,6 +272,7 @@ type PromptCall struct {
 	Optional bool
 	Task     string
 	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
+	Error    string // what a picker reopened with on its error line
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -165,9 +283,14 @@ type PromptCall struct {
 // Result is what the user would have seen.
 type Result struct {
 	Stdout, Stderr, Combined string
-	ExitCode                 int
-	Prompts                  []PromptCall
-	Dir                      string
+
+	// Raw is what was written to stdout, escape codes and all. With a Screen,
+	// Stdout is what the terminal shows instead: the rows after every erase
+	// and redraw of the status line.
+	Raw      string
+	ExitCode int
+	Prompts  []PromptCall
+	Dir      string
 
 	// runErr is unexported so it can't be compared directly (app.ErrSilent's
 	// empty message makes that a footgun) — go through .OK/.Fails/.Err.
@@ -280,12 +403,15 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	state := newPromptState(t, c.Answers)
-	state.dir, state.probe = dir, c.Probe
+	state.dir, state.probe, state.interrupt = dir, c.Probe, c.Interrupt
 	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
 	a.IsTerminal = func() bool { return c.TTY }
+	a.Screen = func() *tui.Screen { return c.Screen }
+	restoreStdin := feedStdin(t, c.Stdin)
+	defer restoreStdin()
 	a.SelectTask = func(ctx context.Context, tasks []tui.TaskItem) (string, error) {
 		if c.TaskPick == "" {
 			t.Fatalf("unexpected task-select prompt (%d tasks offered) — Case.TaskPick not set", len(tasks))
@@ -295,9 +421,22 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	res := &Result{Dir: dir}
-	stdout, stderr, combined := captureOutput(t, func() {
+	stdout, stderr, combined := captureOutput(t, func(stdoutNow func() string) {
+		var watcher sync.WaitGroup
+		if c.WhileRunning != nil {
+			watcher.Add(1)
+			go func() {
+				defer watcher.Done()
+				c.WhileRunning(func() []string { return termsim.Render(ansiRe.ReplaceAllString(stdoutNow(), "")) })
+			}()
+		}
 		res.runErr = a.Run(t.Context(), args)
+		watcher.Wait()
 	})
+	res.Raw = stdout
+	if c.Screen != nil {
+		stdout = strings.Join(termsim.Render(ansiRe.ReplaceAllString(stdout, "")), "\n")
+	}
 	res.Stdout = ansiRe.ReplaceAllString(stdout, "")
 	res.Stderr = ansiRe.ReplaceAllString(stderr, "")
 	res.Combined = ansiRe.ReplaceAllString(combined, "")
@@ -351,9 +490,26 @@ func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 	}
 }
 
+// feedStdin swaps os.Stdin for a pipe holding text, closed at its end, and
+// returns a func restoring the original.
+func feedStdin(t *testing.T, text string) (restore func()) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if _, err := w.WriteString(text); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	return func() { os.Stdin = orig; r.Close() }
+}
+
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining
 // both concurrently so output past the ~64KB pipe buffer can't deadlock.
-func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
+func captureOutput(t *testing.T, f func(stdoutNow func() string)) (stdout, stderr, combined string) {
 	t.Helper()
 	rOut, wOut, err := os.Pipe()
 	if err != nil {
@@ -389,7 +545,11 @@ func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
 	go drain(rOut, &outBuf)
 	go drain(rErr, &errBuf)
 
-	f()
+	f(func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return outBuf.String()
+	})
 
 	os.Stdout, os.Stderr = origOut, origErr
 	wOut.Close()
@@ -448,14 +608,15 @@ func copyTestdataDir(t *testing.T, name, destRoot string) {
 // prevents that — but the drain goroutines in captureOutput never touch it,
 // so no locking is needed for those.
 type promptState struct {
-	t       *testing.T
-	answers map[string][]string
-	textIdx map[string]int
-	selIdx  map[string]int
-	pathIdx map[string]int
-	calls   []PromptCall
-	dir     string   // the temp root, for resolving probe paths
-	probe   []string // see Case.Probe
+	t         *testing.T
+	answers   map[string][]string
+	textIdx   map[string]int
+	selIdx    map[string]int
+	pathIdx   map[string]int
+	calls     []PromptCall
+	dir       string   // the temp root, for resolving probe paths
+	probe     []string // see Case.Probe
+	interrupt string   // see Case.Interrupt
 }
 
 func newPromptState(t *testing.T, answers map[string][]string) *promptState {
@@ -478,6 +639,9 @@ func (s *promptState) record(c PromptCall) {
 // than hanging if every answer is exhausted without success.
 func (s *promptState) text(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
 	s.t.Helper()
+	if varName == s.interrupt {
+		return "", tea.ErrProgramKilled
+	}
 	answers := s.answers[varName]
 	start := s.textIdx[varName]
 	for i := start; i < len(answers); i++ {
@@ -496,29 +660,37 @@ func (s *promptState) text(ctx context.Context, info, varName string, validate f
 	return "", errors.New("unreachable")
 }
 
-// sel implements runner.SelectPromptFunc. Each call consumes the next
-// not-yet-used answer for varName; internal/runner's own check:/re-prompt
-// loop (promptSelectUntilValid) is what drives repeat calls, not this func.
-func (s *promptState) sel(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret bool) (value.Value, error) {
+// sel implements runner.SelectPromptFunc. Like text it consumes answers for
+// varName until one satisfies validate, as the real menu stays open until
+// its check passes. An empty answer on an optional menu is the escape key.
+func (s *promptState) sel(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret, optional bool, validate func(value.Value) (bool, error), checkDesc string) (value.Value, error) {
 	s.t.Helper()
 	answers := s.answers[varName]
-	idx := s.selIdx[varName]
-	if idx >= len(answers) {
-		s.t.Fatalf("unexpected select prompt for %q (task %q, visit %d) — only %d answer(s) provided", varName, task, idx+1, len(answers))
-	}
-	raw := answers[idx]
-	s.selIdx[varName] = idx + 1
-	s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Items: items, Multi: multi, Secret: secret, Task: task})
-	if multi {
-		parts := []any{}
-		if raw != "" {
-			for _, p := range strings.Split(raw, ",") {
-				parts = append(parts, p)
+	for i := s.selIdx[varName]; i < len(answers); i++ {
+		raw := answers[i]
+		var val value.Value
+		if multi {
+			parts := []any{}
+			if raw != "" {
+				for _, p := range strings.Split(raw, ",") {
+					parts = append(parts, p)
+				}
+			}
+			val = value.Of(parts)
+		} else {
+			val = value.Str(raw)
+		}
+		if validate != nil && !(optional && val.IsEmpty()) {
+			if ok, _ := validate(val); !ok {
+				continue
 			}
 		}
-		return value.Of(parts), nil
+		s.selIdx[varName] = i + 1
+		s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Items: items, Multi: multi, Secret: secret, Optional: optional, Task: task})
+		return val, nil
 	}
-	return value.Str(raw), nil
+	s.t.Fatalf("unexpected select prompt for %q (task %q) - none of the %d answer(s) left satisfied check: %q, or none were provided", varName, task, len(answers)-s.selIdx[varName], checkDesc)
+	return value.Value{}, errors.New("unreachable")
 }
 
 // path implements runner.PathPromptFunc. Each call consumes the next
@@ -537,7 +709,7 @@ func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task stri
 	raw := answers[idx]
 	s.pathIdx[prompt.VarName] = idx + 1
 	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type}
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Error: prompt.Error}
 	for _, p := range s.probe {
 		full := filepath.Join(s.dir, p)
 		info, err := os.Stat(full)

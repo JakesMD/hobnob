@@ -7,148 +7,186 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func TestTaskSelectModel_EnterSelectsCurrentTask(t *testing.T) {
-	// given task select model with cursor on second item, when enter pressed, then returns that task name
-	// (why: enter must select the focused task)
+var sampleTasks = []TaskItem{
+	{Name: "build", Info: "Build the project"},
+	{Name: "deploy", Info: "Deploy to prod"},
+	{Name: "test", Info: "Run tests"},
+}
 
-	// Arrange
-	model := taskSelectModel{
-		tasks: []TaskItem{
-			{Name: "build", Info: "Build the project"},
-			{Name: "deploy", Info: "Deploy to prod"},
-			{Name: "test", Info: "Run tests"},
-		},
-		cursor: 1,
+func pressTask(model taskSelectModel, msg tea.KeyMsg) taskSelectModel {
+	next, _ := model.Update(msg)
+	return next.(taskSelectModel)
+}
+
+func typeIntoTask(model taskSelectModel, text string) taskSelectModel {
+	for _, r := range text {
+		key := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		if r == ' ' {
+			key = tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{r}}
+		}
+		model = pressTask(model, key)
 	}
+	return model
+}
+
+func TestTaskSelectModel_EnterPicksHighlightedTask(t *testing.T) {
+	// given the cursor moved down once, when enter is pressed, then that task is the value
+	// (why: enter must run the focused task)
+	// Arrange
+	model := taskSelectModel{tasks: sampleTasks}
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyDown})
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	got := updated.(taskSelectModel).value
-	if got != "deploy" {
-		t.Errorf("value: got %q, want %q", got, "deploy")
+	if model.value != "deploy" {
+		t.Errorf("value: got %q, want deploy", model.value)
 	}
 }
 
-func TestTaskSelectModel_NavigationWraps(t *testing.T) {
-	// given task select model at first item, when up pressed, then cursor stays at 0
-	// (why: cursor must not go negative)
-
+func TestTaskSelectModel_CursorStaysInsideTheList(t *testing.T) {
+	// given a three-task list, when up is pressed at the top and down five times, then the cursor stops at both ends
+	// (why: the cursor must never leave the list)
 	// Arrange
-	model := taskSelectModel{
-		tasks:  []TaskItem{{Name: "a"}, {Name: "b"}, {Name: "c"}},
-		cursor: 0,
-	}
+	model := taskSelectModel{tasks: sampleTasks}
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyUp})
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyUp})
+	atTop := model.cursor
+	for range 5 {
+		model = pressTask(model, tea.KeyMsg{Type: tea.KeyDown})
+	}
 
 	// Assert
-	got := updated.(taskSelectModel).cursor
-	if got != 0 {
-		t.Errorf("cursor: got %d, want 0", got)
+	if atTop != 0 || model.cursor != 2 {
+		t.Errorf("cursor: got %d then %d, want 0 then 2", atTop, model.cursor)
 	}
 }
 
-func TestTaskSelectModel_DownMovesForward(t *testing.T) {
-	// given task select model at first item, when down pressed, then cursor advances
-	// (why: down key must navigate to next task)
-
+func TestTaskSelectModel_TypingFiltersAndPicksBestMatch(t *testing.T) {
+	// given several tasks, when letters are typed and enter pressed, then the best fuzzy match is picked
+	// (why: filtering is how a long task list is navigated)
 	// Arrange
-	model := taskSelectModel{
-		tasks:  []TaskItem{{Name: "a"}, {Name: "b"}, {Name: "c"}},
-		cursor: 0,
-	}
+	model := taskSelectModel{tasks: []TaskItem{{Name: "lint-docs"}, {Name: "deploy"}, {Name: "docs"}}}
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = typeIntoTask(model, "docs")
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	got := updated.(taskSelectModel).cursor
-	if got != 1 {
-		t.Errorf("cursor: got %d, want 1", got)
+	if model.value != "docs" {
+		t.Errorf("value: got %q, want docs (why: the contiguous prefix match outranks the later one)", model.value)
 	}
 }
 
-func TestTaskSelectModel_DownStopsAtEnd(t *testing.T) {
-	// given task select model at last item, when down pressed, then cursor stays
-	// (why: cursor must not exceed item count)
-
+func TestTaskSelectModel_EnterWithNothingMatchingStaysOpen(t *testing.T) {
+	// given a filter that matches nothing, when enter is pressed, then nothing is picked and the view says so
+	// (why: there is no task to run)
 	// Arrange
-	model := taskSelectModel{
-		tasks:  []TaskItem{{Name: "a"}, {Name: "b"}},
-		cursor: 1,
-	}
+	model := taskSelectModel{tasks: sampleTasks}
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyDown})
+	model = typeIntoTask(model, "zzz")
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	got := updated.(taskSelectModel).cursor
-	if got != 1 {
-		t.Errorf("cursor: got %d, want 1", got)
+	if model.value != "" {
+		t.Errorf("value: got %q, want empty", model.value)
+	}
+	if !strings.Contains(model.View(), "nothing matches") {
+		t.Errorf("got %q, want nothing matches", model.View())
 	}
 }
 
-func TestTaskSelectModel_QuitSetsQuitFlag(t *testing.T) {
-	// given task select model, when q pressed, then quit is true
-	// (why: q must abort selection without returning a value)
-
+func TestTaskSelectModel_QFiltersInsteadOfQuitting(t *testing.T) {
+	// given the picker, when q is typed, then it filters and does not abort
+	// (why: ctrl+c is the only abort key)
 	// Arrange
-	model := taskSelectModel{
-		tasks: []TaskItem{{Name: "build"}},
-	}
+	model := taskSelectModel{tasks: []TaskItem{{Name: "quick"}, {Name: "build"}}}
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	model = typeIntoTask(model, "q")
 
 	// Assert
-	final := updated.(taskSelectModel)
-	if !final.quit {
-		t.Error("quit: got false, want true")
+	if model.quit {
+		t.Error("quit: got true, want false")
 	}
-	if final.value != "" {
-		t.Errorf("value: got %q, want empty", final.value)
+	if model.value != "" || !strings.Contains(model.View(), "› q") {
+		t.Errorf("got %q, want the filter line showing q", model.View())
 	}
 }
 
-func TestTaskSelectModel_ViewShowsTaskNamesAndInfo(t *testing.T) {
-	// given task select model with info, when View called, then output contains task names and descriptions
-	// (why: selector must display enough context to choose)
-
+func TestTaskSelectModel_CtrlCAborts(t *testing.T) {
+	// given the picker, when ctrl+c is pressed, then it aborts without a value
+	// (why: ctrl+c is the only abort key)
 	// Arrange
-	model := taskSelectModel{
-		tasks: []TaskItem{
-			{Name: "build", Info: "Build the project"},
-			{Name: "deploy", Info: ""},
-		},
+	model := taskSelectModel{tasks: sampleTasks}
+
+	// Act
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyCtrlC})
+
+	// Assert
+	if !model.quit || model.value != "" {
+		t.Errorf("quit %v value %q, want true and empty", model.quit, model.value)
 	}
+}
+
+func TestTaskSelectModel_EscClearsTheFilter(t *testing.T) {
+	// given filter text, when esc is pressed, then the filter clears and the picker stays open
+	// (why: esc first backs out of the filter; a required picker has nothing to skip)
+	// Arrange
+	model := typeIntoTask(taskSelectModel{tasks: sampleTasks}, "dep")
+
+	// Act
+	model = pressTask(model, tea.KeyMsg{Type: tea.KeyEsc})
+
+	// Assert
+	if model.filter != "" || model.quit || model.value != "" {
+		t.Errorf("filter %q quit %v value %q, want cleared and open", model.filter, model.quit, model.value)
+	}
+}
+
+func TestTaskSelectModel_SpaceFirstDoesNotStartAFilter(t *testing.T) {
+	// given an empty filter, when space is pressed, then no filter line appears
+	// (why: a stray leading space must not hide the list)
+	// Arrange
+	model := taskSelectModel{tasks: sampleTasks}
+
+	// Act
+	model = typeIntoTask(model, " ")
+
+	// Assert
+	if strings.Contains(model.View(), "▏") {
+		t.Errorf("got %q, want no filter line", model.View())
+	}
+}
+
+func TestTaskSelectModel_ViewIsACardWithItsOwnTitleAndHints(t *testing.T) {
+	// given the picker, when viewed, then it shows the card titled "Select a task to run." with names, infos and the run hints
+	// (why: the picker looks like every other prompt, with no var name in the title)
+	// Arrange
+	model := taskSelectModel{tasks: sampleTasks}
 
 	// Act
 	view := model.View()
 
 	// Assert
-	if !strings.Contains(view, "build") {
-		t.Error("view missing task name 'build'")
+	for _, want := range []string{"╭─ ", "Select a task to run.", "build", "Build the project", "deploy", "type to filter", "↑↓", "move", "enter", "run"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("view missing %q:\n%s", want, view)
+		}
 	}
-	if !strings.Contains(view, "Build the project") {
-		t.Error("view missing task info")
-	}
-	if !strings.Contains(view, "deploy") {
-		t.Error("view missing task name 'deploy'")
+	if strings.Contains(view, "»") || strings.Contains(view, "skip") {
+		t.Errorf("view has a var name mark or skip hint:\n%s", view)
 	}
 }
 
 func TestTaskSelectModel_ViewEmptyAfterSelection(t *testing.T) {
-	// given task select model with a value set, when View called, then returns empty string
-	// (why: TUI must clear after selection, matching selectModel behavior)
-
+	// given a picked task, when viewed, then the card is cleared
+	// (why: the TUI must leave nothing behind, matching the other prompts)
 	// Arrange
-	model := taskSelectModel{
-		tasks: []TaskItem{{Name: "build"}},
-		value: "build",
-	}
+	model := taskSelectModel{tasks: sampleTasks, value: "build"}
 
 	// Act
 	view := model.View()

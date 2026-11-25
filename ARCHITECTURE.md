@@ -52,7 +52,7 @@ Every change must preserve these. Each is explained in the section named.
   stays unreaped while its group may be signalled, so the group ID can't be
   reused: its PID stays registered until then, and a leftover's shell until
   its group is empty or the run ends. Output after the shell exits never
-  reaches `into:` or a `quiet:` buffer. ([runner](#internalrunner-the-interpreter))
+  reaches `into:` or a held (`quiet:` or `--quiet`) buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel, path)
@@ -74,12 +74,13 @@ internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
-internal/tui/     bubbletea prompts, lipgloss styles, output line writers
+internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
 internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
 internal/glob/    match: path patterns compiled to a matcher (doublestar)
+internal/termsim/ replays a terminal's output stream onto a grid, for tests
 internal/e2e/     end-to-end CLI suite (test files only)
 tools/testconventions/  golangci-lint plugin enforcing the test shape (its own Go module)
 ```
@@ -90,7 +91,6 @@ Imports run one way. An arrow means "imports":
 flowchart TD
     cmd[cmd/hobnob] --> app
     cmd --> runner
-    cmd --> tui
     app --> cli
     app --> runner
     app --> scope
@@ -119,13 +119,13 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure
-  and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
+- `tui` imports `value` but not `eval`: `PromptText` and `PromptSelect` take a
+  validator closure and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
   from `internal/glob`, so the prompt layer never learns how a shell condition
   or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
-  imports `tui` only for `SecretMask`.
+  imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -342,7 +342,7 @@ stateDiagram-v2
 
 **Masking.** `Mask(text)` redacts each secret's raw and JSON-escaped forms,
 named and `carried` alike, skipping bools and numbers under 4 characters as
-too generic. `Display(key)` renders one value or the mask. Secrecy follows
+too generic. `Display(key)` renders one value (a list joined by `, `) or the mask; the variable line of a `get:` reads it. Secrecy follows
 origin, not use: `secrets` rides along on `Copy()` and masking matches values,
 so a secret passed to a child under a new `with:` name stays masked. That is
 why `secret:` on `with:` is a parse error: redundant at best, over-masking a
@@ -422,7 +422,8 @@ Re-applying on a nested call is idempotent.
 
 ### `internal/cli`: presentation
 
-`--list`/`--help` rendering, task-selector data, links to the docs site,
+`--list`/`--help` rendering (tasks grouped by the part of the name before the
+first `:`, ungrouped last), task-selector data, links to the docs site,
 and the bash/zsh/fish completions embedded from
 `internal/cli/completions/`.
 
@@ -432,14 +433,30 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
 
 1. `executeTask` resolves the task, calls `FileScopes.Apply` when `Task.Cfg !=
    nil` (a module task), resolves `dir:` (call-step > task > inherited), and
-   checks the task's `if:`. A false `if:` prints a skip line and succeeds.
+   checks the task's `if:`. A false `if:` prints a skip line and succeeds. It
+   then times the task and ends it in the log: `done after`, with the count of
+   soft failures, or `failed after` (`stopped after` for `ErrInterrupted`),
+   called tasks included, so a failure ends one line per task in the chain.
 2. `executeSteps` checks each step's `if:`, dispatches on `StepKind`, and
    renders against the _current_ scope, which earlier steps may have mutated.
 3. `soft:` makes `executeSteps` swallow any error except `ErrInterrupted`,
-   whatever the kind; parsing only lets it onto `run:` and `call:`.
+   whatever the kind, and count it for the task's end line; parsing only lets
+   it onto `run:` and `call:`.
+4. Every failure is logged once, where it happens. `execRun` ends its step with
+   `StepDone`, `StepFailed` or `StepSoftFailed`; an error from anywhere else
+   (a template, a missing task) is logged by `executeSteps` as a time-less
+   `StepError`; a soft `call:` whose callee failed gets a `StepSoftFailed`
+   `→ callee: failed` line there too. Either way the error is wrapped as `reportedError`, which
+   `runner.Reported` detects, so `app` prints nothing more for it. A step that
+   can't start reads `task ✗ <step as written>: <why>` (`stepMessage`); template
+   noise is stripped where it arises (`eval.plainTemplateError`). Errors before
+   any task runs (an unparsable taskfile, `ExecuteTask`'s unknown task) reach
+   `App.Run`, which prints them as `hobnob ✗` (`tui.HobnobError`) and returns
+   `ErrSilent`; warnings and notes use the other `tui.Hobnob*` writers, and
+   `--upgrade` writes its installer's output through `tui.HobnobOutput`.
 
 `execCtx` bundles what threads through the call graph: context, config,
-`FileScopes`, task name, prompt flag, working dir, `once:` memo.
+`FileScopes`, task name, prompt flag, working dir, `once:` memo, the `RunLog`.
 `*scope.Scope` stays a separate argument because it is what mutates: `call:`
 swaps in a child scope while `execCtx` carries forward.
 
@@ -452,22 +469,26 @@ flowchart TD
     start["run: step (its if: already passed)"] --> form{"YAML sequence?"}
     form -- yes --> argv["Step.Argv.Resolve<br/>exec argv directly, no shell"]
     form -- no --> sh["Step.Command.Text<br/>sh -c"]
-    argv --> show["print the command, masked"]
+    argv --> show["RunLog.Run: the command, masked by the caller"]
     sh --> show
     show --> out{"output mode"}
-    out -- "quiet:" --> quiet["buffers only<br/>print RunQuietLine"]
+    out -- "quiet: or --quiet" --> quiet["buffers only, into: included<br/>(RunLog.Quiet() or Step.Quiet)<br/>quiet: adds a note on the run line"]
     out -- "into:" --> tee["LineWriter tee'd into buffers"]
     out -- neither --> live["LineWriter only"]
-    quiet --> startp["Start"]
-    tee --> startp
-    live --> startp
+    quiet --> pty{"RunLog.PTYSize:<br/>watched?"}
+    tee --> pty
+    live --> pty
+    pty -- yes --> ptyout["stdout on a PTY, stderr a pipe,<br/>stdin inherited, terminal handed over"]
+    pty -- no --> pipeout["stdout and stderr pipes,<br/>stdin inherited"]
+    ptyout --> startp["Start"]
+    pipeout --> startp
     startp -- fails --> nocap["error, no capture<br/>(no process ran)"]
     startp -- ok --> wait["Wait for the process"]
     wait --> handoff["handoff: drain the pipes,<br/>later output to LineWriters only"]
     handoff --> keep{"jobs still in the group<br/>or holding the pipes?"}
     keep -- yes --> kl["keepLeftover<br/>(shell stays unreaped)"]
     keep -- no --> replay
-    kl --> replay{"quiet: and failed?"}
+    kl --> replay{"held and failed?"}
     replay -- yes --> rp["replay both buffers<br/>through the LineWriters"]
     replay -- no --> intr
     rp --> intr{"failed and ctx cancelled?"}
@@ -495,8 +516,7 @@ other name errors. A call's source is `config.CallSource` (see the call
 contract under config). A bare `into:` entry parses to `NAME: NAME` (`literal.IntoLeaf`) with
 `Bare` set, which `parseStepNode` rejects on `run:`. For `call:`, every result is `Adopt`ed, and the target name is
 flagged secret whenever its value carries a child secret, whatever the leaf's
-shape. The name flag matters because `Display`, used by the `once:` cache-hit
-line, reads only it.
+shape. The name flag matters because `Display` reads only it.
 
 **`call:` (`call.go`)** copies scope, evaluates `with:` into the child, runs
 the target, then `finishCall` applies the call contract: `CallSource` checks
@@ -521,16 +541,16 @@ sequenceDiagram
         C->>S: finishCall(results:, into:, child scope)
     else once: true, cached
         C->>M: lookup by Task.Steps identity
-        M-->>C: cached child scope + summary
-        C->>S: print CallCacheHitLine, finishCall(results:, into:, cached scope)
+        M-->>C: cached child scope
+        C->>S: print "done earlier", finishCall(results:, into:, cached scope)
     else once: true, already running
         C-->>S: error: cycle detected
     else once: true, first call
-        C->>C: Copy() scope, evaluate with:, snapshot "before"
+        C->>C: Copy() scope, evaluate with:
         C->>M: mark running
         C->>T: run target
         T-->>C: child's final scope
-        C->>M: store whole child scope + summarizeCallDelta(before, after)
+        C->>M: store whole child scope
         C->>S: finishCall(results:, into:, child scope)
     end
 ```
@@ -544,8 +564,9 @@ The memo is load-bearing in three ways:
 2. **It caches the whole child scope, not a delta.** Each call site's `into:`
    (or the task's `results:`) projects what it wants, which a delta would
    have to guess in advance.
-3. **A hit is announced.** `tui.CallCacheHitLine` names what the first run
-   produced (`summarizeCallDelta`, masked, sorted).
+3. **A hit is announced.** `execCall` logs every call (`task → called`); a hit
+   then logs `called ✓ done earlier` (`RunLog.DoneEarlier`) in place of the
+   task's own lines.
 
 A failed first run is not stored, so under `soft: true` the next call retries.
 
@@ -561,7 +582,9 @@ declares the type.
 imports it, and for a `type: file|dir` picker the runner builds the
 `Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
 before it is shown (nothing left fails, or is empty under `optional:`), and
-join `check:` in the closure handed to `PromptText`. A value nobody typed at a
+join `check:` in the closure handed to `PromptText` or `PromptSelect`; a menu
+choice that fails it stays in the prompt, which shows the refusal on its error
+line. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before
 `check:`.
 
@@ -578,8 +601,7 @@ directory counts as no default (`isDirDefault`). With prompts on,
 `getPathInteractive` opens the picker through `promptPathFn` (the task's
 working directory as `WorkDir`, the `default:` as written, `match:` as
 `Included`/`Excluded` predicates). A pick goes through the same per-item
-checks, and a failing `check:` re-opens the picker, as `promptSelectUntilValid`
-does for menus. An escaped optional picker sets the variable empty.
+checks, and a failing `check:` re-opens the picker. An escaped optional picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -592,10 +614,73 @@ values on exit.
 `runner_unix.go`/`runner_windows.go` manage process groups. The first CTRL+C
 signals the whole group, catching children a single-PID signal would miss, and
 waits; a `context.AfterFunc` in `ExecuteTask` (`termLeftovers`) SIGTERMs every
-leftover group at the same moment. The second force-kills via `KillRunningStep`, which
+leftover group at the same moment, and another calls `RunLog.Stopping`, which
+logs `stopping, ctrl+c again to force` once, on the innermost task (`executeTask`
+tracks it with `RunLog.Enter`). The paths that end an interrupted step or task
+call it too, so it always comes before the first `stopped` line. The second force-kills via `KillRunningStep`, which
 also SIGKILLs every leftover group. A mutex guards the running PID, and on
 Linux and macOS it is cleared before the process is reaped, so a racing
 second CTRL+C never hits a reused PID.
+
+**Watched or piped (`stepio.go`, `run.go`).** `RunLog.Watch(screen)` says a
+person watches: `app` gives it `App.Screen()`, which is `tui.StdoutScreen`
+(nil unless stdout is a terminal). `RunLog.PTYSize` then gives a step's PTY
+the screen's width less the output prefix and its height less the two rows
+the status line takes; piped, it reports no size and `execRun` asks
+`attachPipes` for pipes alone. `stepio_unix.go`'s `newPTYPipe` makes a PTY
+whose slave is stdout's write end and whose master, non-blocking like a pipe's
+read end, goes through the same copy, `handoff` and leftover code. stderr is
+always a pipe. `RunLog.OnResize` (SIGWINCH, `screen_unix.go`) resizes the PTY
+while the step runs. Both `LineWriter`s are `Watch`ed too: they write text as
+it arrives (a prompt with no newline), wrap long lines under their own text,
+and, once a chunk holds a cursor-movement sequence, pass everything from it
+on through unprefixed until the tool has moved the cursor no more for
+`drawIdle`; lines before the sequence keep their prefix. Each `Write` reaches
+the terminal in one write. Piped, a `LineWriter` also writes a partial line as
+it arrives and continues it.
+
+On Windows, `stepio_windows.go`'s `newPTYPipe` makes a ConPTY in passthrough
+mode (older Windows rejects the flag, and the step gets pipes). os/exec can't
+create a process on a pseudo console, so `startOnPTY` calls `CreateProcess`
+itself with the pseudo console and a handle list (hobnob's stdin, the stderr
+pipe) and hands the process to the `exec.Cmd` for `Wait`. The pseudo console's
+input pipe is the step's `master`, which keys `conPTYs`, so the shared
+`setPTYSize` seam holds. ConPTY ends its output only when closed, so `handoff`
+closes it (`closePTY`) and waits for the copy to drain (`waitPTY`). A first
+CTRL+C writes ETX to its input; the second (`KillRunningStep`) terminates the
+process and closes the console. `conPTYFilter` drops the mode switches it
+writes for its own terminal. There is no SIGWINCH, so `tui.onResize` polls.
+
+Every command inherits hobnob's stdin. When stdin is a terminal hobnob has the
+foreground of (`stdin_term.go`, Linux and macOS), `attachStdin` instead gives
+the command a PTY as stdin and controlling terminal (`Setsid`, so its group
+is that PTY's foreground and `read` is never stopped by SIGTTIN; the step's
+stdout PTY is reused when there is one), puts the real terminal in a mode that
+passes every key (output processing stays on) and forwards the keys to the
+PTY; with no stdout PTY, the stdin PTY's output (the echo, and what the
+command writes to /dev/tty) is copied to hobnob's terminal. A CTRL+C byte is not forwarded: it becomes a SIGINT to hobnob itself, so
+`main.go`'s first and second CTRL+C work for every command, even one that
+traps SIGINT. The forwarder polls, so it never holds a read that would
+swallow the next prompt's keys. The terminal is restored when the shell exits
+(`stop`, deferred in `execRun` too) and by `RestoreTerminal`, which `main.go`
+calls before the forced exit.
+
+**The status line (`tui/live.go`).** When watched, `RunLog.Watch` makes a
+`liveArea` and routes every write to the terminal through it: hobnob's own
+lines (`lineSink`, whole lines) and the command's output (`liveWriter`, from
+the `LineWriter`s). The area is the command's unfinished line, a blank row and
+the rule, erased and redrawn in one write on each chunk and on a 100ms clock;
+lines above it are only ever appended. `Enter` of the outermost task starts
+it, its `leave` ends it; `Run` starts the step clock and each step-end method
+stops it; `Stopping` puts the note on the rule's left; `RunLog.Pause` (around
+each card prompt in `get.go`, `getpath.go`) clears it. A chunk with a cursor
+movement hides the area until the tool has moved the cursor no more for
+`drawIdle` (the clock notices too), and an unfinished line unchanged
+for 200ms is a prompt: the rule is drawn once below it, its clock frozen,
+and the answer's echo (the stdin PTY's) continues the prompt's line. Unwatched,
+none of this exists, so pipes get plain lines. `internal/termsim` replays the
+stream onto a grid for tests; with a `Screen`, the e2e harness's `Stdout` is that
+grid and `Raw` the bytes.
 
 **Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
 copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block
@@ -608,7 +693,7 @@ signal the group safely until it is reaped.
 Once the shell has exited, a first CTRL+C no longer signals it (`Cancel`
 returns `os.ErrProcessDone`). `handoff` then reads what the step left in the
 pipes (non-blocking, `stepio_unix.go`) into the step's writers and switches
-the pipes to the LineWriters alone (`io.Discard` for `quiet:`). Each copy
+the pipes to the LineWriters from `RunLog.Output` alone (`io.Discard` when the output is held). Each copy
 goroutine reads and writes under the same lock, so nothing the shell wrote
 lands after the switch. If `groupHasOthers` finds a live process in the group
 (`/proc` on Linux, `kern.proc.pgrp` on macOS), the shell stays a zombie: the
@@ -628,12 +713,14 @@ end of the run.
 
 ### `internal/tui`
 
-`linewriter.go` (the prefixing writer for `run:` output),
+`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
+card every prompt renders itself in: title, wrapped `info:`, error line, hint
+line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
-`Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
-and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
-`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the picker.
+`Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
+log line is built from, and `SecretMask`). The runner calls `PromptText`,
+`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
 ### `internal/app`: the CLI body
 
@@ -641,11 +728,12 @@ and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
 type App struct {
     Version    string
     IsTerminal func() bool
+    Screen     func() *tui.Screen
     SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
 }
 ```
 
-`IsTerminal` and `SelectTask` are fields, not package vars, so `internal/e2e`
+`IsTerminal`, `Screen` and `SelectTask` are fields, not package vars, so `internal/e2e`
 can fake the terminal and picker per test without global state. `App.Run`
 never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 
@@ -718,5 +806,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly four test seams: `runner.SetPrompts` (text, select and path prompts together),
-`runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.
+Production code exposes exactly five test seams: `runner.SetPrompts` (text, select and path prompts together),
+`runner.SetLeftoverGrace`, `App.IsTerminal`, `App.Screen` and `App.SelectTask`.

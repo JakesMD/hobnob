@@ -27,7 +27,36 @@ func TestE2E_HelpFlagShowsVersionAndUsage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "hobnob", "Usage:")
+	res.Out(t, "hobnob", "Usage")
+}
+
+func TestE2E_ListGroupsTasksByNamePrefix(t *testing.T) {
+	// given tasks named group:name and a task without a colon, when listed,
+	// then each group is a heading with its tasks indented under it and the
+	// ungrouped task comes last (why: a flat list of namespaced tasks is
+	// hard to scan)
+	// Arrange
+	yml := `
+		tasks:
+		  zap:
+		    info: Zap it
+		    steps:
+		      - run: echo zap
+		  go:build:
+		    steps:
+		      - run: echo build
+		  docs:dev:
+		    steps:
+		      - run: echo dev
+	`
+
+	// Act
+	res := Yml(t, yml, "--list")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "docs\n  docs:dev\n\ngo\n  go:build\n\nzap         Zap it")
+	res.NotOut(t, "Available tasks", "•")
 }
 
 func TestE2E_NoArgsDefaultTaskRuns(t *testing.T) {
@@ -67,7 +96,7 @@ func TestE2E_NoArgsNoDefaultTaskShowsTaskList(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "Usage:", "build")
+	res.Out(t, "Usage", "build")
 }
 
 func TestE2E_NoArgsNoTasksShowsUsageAndEmptyMessage(t *testing.T) {
@@ -83,7 +112,7 @@ func TestE2E_NoArgsNoTasksShowsUsageAndEmptyMessage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "Usage:", "No tasks found")
+	res.Out(t, "Usage", "No tasks found")
 	res.NotOut(t, "No tasks available.")
 }
 
@@ -123,7 +152,7 @@ func TestE2E_NamedTaskSuccessPrintsSuccessMessage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "✓", "[deploy]", "done")
+	res.Out(t, "deploy ✓ done after")
 }
 
 func TestE2E_NamedTaskFailurePrintsFailureMessage(t *testing.T) {
@@ -142,7 +171,7 @@ func TestE2E_NamedTaskFailurePrintsFailureMessage(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "✗", "[deploy]")
+	res.Err(t, "deploy ✗ failed after")
 }
 
 func TestE2E_DefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
@@ -162,7 +191,7 @@ func TestE2E_DefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "✓", "[default]", "done")
+	res.Out(t, "default ✓ done after")
 }
 
 func TestE2E_DefaultTaskFailurePrintsFailureMessage(t *testing.T) {
@@ -182,7 +211,7 @@ func TestE2E_DefaultTaskFailurePrintsFailureMessage(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "✗", "[default]")
+	res.Err(t, "default ✗ failed after")
 }
 
 func TestE2E_NoArgsDefaultTaskFailsFastWhenStdinNotTerminal(t *testing.T) {
@@ -227,7 +256,7 @@ func TestE2E_SelectFlagNoTTYFallsBackToList(t *testing.T) {
 	// Assert
 	res.OK(t)
 	res.Out(t, "build", "deploy")
-	res.NotOut(t, "Usage:")
+	res.NotOut(t, "Usage")
 }
 
 func TestE2E_SelectFlagWithNoInputFallsBackToList(t *testing.T) {
@@ -356,7 +385,7 @@ func TestE2E_NoTaskfileFoundShowsUsage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "Usage:")
+	res.Out(t, "Usage")
 }
 
 func TestE2E_CompletionScript(t *testing.T) {

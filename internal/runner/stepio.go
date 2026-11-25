@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"io"
 	"os"
 	osExec "os/exec"
@@ -50,15 +51,34 @@ func (p *outPipe) close() {
 type stepPipes struct {
 	stdout, stderr *outPipe
 	copied         chan struct{}
+	master         *os.File // stdout's PTY master; nil when stdout is a pipe
 
 	mu        sync.Mutex
 	abandoned bool // set once the run stops copying; later output is dropped
 }
 
-func attachPipes(cmd *osExec.Cmd) (*stepPipes, error) {
-	stdout, err := newOutPipe()
-	if err != nil {
-		return nil, err
+// ptyDrainWait is how long handoff waits for a pseudo console to deliver what
+// the step wrote once it is closed.
+const ptyDrainWait = time.Second
+
+// ptySize is the size of the PTY a step's stdout goes to.
+type ptySize struct{ cols, rows int }
+
+// attachPipes gives cmd its stdout and stderr pipes. With a ptySize, stdout is
+// a PTY instead, unless the platform has none.
+func attachPipes(cmd *osExec.Cmd, size *ptySize) (*stepPipes, error) {
+	var stdout *outPipe
+	var master *os.File
+	if size != nil {
+		if pipe, m, err := newPTYPipe(*size); err == nil {
+			stdout, master = pipe, m
+		}
+	}
+	if stdout == nil {
+		var err error
+		if stdout, err = newOutPipe(); err != nil {
+			return nil, err
+		}
 	}
 	stderr, err := newOutPipe()
 	if err != nil {
@@ -67,7 +87,20 @@ func attachPipes(cmd *osExec.Cmd) (*stepPipes, error) {
 	}
 	cmd.Stdout = stdout.w
 	cmd.Stderr = stderr.w
-	return &stepPipes{stdout: stdout, stderr: stderr}, nil
+	return &stepPipes{stdout: stdout, stderr: stderr, master: master}, nil
+}
+
+// start starts cmd. Where the step's PTY needs the process created attached to
+// it (ConPTY), that is done here, and ctx cancelling interrupts the process.
+func (p *stepPipes) start(ctx context.Context, cmd *osExec.Cmd) error {
+	return p.startOnPTY(ctx, cmd)
+}
+
+// resize sets the PTY's size; it does nothing when stdout is a pipe.
+func (p *stepPipes) resize(size ptySize) {
+	if p.master != nil {
+		setPTYSize(p.master, size)
+	}
 }
 
 // startCopying closes hobnob's copies of the write ends (the child holds its
@@ -92,6 +125,7 @@ func (p *stepPipes) startCopying(stdoutDest, stderrDest io.Writer) {
 
 // abandon closes everything after a failed Start.
 func (p *stepPipes) abandon() {
+	p.closePTY()
 	p.stdout.close()
 	p.stderr.close()
 }
@@ -100,6 +134,8 @@ func (p *stepPipes) abandon() {
 // wrote is delivered to its writers, and from then on the pipes, which a
 // backgrounded job may still hold, feed lateStdout and lateStderr instead.
 func (p *stepPipes) handoff(lateStdout, lateStderr io.Writer) {
+	p.closePTY()
+	p.waitPTY(ptyDrainWait)
 	if !canDrainNow {
 		p.waitClosed(killDrain)
 	}

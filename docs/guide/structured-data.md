@@ -15,9 +15,13 @@ tasks:
 
 ```
 $ hobnob fetch-question
-…
-[fetch-question] In which country did the 'Bay of Pigs' invasion take place? Cuba
-✓ [fetch-question] done
+fetch-question $ curl -s "https://the-trivia-api.com/v2/questions?limit=1"
+fetch-question │ [{"category":"sport_and_leisure","id":"622a1c367cc59eab6f950078","correctAnswer":"Belgium","incorrectAnswers":["France","Italy","Austria"],"question":{"text":"Where were the 1920 Olympics held?"},"tags":["category:sport-and-leisure","category:geography","category:history","sport:olympic-games","sport:sports","place:belgium","place:europe","place:benelux","place:western-europe","era:1920s","era:20th-century"],"type":"text_choice","difficulty":"hard","regions":[],"isNiche":false,"hint":"The host country is home to Brussels and the port city of Antwerp.","explanation":"Belgium hosted the first Summer Olympics held after World War I; the 1916 Games had been canceled because of the war.","sources":{"urls":["https://en.wikipedia.org/w/index.php?title=1920_Summer_Olympics&oldid=1380786826#:~:text=commonly%20known%20as%20Antwerp,1920%20in%20Antwerp%2C%20Belgium"],"checkedAt":"2026-11-18T14:42:50.192Z"}}]
+fetch-question ✓ 0.4s
+fetch-question $ echo "Where were the 1920 Olympics held? Belgium"
+fetch-question │ Where were the 1920 Olympics held? Belgium
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.4s
 ```
 
 Numbers and `true`/`false` keep their type too. With the API's `/metadata`
@@ -167,11 +171,13 @@ tasks:
 
 ```
 $ hobnob report CATEGORIES='["history","science"]'
-run: [report] echo "history"
-[report] history
-run: [report] echo "science"
-[report] science
-✓ [report] done
+report $ echo "history"
+report │ history
+report ✓ 0.0s
+report $ echo "science"
+report │ science
+report ✓ 0.0s
+report ✓ done after 0.0s
 ```
 
 Env files and your shell's environment only ever give text, however much it
@@ -188,11 +194,13 @@ tasks:
 
 ```
 $ CATEGORIES='["history","science"]' hobnob report
-run: [report] echo "history"
-[report] history
-run: [report] echo "science"
-[report] science
-✓ [report] done
+report $ echo "history"
+report │ history
+report ✓ 0.0s
+report $ echo "science"
+report │ science
+report ✓ 0.0s
+report ✓ done after 0.0s
 ```
 
 Without `| json`, `.CATEGORIES` from your shell is 21 characters of text, not

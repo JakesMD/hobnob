@@ -33,11 +33,11 @@ tasks:
 ```
 
 `hobnob morning` asks for a category once. When `count-questions` calls
-`_pick-category`, hobnob doesn't ask again. It prints the values the first
-run set instead:
+`_pick-category`, hobnob doesn't ask again:
 
 ```
-call: [count-questions] _pick-category (cached — CATEGORY=history)
+count-questions → _pick-category
+_pick-category ✓ done earlier
 ```
 
 Running `ask-question` or `count-questions` on its own still asks, because

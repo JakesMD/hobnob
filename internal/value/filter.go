@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 )
@@ -211,7 +212,7 @@ func filterJSON(args []Value) (Value, error) {
 	}
 	parsed, err := Parse(value.String())
 	if err != nil {
-		return Value{}, fmt.Errorf("json: %w", err)
+		return Value{}, fmt.Errorf("json: %s", describeJSONError(err))
 	}
 	return parsed, nil
 }
@@ -244,4 +245,16 @@ func filterLen(args []Value) (Value, error) {
 	default:
 		return Value{}, fmt.Errorf("len: expected a string, array, or object, got %s", value.Kind())
 	}
+}
+
+// describeJSONError words a parse failure without Go's decoder jargon.
+func describeJSONError(err error) string {
+	var syntax *json.SyntaxError
+	switch {
+	case errors.As(err, &syntax):
+		return fmt.Sprintf("not valid JSON, at character %d", syntax.Offset)
+	case errors.Is(err, io.ErrUnexpectedEOF), errors.Is(err, io.EOF):
+		return "not valid JSON, it ends too soon"
+	}
+	return err.Error()
 }

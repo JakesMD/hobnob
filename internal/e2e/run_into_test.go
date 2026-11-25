@@ -149,7 +149,7 @@ func TestE2E_RunInto_UnknownFilterErrors(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "run into")
+	res.Err(t, "into OUT")
 }
 
 func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
@@ -171,7 +171,7 @@ func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "run into")
+	res.Err(t, "into OUT")
 	res.Err(t, "must be stdout, stderr or exit")
 }
 
@@ -287,7 +287,7 @@ func TestE2E_Run_EnvVarNotInScopeStillVisible(t *testing.T) {
 
 func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 	// given a run: step whose if: evaluates false, when executed, then the
-	// command doesn't run and a skip line explains why (why: a silently
+	// command doesn't run and a skip line names it (why: a silently
 	// skipped step looks like a bug)
 	// Arrange
 	yml := `
@@ -303,8 +303,8 @@ func TestE2E_Run_IfFalseSkipsAndPrintsSkipLine(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "run:", "[t]", "skipped")
-	res.NotOut(t, "should-not-run")
+	res.Out(t, "t ⊘ echo should-not-run\n")
+	res.NotOut(t, "t $", "t │")
 }
 
 func TestE2E_Run_SoftSwallowsFailure(t *testing.T) {
@@ -515,4 +515,25 @@ func TestE2E_RunInto_JoinFilterTurnsCapturedListIntoSeparatedText(t *testing.T) 
 	// Assert
 	res.OK(t)
 	res.Lines(t, `["history","science"]`, "categories=history,science")
+}
+
+func TestE2E_Run_SkippedStepWhoseCommandCannotRenderPrintsItAsWritten(t *testing.T) {
+	// given a run: step with a false if: whose command template can't render,
+	// when executed, then its skip line shows the command as written (why: a
+	// skipped step names what it skips)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo {{ upper .MISSING }}
+		        if: 'false'
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t ⊘ echo {{ upper .MISSING }}\n")
 }

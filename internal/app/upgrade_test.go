@@ -67,7 +67,7 @@ func TestUpgradeFlagRunsInstaller(t *testing.T) {
 	// PATH and completion, which only the installer does)
 	// Arrange
 	exe := filepath.Join(t.TempDir(), "hobnob")
-	if err := os.WriteFile(exe, []byte("old"), 0755); err != nil {
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\necho hobnob v1.5.0\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOBNOB_UPGRADE_URL", serveScript(t, http.StatusOK, `echo "install dir: $HOBNOB_INSTALL_DIR"`))
@@ -85,6 +85,31 @@ func TestUpgradeFlagRunsInstaller(t *testing.T) {
 	}
 	if !strings.Contains(out, "install dir: "+filepath.Dir(exe)) {
 		t.Errorf("expected installer to target %s, got: %s", filepath.Dir(exe), out)
+	}
+}
+
+func TestUpgradeWritesInTheLogsStyle(t *testing.T) {
+	// given --upgrade, when the installer runs, then hobnob's lines and the
+	// installer's output all lead with "hobnob", ending with the versions
+	// (why: the upgrade reads like any other run, and the installer's output
+	// is told apart from hobnob's own)
+	// Arrange
+	exe := filepath.Join(t.TempDir(), "hobnob")
+	if err := os.WriteFile(exe, []byte("#!/bin/sh\necho hobnob v1.5.0\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOBNOB_UPGRADE_URL", serveScript(t, http.StatusOK, "echo installing"))
+	t.Setenv("HOBNOB_UPGRADE_EXE", exe)
+
+	// Act
+	out := captureStdout(t, func() {
+		_ = New("v1.4.0").Run(context.Background(), []string{"--upgrade"})
+	})
+
+	// Assert
+	want := "hobnob » downloading the latest installer…\nhobnob │ installing\nhobnob ✓ upgraded v1.4.0 → v1.5.0\n"
+	if out != want {
+		t.Errorf("expected %q, got %q", want, out)
 	}
 }
 

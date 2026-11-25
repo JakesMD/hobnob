@@ -23,7 +23,8 @@ import (
 )
 
 // ErrSilent signals the caller to exit 1 without printing — Run already
-// printed the failure itself.
+// printed the failure itself, as a "hobnob ✗" line when it came before any
+// task ran.
 var ErrSilent = errors.New("")
 
 // App is the CLI body. Construct with New for real use; tests build one
@@ -31,7 +32,12 @@ var ErrSilent = errors.New("")
 type App struct {
 	Version    string
 	IsTerminal func() bool
+	// Screen returns the terminal a run is watched on, or nil when stdout is
+	// piped. A nil func means piped.
+	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
+
+	quiet bool
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -42,6 +48,7 @@ func New(version string) *App {
 		IsTerminal: func() bool {
 			return cterm.IsTerminal(os.Stdin.Fd())
 		},
+		Screen:     tui.StdoutScreen,
 		SelectTask: tui.PromptTaskSelect,
 	}
 }
@@ -83,15 +90,17 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 }
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir); err != nil {
-		if errors.Is(err, runner.ErrInterrupted) {
-			fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render("interrupted"))
-			return ErrSilent
+	log := tui.NewRunLog(os.Stdout, os.Stderr)
+	log.SetQuiet(a.quiet)
+	if a.Screen != nil {
+		log.Watch(a.Screen())
+	}
+	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
+		if !runner.Reported(err) {
+			tui.HobnobError(os.Stderr, err.Error())
 		}
-		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
 		return ErrSilent
 	}
-	fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix(taskName) + tui.SChecked.Render("done"))
 	return nil
 }
 
@@ -99,11 +108,22 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 // reads os.Args or calls os.Exit, so it's safe to call repeatedly from a
 // single test process.
 func (a *App) Run(ctx context.Context, args []string) error {
+	err := a.run(ctx, args)
+	if err != nil && !errors.Is(err, ErrSilent) {
+		tui.HobnobError(os.Stderr, err.Error())
+		return ErrSilent
+	}
+	return err
+}
+
+func (a *App) run(ctx context.Context, args []string) error {
 	fileFlag, args, err := extractFileFlag(args)
 	if err != nil {
 		return err
 	}
 	useDemo, args := extractDemoFlag(args)
+	flagQuiet, args := extractQuietFlag(args)
+	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")
 	}
@@ -114,7 +134,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 			fmt.Fprintln(os.Stdout, "hobnob "+cli.DisplayVersion(a.Version))
 			return nil
 		case "--upgrade":
-			return selfUpgrade()
+			return selfUpgrade(a.Version)
 		case "completion":
 			if len(args) < 2 {
 				return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")

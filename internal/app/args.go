@@ -21,7 +21,7 @@ func findTaskfile(startDir string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("no hobnob.yml or hobnob.yaml found in %s or any parent directory", startDir)
+			return "", fmt.Errorf("no hobnob.yml or hobnob.yaml in %s or any folder above it", startDir)
 		}
 		dir = parent
 	}
@@ -49,6 +49,21 @@ func extractDemoFlag(args []string) (bool, []string) {
 		}
 	}
 	return false, args
+}
+
+// extractQuietFlag scans args for --quiet or -q, removes it, and reports
+// whether it was present.
+func extractQuietFlag(args []string) (bool, []string) {
+	found := false
+	remaining := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--quiet" || arg == "-q" {
+			found = true
+			continue
+		}
+		remaining = append(remaining, arg)
+	}
+	return found, remaining
 }
 
 // extractFileFlag scans args for --file <value>, removes both tokens, and

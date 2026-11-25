@@ -29,9 +29,10 @@ tasks:
 
 ```
 $ hobnob --list
-Available tasks for this project:
-• standup
-• trivia:random       Fetch a random question.
+trivia
+  trivia:random  Fetch a random question.
+
+standup
 ```
 
 `trivia` is the module's key, and every task from `trivia.yml` is named

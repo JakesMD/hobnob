@@ -2,6 +2,7 @@ package literal
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -29,9 +30,19 @@ func ParseArgv(n *yaml.Node) (Argv, error) {
 	return Argv{elems: elems}, nil
 }
 
+// String returns the list form as written, elements joined by spaces.
+func (a Argv) String() string {
+	return strings.Join(a.elems, " ")
+}
+
 // IsZero reports whether a is the zero Argv: the step has no list form.
 func (a Argv) IsZero() bool {
 	return len(a.elems) == 0
+}
+
+// Raw returns the elements as written.
+func (a Argv) Raw() []string {
+	return a.elems
 }
 
 // Resolve evaluates each element, typed, and assembles the argv. A list

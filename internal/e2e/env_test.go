@@ -58,8 +58,8 @@ func TestE2E_Env_MissingFileWarnsAndContinues(t *testing.T) {
 	if !strings.Contains(res.Stderr, "does-not-exist.env") {
 		t.Errorf("expected stderr to mention the missing path, got: %s", res.Stderr)
 	}
-	if !strings.Contains(res.Stderr, "not found") {
-		t.Errorf("expected stderr to explain the file was not found, got: %s", res.Stderr)
+	if !strings.Contains(res.Stderr, "no env file") {
+		t.Errorf("expected stderr to explain the file is missing, got: %s", res.Stderr)
 	}
 }
 

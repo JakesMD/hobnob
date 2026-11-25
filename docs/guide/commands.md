@@ -9,9 +9,9 @@ tasks:
       - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1"
 ```
 
-What the command prints shows as it runs. If the command fails, the task
-stops there (see [Errors](./errors.md) to carry on instead). To keep what it
-printed in a variable, see [Capturing output](./capturing-output.md).
+If the command fails, the task stops there (see [Errors](./errors.md) to carry
+on instead). To keep what it printed in a variable, see
+[Capturing output](./capturing-output.md).
 
 ## Two ways to write a command
 
@@ -46,12 +46,14 @@ tasks:
 
 ```
 $ hobnob greet
-run: [greet] echo Hello Ada; echo oops
-[greet] Hello Ada
-[greet] oops
-run: [greet] echo Hello 'Ada; echo oops'
-[greet] Hello Ada; echo oops
-✓ [greet] done
+greet $ echo Hello Ada; echo oops
+greet │ Hello Ada
+greet │ oops
+greet ✓ 0.0s
+greet $ echo Hello 'Ada; echo oops'
+greet │ Hello Ada; echo oops
+greet ✓ 0.0s
+greet ✓ done after 0.0s
 ```
 
 As text, the variable becomes part of the command, so the `;` started a
@@ -102,11 +104,11 @@ tasks:
 
 ```
 $ hobnob import-questions
-run: [import-questions] curl -o questions.json "https://the-trivia-api.com/v2/questions?limit=10"
-⊙ [import-questions] Downloading ten questions… (output hidden)
-run: [import-questions] ./import.sh
-⊙ [import-questions] output hidden
-✓ [import-questions] done
+import-questions $ curl -so questions.json "https://the-trivia-api.com/v2/questions?limit=10" # Downloading ten questions… (output hidden)
+import-questions ✓ 0.3s
+import-questions $ ./import.sh # output hidden
+import-questions ✓ 0.2s
+import-questions ✓ done after 0.5s
 ```
 
 If a quiet command fails, hobnob prints everything it hid, so you can see
@@ -116,7 +118,7 @@ what went wrong.
 
 A command can start a job in the background with `&`, such as a server or an
 app you want open while the task goes on. The job keeps running while later
-steps run, and what it prints still shows under the task's name. When hobnob
+steps run. When hobnob
 finishes, it stops the job.
 
 ```yaml
@@ -129,11 +131,13 @@ tasks:
 
 ```
 $ hobnob play
-run: [play] ./quiz-server.sh &
-run: [play] ./play.sh
-[play] quiz server listening on :8000
-[play] question 1 of 10
-✓ [play] done
+play $ ./quiz-server.sh &
+play ✓ 0.0s
+play $ ./play.sh
+play │ quiz server listening on :8000
+play │ question 1 of 10
+play ✓ 0.7s
+play ✓ done after 0.7s
 ```
 
 To let jobs finish within their step, end it with `wait`:
@@ -171,6 +175,17 @@ yourself.
 - **A called task without a `dir:` runs where its caller runs.**
 - **[`if:`](./conditions.md) always runs in the task's directory**, even on a
   step with its own `dir:`.
+
+### Terminal and input
+
+- **When hobnob's output is a terminal, a command's stdout is a terminal
+  too**, so it keeps its colour, progress bars and line-by-line output. Its
+  stderr is not one. Piped, redirected to a file or in CI, a command gets
+  pipes for both, so logs hold no escape codes.
+- **A command reads hobnob's own input**, so `read`, `sudo` and `[y/N]`
+  prompts work. A prompt with no newline shows before you answer.
+- **On Windows a terminal needs Windows 11 (22H2) or newer.** On older
+  Windows a command gets pipes, as if the output were piped.
 
 ### Hidden output
 

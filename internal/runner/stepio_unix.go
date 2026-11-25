@@ -2,7 +2,16 @@
 
 package runner
 
-import "syscall"
+import (
+	"context"
+	"os"
+	osExec "os/exec"
+	"syscall"
+	"time"
+
+	"github.com/creack/pty"
+	"golang.org/x/sys/unix"
+)
 
 // canDrainNow: the pipes' read ends are non-blocking, so handoff can read
 // what the step left buffered without waiting.
@@ -64,3 +73,45 @@ func drainNow(pipe *outPipe) {
 		}
 	})
 }
+
+// newPTYPipe opens a PTY as a step's stdout: the slave is the pipe's write
+// end. The master is made non-blocking, as os.Pipe's ends are, so copyOut and
+// drainNow never wait on it.
+func newPTYPipe(size ptySize) (*outPipe, *os.File, error) {
+	master, slave, err := pty.Open()
+	if err != nil {
+		return nil, nil, err
+	}
+	fd, err := syscall.Dup(int(master.Fd()))
+	master.Close()
+	if err == nil {
+		syscall.CloseOnExec(fd)
+		err = syscall.SetNonblock(fd, true)
+	}
+	if err != nil {
+		slave.Close()
+		return nil, nil, err
+	}
+	nonblocking := os.NewFile(uintptr(fd), "ptmx")
+	setPTYSize(nonblocking, size)
+	return &outPipe{r: nonblocking, w: slave}, nonblocking, nil
+}
+
+func setPTYSize(master *os.File, size ptySize) {
+	raw, err := master.SyscallConn()
+	if err != nil {
+		return
+	}
+	// Control, not Fd: Fd would put the master back in blocking mode.
+	_ = raw.Control(func(fd uintptr) {
+		_ = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(size.rows), Col: uint16(size.cols)})
+	})
+}
+
+// startOnPTY: a Unix PTY needs nothing but the slave as stdout, which
+// attachPipes did.
+func (p *stepPipes) startOnPTY(ctx context.Context, cmd *osExec.Cmd) error { return cmd.Start() }
+
+// closePTY and waitPTY: closing the master is the copy goroutine's own job.
+func (p *stepPipes) closePTY()             {}
+func (p *stepPipes) waitPTY(time.Duration) {}

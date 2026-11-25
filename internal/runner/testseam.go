@@ -15,7 +15,8 @@ type TextPromptFunc func(ctx context.Context, info, varName string,
 
 // SelectPromptFunc matches tui.PromptSelect's signature.
 type SelectPromptFunc func(ctx context.Context, varName, info string, items []string,
-	multi bool, defaultVal, task string, secret bool) (value.Value, error)
+	multi bool, defaultVal, task string, secret, optional bool,
+	validate func(value.Value) (bool, error), checkDesc string) (value.Value, error)
 
 // PathPromptFunc matches tui.PromptPath's signature.
 type PathPromptFunc func(ctx context.Context, prompt tui.PathPrompt, task string,

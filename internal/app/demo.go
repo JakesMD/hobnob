@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	_ "embed"
-	"fmt"
 	"os"
 	"path/filepath"
 
@@ -46,5 +45,5 @@ func loadDemoConfig(ctx context.Context, cliVars map[string]string, invDir strin
 // time the first hobnob command someone runs. Goes to stderr so it can't
 // contaminate a piped task's output.
 func announceDemo() {
-	fmt.Fprintln(os.Stderr, tui.SInfo.Render("Running the built-in demo. Write your own: "+cli.GuideURL))
+	tui.HobnobNote(os.Stderr, "Running the built-in demo. Write your own: "+cli.GuideURL)
 }

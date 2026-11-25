@@ -14,9 +14,10 @@ tasks:
 
 ```
 $ hobnob announce
-run: [announce] echo "Today's category is science"
-[announce] Today's category is science
-✓ [announce] done
+announce $ echo "Today's category is science"
+announce │ Today's category is science
+announce ✓ 0.0s
+announce ✓ done after 0.0s
 ```
 
 A template is filled in when its step runs, not when the file loads, so it
@@ -39,10 +40,16 @@ tasks:
 
 ```
 $ hobnob announce
-[announce] Today's category is GENERAL_KNOWLEDGE
+announce $ echo "Today's category is GENERAL_KNOWLEDGE"
+announce │ Today's category is GENERAL_KNOWLEDGE
+announce ✓ 0.0s
+announce ✓ done after 0.0s
 
 $ hobnob announce CATEGORY=science
-[announce] Today's category is SCIENCE
+announce $ echo "Today's category is SCIENCE"
+announce │ Today's category is SCIENCE
+announce ✓ 0.0s
+announce ✓ done after 0.0s
 ```
 
 You'll use four filters all the time:
@@ -72,10 +79,16 @@ tasks:
 
 ```
 $ hobnob mood CATEGORY=science
-[mood] lab coats on
+mood $ echo "lab coats on"
+mood │ lab coats on
+mood ✓ 0.0s
+mood ✓ done after 0.0s
 
 $ hobnob mood
-[mood] desk day
+mood $ echo "desk day"
+mood │ desk day
+mood ✓ 0.0s
+mood ✓ done after 0.0s
 ```
 
 `eq` checks two values are equal. The other comparisons (`ne`, `lt`, `le`,

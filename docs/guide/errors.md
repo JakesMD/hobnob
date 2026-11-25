@@ -13,11 +13,12 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-✗ [fetch-question] exit status 56
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ✗ 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question ✗ failed after 0.4s
 ```
 
-hobnob itself then exits with `1`, whatever code the command exited with.
+hobnob itself exits with `1`, whatever code the command exited with.
 
 ## Carrying on after a failure
 
@@ -35,14 +36,16 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-run: [fetch-question] echo "still running"
-[fetch-question] still running
-✓ [fetch-question] done
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ! 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question $ echo "still running"
+fetch-question │ still running
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.5s • 1 soft failure
 ```
 
 `soft:` works on a `call:` step too: if the called task fails, the caller
-carries on.
+carries on, and the failure counts as a soft failure.
 
 ## Reacting to a failure
 
@@ -64,18 +67,19 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-run: [fetch-question] echo "no question with that id (curl exited 56)"
-[fetch-question] no question with that id (curl exited 56)
-✓ [fetch-question] done
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ! 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question $ echo "no question with that id (curl exited 56)"
+fetch-question │ no question with that id (curl exited 56)
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.5s • 1 soft failure
 ```
 
 ## Rules
 
-- **A `soft:` step that fails prints nothing**, and that covers any failure,
-  not just a command exiting non-zero. A typo in a template or a path that
-  leads nowhere is passed over just as quietly. Only use `soft:` on steps
-  you expect might fail.
+- **`soft:` covers any failure**, not just a command exiting non-zero. A
+  typo in a template or a path that leads nowhere is passed over just as
+  quietly. Only use `soft:` on steps you expect might fail.
 - **Only `run:` and `call:` steps take `soft:`.** Inside a
   [loop](./loops.md), put it on the steps that might fail.
 - **A command killed by a signal has an `exit` of `-1`.**

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,10 @@ var promptPathFn PathPromptFunc = tui.PromptPath
 func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 	for _, getEntry := range step.GetEntries {
 		if err := execGetEntry(execState, getEntry, scope); err != nil {
-			return err
+			if errors.Is(err, ErrInterrupted) || tui.IsInterrupted(err) {
+				return err
+			}
+			return fmt.Errorf("get %s: %w", getEntry.VarName, err)
 		}
 	}
 	return nil
@@ -60,7 +64,11 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 		}
 		return fmt.Errorf("--no-input: %s requires input; its default is a directory and %s needs a file; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName, getEntry.VarName)
 	}
-	return acceptAnswer(execState, getEntry, scope, val, false)
+	if err := takeAnswer(execState, getEntry, scope, val, false); err != nil {
+		return err
+	}
+	logVar(execState, getEntry, scope, "default")
+	return nil
 }
 
 // acceptAnswer takes an answer nobody typed at a prompt (a value already in
@@ -68,8 +76,21 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 // validates it. Setting a value already in scope claims it, so a later
 // module vars: default can't swap it out from under the task. fromInvocation
 // says val came from the command line or the shell, which decides what a
-// relative path in it is relative to.
+// relative path in it is relative to; it also puts the note on the variable
+// line saying where the value came from.
 func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool) error {
+	source := ""
+	if fromInvocation {
+		source = getSource(scope, getEntry.VarName)
+	}
+	if err := takeAnswer(execState, getEntry, scope, val, fromInvocation); err != nil {
+		return err
+	}
+	logVar(execState, getEntry, scope, source)
+	return nil
+}
+
+func takeAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool) error {
 	if getEntry.Multi {
 		list, err := multiList(getEntry.VarName, val)
 		if err != nil {
@@ -121,17 +142,23 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 		if len(fromItems) == 0 {
 			if getEntry.Optional {
 				scope.Set(getEntry.VarName, value.Nil(), getEntry.Secret)
+				logVar(execState, getEntry, scope, "")
 				return nil
 			}
 			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
 		}
-		val, err = promptSelectUntilValid(execState, getEntry, fromItems, info, defaultVal, scope.Vars())
+		resume := execState.log.Pause()
+		val, err = promptSelectFn(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret,
+			getEntry.Optional, selectValidator(execState.ctx, getEntry, scope.Vars()), getEntry.Check)
+		resume()
 		if err != nil {
-			return err
+			return wrapPromptErr(getEntry.VarName, err)
 		}
 	} else {
 		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
+		resume := execState.log.Pause()
 		text, err := promptTextFn(execState.ctx, info, getEntry.VarName, checkValidate, validatorDesc(getEntry, matcher, patterns), defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
+		resume()
 		if err != nil {
 			return wrapPromptErr(getEntry.VarName, err)
 		}
@@ -139,7 +166,31 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 	}
 
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
+	logVar(execState, getEntry, scope, "")
 	return nil
+}
+
+// getSource says where a value already in scope came from, for the note on
+// its variable line.
+func getSource(scope *scope.Scope, name string) string {
+	switch {
+	case scope.FromCLI(name):
+		return "from the command line"
+	case scope.FromEnv(name):
+		return "from the environment"
+	}
+	return ""
+}
+
+// logVar logs the value a get: entry ended up with, or that an optional
+// entry got none.
+func logVar(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, source string) {
+	val := scope.Vars()[getEntry.VarName]
+	if getEntry.Optional && (val.IsEmpty() || emptyList(val)) {
+		execState.log.VarSkipped(execState.task, getEntry.VarName)
+		return
+	}
+	execState.log.Var(execState.task, getEntry.VarName, scope.Display(getEntry.VarName), source)
 }
 
 // resolveMatch renders getEntry's match: patterns and compiles them. patterns
@@ -201,26 +252,15 @@ func checkValidator(ctx context.Context, getEntry config.GetEntry, vars map[stri
 	}
 }
 
-// promptSelectUntilValid re-prompts the select menu until the chosen value
-// passes getEntry.Check (or there's no check to pass). Errors come back ready
-// to return: a prompt failure through wrapPromptErr, a check failure with its
-// own context — wrapping again at the call site would double the "get X:" prefix.
-func promptSelectUntilValid(execState execCtx, getEntry config.GetEntry, fromItems []string, info, defaultVal string, vars map[string]value.Value) (value.Value, error) {
-	for {
-		val, err := promptSelectFn(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret)
-		if err != nil {
-			return value.Value{}, wrapPromptErr(getEntry.VarName, err)
-		}
-		if getEntry.Check == "" || (getEntry.Optional && val.IsEmpty()) {
-			return val, nil
-		}
-		ok, err := eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, vars, getEntry.VarName, val)
-		if err != nil {
-			return value.Value{}, fmt.Errorf("get %s check: %w", getEntry.VarName, err)
-		}
-		if ok {
-			return val, nil
-		}
+// selectValidator returns the check: judge handed to tui.PromptSelect, or nil
+// when there is no check. The prompt shows its refusal in place, so it never
+// reopens.
+func selectValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value) func(value.Value) (bool, error) {
+	if getEntry.Check == "" {
+		return nil
+	}
+	return func(candidate value.Value) (bool, error) {
+		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, candidate)
 	}
 }
 

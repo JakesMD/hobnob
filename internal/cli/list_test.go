@@ -86,6 +86,42 @@ func TestListTasks(t *testing.T) {
 	}
 }
 
+func TestListTasksGrouping(t *testing.T) {
+	// given tasks named group:name and tasks without a colon, when listed,
+	// then each group gets a heading with its tasks indented under it and
+	// ungrouped tasks come last with no header or bullets, with every info in one column (why: a long
+	// namespaced list is unreadable flat)
+	// Arrange
+	cfg, err := config.ParseConfig("testdata/grouped_tasks.yml")
+	if err != nil {
+		t.Fatalf("parse error: %v", err)
+	}
+	scope, _, err := scope.Load(context.Background(), cfg, nil, "/tmp/invocation")
+	if err != nil {
+		t.Fatalf("scope error: %v", err)
+	}
+	var buf bytes.Buffer
+
+	// Act
+	if err := ListTasks(cfg, scope, &buf); err != nil {
+		t.Fatalf("ListTasks error: %v", err)
+	}
+
+	// Assert
+	want := "docs\n" +
+		"  docs:dev  Serve the docs\n" +
+		"\n" +
+		"go\n" +
+		"  go:build  Build the app\n" +
+		"  go:test\n" +
+		"\n" +
+		"install     Install it\n" +
+		"zap\n"
+	if got := buf.String(); got != want {
+		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
 func TestCollectSelectableTasks(t *testing.T) {
 	// given public and internal tasks, when collected for the picker, then
 	// only public tasks come back, sorted (why: the picker must match --list)

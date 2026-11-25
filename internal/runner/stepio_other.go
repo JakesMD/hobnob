@@ -17,7 +17,9 @@ const canDrainNow = false
 
 // copyOut copies pipe into its dest until EOF.
 func (p *stepPipes) copyOut(pipe *outPipe) {
-	io.Copy(pipeWriter{p, pipe}, pipe.r)
+	w, done := p.filterPTY(pipe, pipeWriter{p, pipe})
+	io.Copy(w, pipe.r)
+	done()
 }
 
 func drainNow(pipe *outPipe) {}

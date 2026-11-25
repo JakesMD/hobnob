@@ -124,15 +124,19 @@ Run in a terminal, both ask the same three questions. hobnob's first one:
 
 ```
 $ hobnob deploy
-run: [deploy] gh api repos/acme/platform/contents/services
-⊙ [deploy] output hidden
+deploy $ gh api repos/acme/platform/contents/services # output hidden
+deploy ✓ 0.0s
 
-Select values for SERVICES.
-Which services?
-▶ ○ api
-  ○ web
-  ○ worker
-↑↓ move  space toggle  enter confirm
+╭─ deploy » SERVICES ──────────────────────────────────────────────────────╮
+│                                                                          │
+│  Which services?                                                         │
+│                                                                          │
+│  ▶ ○ api                                                                 │
+│    ○ web                                                                 │
+│    ○ worker                                                              │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • tab toggle • enter confirm
 ```
 
 In CI, both take the answers on the command line, with the token from the
@@ -145,17 +149,24 @@ hobnob
 
 ```
 $ hobnob deploy SERVICES='["api","web"]' ENV=staging
-run: [deploy] gh api repos/acme/platform/contents/services
-⊙ [deploy] output hidden
-run: [deploy] docker build -t ghcr.io/acme/api:staging services/api
-[deploy] naming to ghcr.io/acme/api:staging done
-run: [deploy] kubectl --token **** -n staging rollout restart deploy/api
-[deploy] deployment.apps/api restarted
-run: [deploy] docker build -t ghcr.io/acme/web:staging services/web
-[deploy] naming to ghcr.io/acme/web:staging done
-run: [deploy] kubectl --token **** -n staging rollout restart deploy/web
-[deploy] deployment.apps/web restarted
-✓ [deploy] done
+deploy $ gh api repos/acme/platform/contents/services # output hidden
+deploy ✓ 0.0s
+deploy » SERVICES=api, web # from the command line
+deploy » ENV=staging # from the command line
+deploy » TOKEN=**** # from the environment
+deploy $ docker build -t ghcr.io/acme/api:staging services/api
+deploy │ naming to ghcr.io/acme/api:staging done
+deploy ✓ 0.2s
+deploy $ kubectl --token **** -n staging rollout restart deploy/api
+deploy │ deployment.apps/api restarted
+deploy ✓ 0.0s
+deploy $ docker build -t ghcr.io/acme/web:staging services/web
+deploy │ naming to ghcr.io/acme/web:staging done
+deploy ✓ 0.0s
+deploy $ kubectl --token **** -n staging rollout restart deploy/web
+deploy │ deployment.apps/web restarted
+deploy ✓ 0.0s
+deploy ✓ done after 0.3s
 ```
 
 </div>

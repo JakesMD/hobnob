@@ -1,33 +1,40 @@
 <script setup lang="ts">
 // Browser re-enactments of hobnob runs, one per taskfile in the named slots.
-// Output mirrors the real CLI (internal/tui/styles.go, prompt_select.go,
-// prompt_text.go, prompt_path.go, runner.displayArgv, app.execTask's done line). Trivia
-// fetches live questions; the others play back scripted command output.
-// Each script marks the step it is on by a line of text from that step's
-// YAML, so a slot can be edited without renumbering anything here. The trivia
-// slot must stay in step with internal/app/demo.yml.
-import { computed, nextTick, ref } from 'vue'
+// Output mirrors the real CLI: the log lines of internal/tui/runlog.go, the
+// status line of live.go, the card of frame.go with the menu and picker bodies
+// of list.go and prompt_path.go. Trivia fetches live questions; the others
+// play back scripted command output. Each script marks the step it is on by a
+// line of text from that step's YAML, so a slot can be edited without
+// renumbering anything here. The trivia slot must stay in step with
+// internal/app/demo.yml.
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
-type Seg = { t: string; c?: string }
+type Seg = { t: string; c?: string; click?: () => void }
 type Line = Seg[]
+type Resolve = (v: string | string[]) => void
 type Prompt =
-  | { kind: 'select'; varName: string; info: string; items: string[]; cursor: number; multi: boolean; picked: boolean[]; resolve: (v: string | string[]) => void }
-  | { kind: 'text'; varName: string; info: string; secret: boolean; value: string; resolve: (v: string | string[]) => void }
-  | (PathState & { kind: 'path'; resolve: (v: string | string[]) => void })
+  | { kind: 'select'; task: string; varName: string; info: string; items: string[]; filter: string; cursor: number; offset: number; multi: boolean; picked: boolean[]; resolve: Resolve }
+  | { kind: 'text'; task: string; varName: string; info: string; secret: boolean; value: string; resolve: Resolve }
+  | (PathState & { kind: 'path'; resolve: Resolve })
 
 // A type: file picker over a made-up tree (FS), after prompt_path.go.
 type PathState = {
+  task: string
   varName: string
   info: string
   match: (name: string) => boolean
-  invoke: string
-  form: 'rel' | 'home' | 'abs'
-  cwd: string
-  seg: string
+  text: string
   cursor: number
+  offset: number
   errMsg: string
 }
 type PathRow = { name: string; isDir: boolean; positions: number[] }
+type MenuRow = { index: number; positions: number[] }
+
+// What a card shows: one line of its box, and the row it stands for when the
+// line can be clicked.
+type BodyRow = { segs: Seg[]; row?: number; input?: boolean }
+type CardRow = { pre: Seg[]; post?: Seg[]; row?: number; input?: boolean }
 
 type DemoId = 'trivia' | 'deploy' | 'flash'
 const DEMOS: { id: DemoId; label: string; command: string; caption: string }[] = [
@@ -45,40 +52,73 @@ const state = ref<'idle' | 'running' | 'done'>('idle')
 const screen = ref<HTMLElement>()
 const code = ref<HTMLElement>()
 const textInput = ref<HTMLInputElement>()
+const setInput = (el: unknown) => (textInput.value = (el as HTMLInputElement) ?? undefined)
 
 // A switch of tab bumps the run id; anything still awaiting from the old run
 // throws Cancelled at its next sleep or prompt and unwinds quietly.
 let runId = 0
 class Cancelled extends Error {}
+// A step that failed, already logged, on its way up to the task ends.
+class StepFailed extends Error {}
 
-// ── styling, after internal/tui/styles.go ───────────────────────────────────
+
+const GREY = 'a8'
+const GREEN = 'a10'
+const RED = 'a9'
+const YELLOW = 'a11'
 
 const PALETTE = ['2', '3', '4', '5', '6', '10', '11', '12', '13', '14']
 const taskColor = (task: string) => 'a' + PALETTE[[...task].reduce((s, ch) => s + ch.codePointAt(0)!, 0) % PALETTE.length]
-const prefix = (task: string): Seg[] => [{ t: '[' }, { t: task, c: taskColor(task) }, { t: '] ' }]
 
 const SHELL_METACHARS = ' \t\n"\'$`\\|&;<>()*?[]{}!#~'
 const shellQuote = (s: string) => "'" + s.replaceAll("'", `'\\''`) + "'"
 const displayArgv = (argv: string[]) =>
   argv.map((a) => (a === '' || [...a].some((ch) => SHELL_METACHARS.includes(ch)) ? shellQuote(a) : a)).join(' ')
 
+const formatElapsed = (ms: number) =>
+  ms >= 60000 ? `${Math.floor(ms / 60000)}m${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}s` : `${(ms / 1000).toFixed(1)}s`
+
+// A log line starts with the task in its colour, then the mark that says what
+// the line is.
+const lead = (task: string, mark: Seg): Seg[] => [{ t: task, c: taskColor(task) }, { t: ' ' }, mark, { t: ' ' }]
+const taskMark = (task: string, mark: string): Seg => ({ t: mark, c: taskColor(task) + ' b' })
+const note = (text: string): Seg => ({ t: ` # ${text}`, c: GREY })
+
 function print(...segs: Seg[]) {
   lines.value.push(segs)
   scrollScreen()
 }
-const runLine = (task: string, cmd: string) => print({ t: 'run:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: cmd, c: 'a11' })
-const skipLine = (task: string) => print({ t: 'run:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: 'skipped (if: false)', c: 'a8' })
-const outLine = (task: string, text: string) => print(...prefix(task), { t: text })
-const getLine = (task: string, name: string, val: string) =>
-  print({ t: 'get:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: `${name}: ${val}`, c: 'a11' })
-const cachedLine = (task: string, called: string, summary: string) =>
-  print({ t: 'call:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: called, c: 'a11' }, { t: ` (cached — ${summary})`, c: 'a8' })
-const doneLine = (task: string) => print({ t: '✓', c: 'a10' }, { t: ' ' }, ...prefix(task), { t: 'done', c: 'a10' })
-const failLine = (task: string, msg: string) => print({ t: '✗', c: 'a9' }, { t: ' ' }, ...prefix(task), { t: msg, c: 'a9' })
+const hobnobNote = (text: string) => print({ t: 'hobnob', c: 'b' }, { t: ' ' }, { t: '»', c: GREY }, { t: ' ' }, { t: text, c: GREY })
+
+function runLine(task: string, cmd: string) {
+  const [first, ...rest] = cmd.split('\n')
+  print(...lead(task, taskMark(task, '$')), { t: first })
+  const indent = ' '.repeat(task.length + 3)
+  for (const more of rest) print({ t: indent + more })
+}
+const callLine = (task: string, called: string) =>
+  print(...lead(task, taskMark(task, '→')), { t: called, c: taskColor(called) })
+const varLine = (task: string, name: string, val: string) =>
+  print(...lead(task, taskMark(task, '»')), { t: `${name}=${val}` })
+const doneEarlierLine = (task: string) =>
+  print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ' earlier', c: GREY })
+const skipLine = (task: string, what: string) => print(...lead(task, { t: '⊘', c: GREY }), { t: what, c: GREY })
+
+// The terminal's width: output wraps, and cards stop, at the same column.
+const TERM_COLS = 60
+
+// Command output passes through a line at a time, wrapped under its own text
+// past the prefix.
+function outLine(task: string, text: string) {
+  const room = Math.max(20, TERM_COLS - task.length - 3)
+  const chunks: string[] = []
+  for (let i = 0; i < Math.max(text.length, 1); i += room) chunks.push(text.slice(i, i + room))
+  for (const chunk of chunks) print(...lead(task, { t: '│', c: GREY }), { t: chunk })
+}
 
 // A \r-redrawn line (dd status=progress): replace the last line in place.
 function redraw(task: string, text: string) {
-  lines.value[lines.value.length - 1] = [...prefix(task), { t: text }]
+  lines.value[lines.value.length - 1] = [...lead(task, { t: '│', c: GREY }), { t: text }]
 }
 
 function sleep(ms: number) {
@@ -96,13 +136,79 @@ async function stream(task: string, out: string[], ms = 140) {
   }
 }
 
+// A step: its command line, its body, then its own end line with the time.
+async function step(task: string, cmd: string, body: () => Promise<void>) {
+  runLine(task, cmd)
+  const started = performance.now()
+  stepStart.value = started
+  try {
+    await body()
+  } catch (err) {
+    stepStart.value = null
+    if (err instanceof Cancelled) throw err
+    const reason = err instanceof Error ? err.message : String(err)
+    print(...lead(task, { t: '✗', c: RED }), { t: formatElapsed(performance.now() - started), c: GREY }, { t: ` ${cmd}: ${reason}` })
+    throw new StepFailed(reason)
+  }
+  stepStart.value = null
+  print(...lead(task, { t: '✓', c: GREEN }), { t: formatElapsed(performance.now() - started), c: GREY })
+}
+
+// A task: its steps, then its own end line.
+async function inTask(task: string, body: () => Promise<void>) {
+  const started = performance.now()
+  try {
+    await body()
+  } catch (err) {
+    if (err instanceof Cancelled) throw err
+    print(...lead(task, { t: '✗', c: RED }), { t: 'failed', c: RED }, { t: ` after ${formatElapsed(performance.now() - started)}`, c: GREY })
+    throw err
+  }
+  print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ` after ${formatElapsed(performance.now() - started)}`, c: GREY })
+}
+
+async function call(caller: string, called: string, body: () => Promise<void>) {
+  callLine(caller, called)
+  await inTask(called, body)
+}
+
+function callDoneEarlier(caller: string, called: string) {
+  callLine(caller, called)
+  doneEarlierLine(called)
+}
+
 function scrollScreen() {
   nextTick(() => {
     if (screen.value) screen.value.scrollTop = screen.value.scrollHeight
   })
 }
 
-// ── YAML step highlight ─────────────────────────────────────────────────────
+
+const runStart = ref<number | null>(null)
+const stepStart = ref<number | null>(null)
+const clock = ref(0)
+let ticker: ReturnType<typeof setInterval> | undefined
+
+const status = computed(() => {
+  if (runStart.value === null || prompt.value) return ''
+  const total = `total ${formatElapsed(clock.value - runStart.value)}`
+  return stepStart.value === null ? total : `step ${formatElapsed(clock.value - stepStart.value)} · ${total}`
+})
+
+function startClock() {
+  runStart.value = performance.now()
+  clock.value = runStart.value
+  ticker = setInterval(() => (clock.value = performance.now()), 100)
+}
+
+function stopClock() {
+  clearInterval(ticker)
+  runStart.value = null
+  stepStart.value = null
+}
+
+onBeforeUnmount(stopClock)
+
 
 // A step is the line containing `anchor` plus every line after it indented
 // deeper than that line's "- ", up to the first blank line. `within` names
@@ -131,105 +237,84 @@ function highlight(anchor: string | null, within?: string) {
   if (pre) pre.scrollTo({ top: rows[start].offsetTop - pre.clientHeight / 3, behavior: 'smooth' })
 }
 
-// ── prompts, after prompt_select.go and prompt_text.go ──────────────────────
 
-function ask(p: Omit<Prompt, 'resolve'>): Promise<string | string[]> {
-  const id = runId
-  return new Promise((resolve, reject) => {
-    prompt.value = {
-      ...p,
-      resolve: (v) => (id === runId ? resolve(v) : reject(new Cancelled())),
-    } as Prompt
-    scrollScreen()
-    nextTick(() => (p.kind === 'text' ? textInput.value : screen.value)?.focus({ preventScroll: true }))
+const CARD_W = TERM_COLS
+const CARD_INNER = CARD_W - 2 - 4
+const MENU_HEIGHT = 10
+const PATH_HEIGHT = 12
+const PATH_LIMIT = 40
+
+const width = (segs: Seg[]) => segs.reduce((n, s) => n + [...s.t].length, 0)
+
+function wrapText(text: string, room: number): string[] {
+  const out: string[] = []
+  for (const para of text.split('\n')) {
+    let cur = ''
+    for (const word of para.split(' ')) {
+      if (cur && [...cur].length + 1 + [...word].length > room) {
+        out.push(cur)
+        cur = word
+      } else cur = cur ? `${cur} ${word}` : word
+    }
+    out.push(cur)
+  }
+  return out
+}
+
+type Hint = [key: string, action: string, click?: () => void]
+
+function hintSegs(hints: Hint[]): Seg[] {
+  return hints.flatMap(([key, action, click], i) => [
+    ...(i ? [{ t: ' • ', c: GREY }] : []),
+    ...(key ? [{ t: key, c: 'a7 b', click }, { t: ' ' + action, c: GREY }] : [{ t: action, c: GREY }]),
+  ])
+}
+
+function card(p: { task: string; varName: string; info: string; body: BodyRow[]; err?: string; hints: Hint[] }): CardRow[] {
+  const border = p.err ? RED : GREY
+  const boxed = (segs: Seg[]): CardRow => ({
+    pre: [{ t: '│  ', c: border }, ...segs, { t: ' '.repeat(Math.max(0, CARD_INNER - width(segs))) + '  │', c: border }],
   })
-}
-
-const select = (varName: string, info: string, items: string[]) =>
-  ask({ kind: 'select', varName, info, items, cursor: 0, multi: false, picked: [] }) as Promise<string>
-const multiSelect = (varName: string, info: string, items: string[]) =>
-  ask({ kind: 'select', varName, info, items, cursor: 0, multi: true, picked: items.map(() => false) }) as Promise<string[]>
-const secretText = (varName: string, info: string) =>
-  ask({ kind: 'text', varName, info, secret: true, value: '' }) as Promise<string>
-
-function submit() {
-  const p = prompt.value
-  if (!p || p.kind === 'path') return
-  prompt.value = null
-  if (p.kind === 'text') p.resolve(p.value)
-  else if (p.multi) p.resolve(p.items.filter((_, i) => p.picked[i]))
-  else p.resolve(p.items[p.cursor])
-}
-
-function clickItem(i: number) {
-  const p = prompt.value
-  if (p?.kind !== 'select') return
-  p.cursor = i
-  if (p.multi) p.picked[i] = !p.picked[i]
-  else submit()
-}
-
-function onKey(e: KeyboardEvent) {
-  const p = prompt.value
-  if (!p) {
-    if (e.key === 'Enter' && state.value !== 'running') {
-      e.preventDefault()
-      start()
-    }
-    return
+  const blank = boxed([])
+  const title: Seg[] = [
+    { t: p.task, c: taskColor(p.task) },
+    { t: ' ' },
+    { t: '»', c: taskColor(p.task) },
+    { t: ' ' },
+    { t: p.varName, c: 'a14 b' },
+  ]
+  const fill = Math.max(1, CARD_W - width(title) - 5)
+  const rows: CardRow[] = [
+    { pre: [{ t: ' ' }] },
+    { pre: [{ t: '╭─ ', c: border }, ...title, { t: ' ' }, { t: '─'.repeat(fill) + '╮', c: border }] },
+    blank,
+  ]
+  if (p.info) {
+    for (const line of wrapText(p.info, CARD_INNER)) rows.push(boxed([{ t: line }]))
+    rows.push(blank)
   }
-  if (p.kind === 'text') return
-  if (p.kind === 'path') {
-    // stopPropagation keeps a typed "/" from also opening the site search.
-    if (onPathKey(p, e)) {
-      e.preventDefault()
-      e.stopPropagation()
-    }
-    return
+  for (const b of p.body) {
+    if (b.input) rows.push({ pre: [{ t: '│  ', c: border }, ...b.segs], post: [{ t: '  │', c: border }], input: true })
+    else rows.push({ ...boxed(b.segs), row: b.row })
   }
-  if (e.key === 'ArrowUp' || e.key === 'k') p.cursor = Math.max(0, p.cursor - 1)
-  else if (e.key === 'ArrowDown' || e.key === 'j') p.cursor = Math.min(p.items.length - 1, p.cursor + 1)
-  else if (e.key === ' ' && p.multi) p.picked[p.cursor] = !p.picked[p.cursor]
-  else if (e.key === 'Enter') submit()
-  else return
-  e.preventDefault()
+  if (p.err) rows.push(blank, boxed([{ t: '✗ ' + p.err, c: RED }]))
+  rows.push(blank, { pre: [{ t: '╰' + '─'.repeat(CARD_W - 2) + '╯', c: border }] })
+  rows.push({ pre: [{ t: ' ' }, ...hintSegs(p.hints)] })
+  return rows
 }
 
-// ── the file picker, after prompt_path.go ───────────────────────────────────
+const cursorMark = (on: boolean): Seg => ({ t: on ? '▶ ' : '  ', c: 'a14 b' })
 
-const HOME = '/home/you'
-const PROJECT = `${HOME}/os-images`
-// Directories end in "/". A directory not listed here is empty.
-const FS: Record<string, string[]> = {
-  '/': ['home/'],
-  '/home': ['you/'],
-  [HOME]: ['Downloads/', 'os-images/', 'notes.txt'],
-  [`${HOME}/Downloads`]: ['ubuntu-24.04-live-server-amd64.iso'],
-  [PROJECT]: ['images/', 'output/', 'scripts/', 'README.md', 'hobnob.yml'],
-  [`${PROJECT}/images`]: ['http/', 'debian-12.pkr.hcl', 'raspios-lite.pkr.hcl', 'ubuntu-24.04.pkr.hcl', 'README.md'],
-  [`${PROJECT}/images/http`]: ['preseed.cfg', 'user-data'],
-  [`${PROJECT}/scripts`]: ['setup.sh'],
-}
-
-const join = (dir: string, name: string) => (dir === '/' ? '' : dir) + '/' + name
-const parent = (dir: string) => dir.slice(0, dir.lastIndexOf('/')) || '/'
-const withSlash = (p: string) => (p.endsWith('/') ? p : p + '/')
-
-function relPath(from: string, to: string): string {
-  const a = from.split('/').filter(Boolean)
-  const b = to.split('/').filter(Boolean)
-  let i = 0
-  while (i < a.length && i < b.length && a[i] === b[i]) i++
-  return [...a.slice(i).map(() => '..'), ...b.slice(i)].join('/')
-}
-
-function dirText(p: PathState): string {
-  if (p.form === 'home' && (p.cwd === HOME || p.cwd.startsWith(HOME + '/'))) return withSlash('~' + p.cwd.slice(HOME.length))
-  if (p.form === 'rel') {
-    const rel = relPath(p.invoke, p.cwd)
-    return rel ? withSlash(rel) : ''
-  }
-  return withSlash(p.cwd)
+// A name in segments, its fuzzy-matched letters picked out.
+function highlightSegs(text: string, positions: number[], base?: string): Seg[] {
+  const segs: Seg[] = []
+  ;[...text].forEach((ch, i) => {
+    const c = positions.includes(i) ? 'a11 b' : base
+    const last = segs[segs.length - 1]
+    if (last && last.c === c) last.t += ch
+    else segs.push({ t: ch, c })
+  })
+  return segs
 }
 
 function fuzzyMatch(query: string, target: string): { score: number; positions: number[] } | null {
@@ -250,70 +335,228 @@ function fuzzyMatch(query: string, target: string): { score: number; positions: 
   return qi < q.length ? null : { score: score * 100 - t.length, positions }
 }
 
-function entries(p: PathState): { name: string; isDir: boolean }[] {
-  const all = (FS[p.cwd] ?? []).map((e) => ({ name: e.replace(/\/$/, ''), isDir: e.endsWith('/') }))
+// The items a query keeps, best match first; with no query, in their order.
+function matchRows(names: string[], query: string): (MenuRow & { score: number })[] {
+  const hits = names.flatMap((name, index) => {
+    const m = fuzzyMatch(query, name)
+    return m ? [{ index, positions: m.positions, score: m.score }] : []
+  })
+  return query ? hits.sort((a, b) => b.score - a.score) : hits
+}
+
+const scrollTo = (cursor: number, offset: number, height: number) =>
+  cursor < offset ? cursor : cursor >= offset + height ? cursor - height + 1 : offset
+
+function filterBody(text: string): BodyRow[] {
+  return [
+    { segs: [{ t: '› ', c: 'a14 b' }, { t: text, c: 'b' }, { t: '▏', c: 'a11 b' }] },
+    { segs: [{ t: '─'.repeat(CARD_INNER), c: GREY }] },
+  ]
+}
+
+// The rows [offset, offset+height) of total, framed by "↑ n more" and
+// "↓ n more", or "nothing matches" when there are none.
+function windowBody(total: number, offset: number, height: number, row: (i: number) => Seg[]): BodyRow[] {
+  if (!total) return [{ segs: [{ t: '  nothing matches', c: GREY }] }]
+  const end = Math.min(offset + height, total)
+  const out: BodyRow[] = []
+  if (offset > 0) out.push({ segs: [{ t: `  ↑ ${offset} more`, c: GREY }] })
+  for (let i = offset; i < end; i++) out.push({ segs: row(i), row: i })
+  if (end < total) out.push({ segs: [{ t: `  ↓ ${total - end} more`, c: GREY }] })
+  return out
+}
+
+
+function ask(p: Omit<Prompt, 'resolve'>): Promise<string | string[]> {
+  const id = runId
+  return new Promise((resolve, reject) => {
+    prompt.value = {
+      ...p,
+      resolve: (v) => (id === runId ? resolve(v) : reject(new Cancelled())),
+    } as Prompt
+    scrollScreen()
+    nextTick(() => (p.kind === 'text' ? textInput.value : screen.value)?.focus({ preventScroll: true }))
+  })
+}
+
+const select = (task: string, varName: string, info: string, items: string[]) =>
+  ask({ kind: 'select', task, varName, info, items, filter: '', cursor: 0, offset: 0, multi: false, picked: [] }) as Promise<string>
+const multiSelect = (task: string, varName: string, info: string, items: string[]) =>
+  ask({ kind: 'select', task, varName, info, items, filter: '', cursor: 0, offset: 0, multi: true, picked: items.map(() => false) }) as Promise<string[]>
+const secretText = (task: string, varName: string, info: string) =>
+  ask({ kind: 'text', task, varName, info, secret: true, value: '' }) as Promise<string>
+
+const menuRows = (p: Extract<Prompt, { kind: 'select' }>) => matchRows(p.items, p.filter)
+
+function setFilter(p: Extract<Prompt, { kind: 'select' }>, filter: string) {
+  p.filter = filter
+  p.cursor = 0
+  p.offset = 0
+}
+
+function moveMenu(p: Extract<Prompt, { kind: 'select' }>, to: number) {
+  p.cursor = Math.max(0, Math.min(to, menuRows(p).length - 1))
+  p.offset = scrollTo(p.cursor, p.offset, MENU_HEIGHT)
+}
+
+function submit() {
+  const p = prompt.value
+  if (!p || p.kind === 'path') return
+  if (p.kind === 'text') {
+    if (!p.value) return
+    prompt.value = null
+    return p.resolve(p.value)
+  }
+  if (p.multi) {
+    const picks = p.items.filter((_, i) => p.picked[i])
+    if (!picks.length) return
+    prompt.value = null
+    return p.resolve(picks)
+  }
+  const row = menuRows(p)[p.cursor]
+  if (!row) return
+  prompt.value = null
+  p.resolve(p.items[row.index])
+}
+
+function clickRow(i: number) {
+  const p = prompt.value
+  if (p?.kind === 'path') return clickPathRow(i)
+  if (p?.kind !== 'select') return
+  p.cursor = i
+  const row = menuRows(p)[i]
+  if (p.multi && row) p.picked[row.index] = !p.picked[row.index]
+  else submit()
+}
+
+function hoverRow(i: number) {
+  const p = prompt.value
+  if (p?.kind === 'select' || p?.kind === 'path') p.cursor = i
+}
+
+function selectCard(p: Extract<Prompt, { kind: 'select' }>): CardRow[] {
+  const rows = menuRows(p)
+  const body: BodyRow[] = [
+    ...(p.filter ? filterBody(p.filter) : []),
+    ...windowBody(rows.length, p.offset, MENU_HEIGHT, (i) => [
+      cursorMark(i === p.cursor),
+      ...(p.multi ? [p.picked[rows[i].index] ? { t: '◉ ', c: GREEN } : { t: '○ ', c: GREY }] : []),
+      ...highlightSegs(p.items[rows[i].index], rows[i].positions),
+    ]),
+  ]
+  const hints: Hint[] = [['', 'type to filter'], ['↑↓', 'move']]
+  if (p.multi) hints.push(['tab', 'toggle'], ['enter', 'confirm', submit])
+  else hints.push(['enter', 'select'])
+  return card({ task: p.task, varName: p.varName, info: p.info, body, hints })
+}
+
+function textCard(p: Extract<Prompt, { kind: 'text' }>): CardRow[] {
+  const body: BodyRow[] = [{ segs: [{ t: '› ', c: 'a14 b' }], input: true }]
+  return card({ task: p.task, varName: p.varName, info: p.info, body, hints: [['enter', 'confirm', submit]] })
+}
+
+function onKey(e: KeyboardEvent) {
+  const p = prompt.value
+  if (!p) {
+    if (e.key === 'Enter' && state.value !== 'running') {
+      e.preventDefault()
+      start()
+    }
+    return
+  }
+  if (p.kind === 'text') return
+  // stopPropagation keeps a typed "/" from also opening the site search.
+  const handled = p.kind === 'path' ? onPathKey(p, e) : onMenuKey(p, e)
+  if (handled) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+}
+
+function onMenuKey(p: Extract<Prompt, { kind: 'select' }>, e: KeyboardEvent): boolean {
+  if (e.key === 'ArrowUp') moveMenu(p, p.cursor - 1)
+  else if (e.key === 'ArrowDown') moveMenu(p, p.cursor + 1)
+  else if (e.key === 'Backspace') p.filter && setFilter(p, [...p.filter].slice(0, -1).join(''))
+  else if (e.key === 'Escape') setFilter(p, '')
+  else if (e.key === 'Tab') {
+    const row = menuRows(p)[p.cursor]
+    if (!p.multi || !row) return true
+    p.picked[row.index] = !p.picked[row.index]
+  } else if (e.key === 'Enter') submit()
+  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key !== ' ' || p.filter) setFilter(p, p.filter + e.key)
+  } else return false
+  return true
+}
+
+
+const HOME = '/home/you'
+const PROJECT = `${HOME}/os-images`
+// Directories end in "/". A directory not listed here is empty.
+const FS: Record<string, string[]> = {
+  '/': ['home/'],
+  '/home': ['you/'],
+  [HOME]: ['Downloads/', 'os-images/', 'notes.txt'],
+  [`${HOME}/Downloads`]: ['ubuntu-24.04-live-server-amd64.iso'],
+  [PROJECT]: ['images/', 'output/', 'scripts/', 'README.md', 'hobnob.yml'],
+  [`${PROJECT}/images`]: ['http/', 'debian-12.pkr.hcl', 'raspios-lite.pkr.hcl', 'ubuntu-24.04.pkr.hcl', 'README.md'],
+  [`${PROJECT}/images/http`]: ['preseed.cfg', 'user-data'],
+  [`${PROJECT}/scripts`]: ['setup.sh'],
+}
+
+const parentDir = (dir: string) => dir.slice(0, dir.lastIndexOf('/')) || '/'
+const dirKey = (dirText: string) => (dirText === '/' ? '/' : dirText.replace(/\/$/, ''))
+
+function dirExists(dir: string): boolean {
+  if (dir === '/' || dir in FS) return true
+  return FS[parentDir(dir)]?.includes(dir.slice(dir.lastIndexOf('/') + 1) + '/') ?? false
+}
+
+// The filter line is the only thing that decides which directory is listed:
+// the text up to its last "/", and the rest is fuzzy-matched.
+const pathDirText = (p: PathState) => p.text.slice(0, p.text.lastIndexOf('/') + 1)
+const pathSeg = (p: PathState) => p.text.slice(p.text.lastIndexOf('/') + 1)
+
+function pathEntries(p: PathState): { name: string; isDir: boolean }[] {
+  const all = (FS[dirKey(pathDirText(p))] ?? []).map((e) => ({ name: e.replace(/\/$/, ''), isDir: e.endsWith('/') }))
   const byName = (a: { name: string }, b: { name: string }) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())
   return [...all.filter((e) => e.isDir).sort(byName), ...all.filter((e) => !e.isDir && p.match(e.name)).sort(byName)]
 }
 
 function pathRows(p: PathState): PathRow[] {
-  const hits = entries(p).flatMap((e) => {
-    const m = fuzzyMatch(p.seg, e.name)
-    return m ? [{ ...e, positions: m.positions, score: m.score }] : []
-  })
-  if (p.seg) hits.sort((a, b) => b.score - a.score)
-  return hits
+  const entries = pathEntries(p)
+  return matchRows(entries.map((e) => e.name), pathSeg(p)).map((hit) => ({ ...entries[hit.index], positions: hit.positions }))
 }
 
-// A row's name in segments, its fuzzy-matched letters picked out.
-const rowSegs = (row: PathRow): Seg[] => [...row.name].map((ch, i) => ({ t: ch, c: row.positions.includes(i) ? 'a11 b' : undefined }))
-
-function ruleWidth(p: PathState): number {
-  const input = (dirText(p) || './') + p.seg + '▏'
-  return Math.max(input.length + 2, 24, ...pathRows(p).map((r) => r.name.length + (r.isDir ? 1 : 0) + 6))
-}
-
-function setSegment(p: PathState, seg: string) {
-  p.seg = seg
+function setPathText(p: PathState, text: string) {
+  p.text = text
   p.cursor = 0
-}
-
-function enterDir(p: PathState, dir: string) {
-  p.cwd = dir
-  setSegment(p, '')
+  p.offset = 0
 }
 
 function pathUp(p: PathState) {
-  const prev = p.cwd
-  enterDir(p, parent(p.cwd))
-  const i = pathRows(p).findIndex((r) => join(p.cwd, r.name) === prev)
-  if (i >= 0) p.cursor = i
+  const dir = pathDirText(p)
+  if (dir === '/') return
+  const parent = dir.slice(0, dir.lastIndexOf('/', dir.length - 2) + 1)
+  const left = dir.slice(parent.length, -1)
+  setPathText(p, parent)
+  const i = pathRows(p).findIndex((r) => r.name === left)
+  if (i >= 0) movePath(p, i)
 }
 
-function slash(p: PathState) {
-  if (p.seg === '') {
-    if (dirText(p) === '') {
-      p.form = 'abs'
-      enterDir(p, '/')
-    }
-    return
-  }
-  if (p.seg === '~') return (p.form = 'home'), enterDir(p, HOME)
-  if (p.seg === '.') return setSegment(p, '')
-  if (p.seg === '..') return pathUp(p)
-  const exact = entries(p).find((e) => e.isDir && e.name === p.seg)
-  const row = pathRows(p)[p.cursor]
-  if (exact) enterDir(p, join(p.cwd, exact.name))
-  else if (row?.isDir) enterDir(p, join(p.cwd, row.name))
-  else p.errMsg = `no directory matching "${p.seg}" here`
+function movePath(p: PathState, to: number) {
+  p.cursor = Math.max(0, Math.min(to, pathRows(p).length - 1))
+  p.offset = scrollTo(p.cursor, p.offset, PATH_HEIGHT)
 }
 
-function choosePathRow(p: PathState & { resolve: (v: string) => void }, row: PathRow | undefined) {
+const shortPath = (text: string) => ([...text].length <= PATH_LIMIT ? text : '…' + [...text].slice(-(PATH_LIMIT - 1)).join(''))
+
+function choosePathRow(p: PathState & { resolve: Resolve }, row: PathRow | undefined) {
   if (!row) p.errMsg = 'nothing matches'
-  else if (row.isDir) enterDir(p, join(p.cwd, row.name))
+  else if (row.isDir) p.errMsg = "that's a directory: → opens it"
   else {
     prompt.value = null
-    p.resolve(join(p.cwd, row.name))
+    p.resolve(pathDirText(p) + row.name)
   }
 }
 
@@ -321,7 +564,9 @@ function clickPathRow(i: number) {
   const p = prompt.value
   if (p?.kind !== 'path') return
   p.errMsg = ''
-  choosePathRow(p, pathRows(p)[i])
+  const row = pathRows(p)[i]
+  if (row?.isDir) setPathText(p, pathDirText(p) + row.name + '/')
+  else choosePathRow(p, row)
 }
 
 function clickPathUp() {
@@ -331,38 +576,66 @@ function clickPathUp() {
   pathUp(p)
 }
 
-function onPathKey(p: PathState & { resolve: (v: string) => void }, e: KeyboardEvent): boolean {
+function pathCard(p: PathState): CardRow[] {
+  const rows = pathRows(p)
+  const body: BodyRow[] = filterBody(shortPath(p.text))
+  if (dirExists(dirKey(pathDirText(p)))) {
+    body.push(...windowBody(rows.length, p.offset, PATH_HEIGHT, (i) => [
+      cursorMark(i === p.cursor),
+      ...highlightSegs(rows[i].name, rows[i].positions, rows[i].isDir ? 'a12' : undefined),
+      ...(rows[i].isDir ? [{ t: '/', c: 'a12' }] : []),
+    ]))
+  } else body.push({ segs: [{ t: `  no directory "${pathDirText(p)}"`, c: GREY }] })
+  const hints: Hint[] = [['', 'type to filter'], ['↑↓', 'move'], ['←', 'up', clickPathUp], ['→', 'open'], ['tab', 'complete'], ['enter', 'pick']]
+  return card({ task: p.task, varName: p.varName, info: p.info, body, err: p.errMsg, hints })
+}
+
+function onPathKey(p: PathState & { resolve: Resolve }, e: KeyboardEvent): boolean {
   p.errMsg = ''
   const rows = pathRows(p)
   const row = rows[p.cursor]
-  if (e.key === 'ArrowUp') p.cursor = Math.max(0, p.cursor - 1)
-  else if (e.key === 'ArrowDown') p.cursor = Math.min(rows.length - 1, p.cursor + 1)
+  if (e.key === 'ArrowUp') movePath(p, p.cursor - 1)
+  else if (e.key === 'ArrowDown') movePath(p, p.cursor + 1)
   else if (e.key === 'ArrowLeft') pathUp(p)
-  else if (e.key === 'ArrowRight') row?.isDir && enterDir(p, join(p.cwd, row.name))
-  else if (e.key === 'Backspace') p.seg ? setSegment(p, p.seg.slice(0, -1)) : pathUp(p)
-  else if (e.key === 'Escape') setSegment(p, '')
-  else if (e.key === 'Tab') row && setSegment(p, row.name)
+  else if (e.key === 'ArrowRight') row?.isDir && setPathText(p, pathDirText(p) + row.name + '/')
+  else if (e.key === 'Backspace') p.text !== '/' && setPathText(p, p.text.slice(0, -1))
+  else if (e.key === 'Escape') pathSeg(p) && setPathText(p, pathDirText(p))
+  else if (e.key === 'Tab') row && setPathText(p, pathDirText(p) + row.name)
   else if (e.key === 'Enter') choosePathRow(p, row)
-  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) e.key === '/' ? slash(p) : setSegment(p, p.seg + e.key)
+  else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) setPathText(p, p.text + e.key)
   else return false
-  p.cursor = Math.max(0, Math.min(p.cursor, pathRows(p).length - 1))
   return true
 }
 
 // A type: file picker opening in a directory default, the way open() does.
-const pickFile = (varName: string, info: string, start: string, match: (name: string) => boolean) =>
-  ask({ kind: 'path', varName, info, match, invoke: PROJECT, form: 'rel', cwd: join(PROJECT, start), seg: '', cursor: 0, errMsg: '' }) as Promise<string>
+const pickFile = (task: string, varName: string, info: string, start: string, match: (name: string) => boolean) =>
+  ask({ kind: 'path', task, varName, info, match, text: `${PROJECT}/${start}/`, cursor: 0, offset: 0, errMsg: '' }) as Promise<string>
 
-// ── the runs ────────────────────────────────────────────────────────────────
+const cardRows = computed<CardRow[]>(() => {
+  const p = prompt.value
+  if (p?.kind === 'select') return selectCard(p)
+  if (p?.kind === 'text') return textCard(p)
+  if (p?.kind === 'path') return pathCard(p)
+  return []
+})
+
+watch(() => cardRows.value.length, scrollScreen)
+
 
 const TRIVIA_API = 'https://the-trivia-api.com/v2'
+const DEMO_NOTICE = 'Running the built-in demo. Write your own: https://jakesmd.github.io/hobnob/docs/guide/'
 
 async function curl(task: string, url: string, display: string): Promise<string> {
-  runLine(task, display)
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`exit status 22`)
-  const body = (await res.text()).trim()
-  outLine(task, body)
+  let body = ''
+  await step(task, display, async () => {
+    const id = runId
+    const res = await fetch(url)
+    if (id !== runId) throw new Cancelled()
+    if (!res.ok) throw new Error('exit status 22')
+    body = (await res.text()).trim()
+    if (id !== runId) throw new Cancelled()
+    outLine(task, body)
+  })
   return body
 }
 
@@ -377,197 +650,210 @@ function shuffle<T>(items: T[]): T[] {
 
 async function trivia() {
   const task = 'ask-trivia'
-  print({ t: 'Running the built-in demo. Write your own: https://hobnob.jakesmd.dev/docs/guide/', c: 'a8' })
+  hobnobNote(DEMO_NOTICE)
+  startClock()
 
-  highlight('the-trivia-api.com/v2/categories')
-  const categoriesUrl = `${TRIVIA_API}/categories`
-  const categories: Record<string, string[]> = JSON.parse(await curl(task, categoriesUrl, `curl -fsS ${categoriesUrl}`))
-  await sleep(400)
-
-  highlight('- get:')
-  const category = await select('CATEGORY', 'Which category?', Object.keys(categories).sort())
-  getLine(task, 'CATEGORY', category)
-  await sleep(300)
-
-  highlight('questions?limit=1')
-  const questionUrl = `${TRIVIA_API}/questions?limit=1&categories=${categories[category][0]}`
-  const trivia = JSON.parse(await curl(task, questionUrl, `curl -fsS "${questionUrl}"`))[0]
-  await sleep(500)
-
-  highlight('sort -R')
-  const correct: string = trivia.correctAnswer
-  const answers = shuffle<string>([correct, ...trivia.incorrectAnswers])
-  runLine(task, displayArgv(['sh', '-c', 'printf "%s\\n" "$@" | sort -R', 'answers', correct, ...trivia.incorrectAnswers]))
-  await stream(task, answers, 60)
-  await sleep(500)
-
-  highlight('- GUESS:')
-  const guess = await select('GUESS', trivia.question.text, answers)
-  getLine(task, 'GUESS', guess)
-  await sleep(300)
-
-  highlight('echo "Correct!"')
-  if (guess === correct.trim()) {
-    runLine(task, 'echo "Correct!"')
-    outLine(task, 'Correct!')
+  await inTask(task, async () => {
+    highlight('the-trivia-api.com/v2/categories')
+    const categoriesUrl = `${TRIVIA_API}/categories`
+    const categories: Record<string, string[]> = JSON.parse(await curl(task, categoriesUrl, `curl -fsS ${categoriesUrl}`))
     await sleep(400)
-    highlight('Not quite')
-    skipLine(task)
-  } else {
-    skipLine(task)
-    await sleep(400)
-    highlight('Not quite')
-    const msg = `Not quite. It was ${correct.trim()}.`
-    runLine(task, `echo "${msg}"`)
-    outLine(task, msg)
-  }
-  doneLine(task)
+
+    highlight('- get:')
+    const category = await select(task, 'CATEGORY', 'Which category?', Object.keys(categories).sort())
+    varLine(task, 'CATEGORY', category)
+    await sleep(300)
+
+    highlight('questions?limit=1')
+    const questionUrl = `${TRIVIA_API}/questions?limit=1&categories=${categories[category][0]}`
+    const trivia = JSON.parse(await curl(task, questionUrl, `curl -fsS "${questionUrl}"`))[0]
+    await sleep(500)
+
+    highlight('sort -R')
+    const correct: string = trivia.correctAnswer
+    const answers = shuffle<string>([correct, ...trivia.incorrectAnswers])
+    await step(task, displayArgv(['sh', '-c', 'printf "%s\\n" "$@" | sort -R', 'answers', correct, ...trivia.incorrectAnswers]), () =>
+      stream(task, answers, 60),
+    )
+    await sleep(500)
+
+    highlight('- GUESS:')
+    const guess = await select(task, 'GUESS', trivia.question.text, answers)
+    varLine(task, 'GUESS', guess)
+    await sleep(300)
+
+    const right = 'echo "Correct!"'
+    const wrong = `echo "Not quite. It was ${correct.trim()}."`
+    highlight(right)
+    if (guess === correct.trim()) {
+      await step(task, right, () => Promise.resolve(outLine(task, 'Correct!')))
+      await sleep(400)
+      highlight('Not quite')
+      skipLine(task, wrong)
+    } else {
+      skipLine(task, right)
+      await sleep(400)
+      highlight('Not quite')
+      await step(task, wrong, () => Promise.resolve(outLine(task, `Not quite. It was ${correct.trim()}.`)))
+    }
+  })
 }
 
 async function deploy() {
   const task = 'deploy'
   const services = ['api', 'web', 'worker']
+  startClock()
 
-  highlight('gh api')
-  runLine(task, 'gh api repos/acme/platform/contents/services')
-  await sleep(500)
-  outLine(task, JSON.stringify(services.map((name) => ({ name, path: `services/${name}`, type: 'dir' }))))
-  await sleep(400)
-
-  highlight('- SERVICES:')
-  const picked = await multiSelect('SERVICES', 'Which services?', services)
-  getLine(task, 'SERVICES', picked.join(', '))
-  highlight('- ENV:')
-  const env = await select('ENV', 'Where to?', ['staging', 'production'])
-  getLine(task, 'ENV', env)
-  highlight('- TOKEN:')
-  await secretText('TOKEN', 'Cluster token')
-  getLine(task, 'TOKEN', '****')
-  await sleep(300)
-
-  for (const svc of picked) {
-    highlight('docker build')
-    const image = `ghcr.io/acme/${svc}:${env}`
-    runLine(task, `docker build -t ${image} services/${svc}`)
-    await stream(task, [
-      '[+] Building 0.0s (0/12)',
-      ' => [internal] load build definition from Dockerfile',
-      ' => [build 1/5] FROM docker.io/library/golang:1.24-alpine',
-      ' => [build 4/5] RUN go build -o /out/app ./cmd/' + svc,
-      ' => [stage-1 2/2] COPY --from=build /out/app /app',
-      ' => exporting to image',
-      ` => => naming to ${image}`,
-      `[+] Building ${(20 + Math.random() * 30).toFixed(1)}s (12/12) FINISHED`,
-    ], 220)
-    await sleep(300)
-    highlight('rollout restart')
-    runLine(task, `kubectl --token **** -n ${env} rollout restart deploy/${svc}`)
-    await sleep(600)
-    outLine(task, `deployment.apps/${svc} restarted`)
+  await inTask(task, async () => {
+    highlight('gh api')
+    await step(task, 'gh api repos/acme/platform/contents/services', async () => {
+      await sleep(500)
+      outLine(task, JSON.stringify(services.map((name) => ({ name, path: `services/${name}`, type: 'dir' }))))
+    })
     await sleep(400)
-  }
-  doneLine(task)
+
+    highlight('- SERVICES:')
+    const picked = await multiSelect(task, 'SERVICES', 'Which services?', services)
+    varLine(task, 'SERVICES', picked.join(', '))
+    highlight('- ENV:')
+    const env = await select(task, 'ENV', 'Where to?', ['staging', 'production'])
+    varLine(task, 'ENV', env)
+    highlight('- TOKEN:')
+    await secretText(task, 'TOKEN', 'Cluster token')
+    varLine(task, 'TOKEN', '****')
+    await sleep(300)
+
+    for (const svc of picked) {
+      highlight('docker build')
+      const image = `ghcr.io/acme/${svc}:${env}`
+      await step(task, `docker build -t ${image} services/${svc}`, () =>
+        stream(task, [
+          '[+] Building 0.0s (0/12)',
+          ' => [internal] load build definition from Dockerfile',
+          ' => [build 1/5] FROM docker.io/library/golang:1.24-alpine',
+          ' => [build 4/5] RUN go build -o /out/app ./cmd/' + svc,
+          ' => [stage-1 2/2] COPY --from=build /out/app /app',
+          ' => exporting to image',
+          ` => => naming to ${image}`,
+          `[+] Building ${(20 + Math.random() * 30).toFixed(1)}s (12/12) FINISHED`,
+        ], 220),
+      )
+      await sleep(300)
+      highlight('rollout restart')
+      await step(task, `kubectl --token **** -n ${env} rollout restart deploy/${svc}`, async () => {
+        await sleep(600)
+        outLine(task, `deployment.apps/${svc} restarted`)
+      })
+      await sleep(400)
+    }
+  })
 }
 
 async function flash() {
   const task = 'build-and-flash'
   const disks = ['nvme0n1 953.9G Samsung SSD 980 PRO', 'sda      28.9G SanDisk Ultra']
-  const step = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
+  const at = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
+  startClock()
 
-  await step('call: _pick-image', 'build-and-flash:')
-  highlight('- IMAGE:')
-  const image = await pickFile('IMAGE', 'Which image?', 'images', (name) => name.endsWith('.pkr.hcl'))
-  getLine('_pick-image', 'IMAGE', image)
-  await sleep(250)
+  await inTask(task, async () => {
+    await at('call: _pick-image', 'build-and-flash:')
+    let image = ''
+    await call(task, '_pick-image', async () => {
+      highlight('- IMAGE:')
+      image = await pickFile('_pick-image', 'IMAGE', 'Which image?', 'images', (name) => name.endsWith('.pkr.hcl'))
+      varLine('_pick-image', 'IMAGE', image)
+      await sleep(250)
+    })
 
-  await step('call: _pick-disk', 'build-and-flash:')
-  highlight('lsblk -dno')
-  runLine('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL')
-  await stream('_pick-disk', disks, 120)
-  await sleep(300)
-  // `| lines` trims each line but keeps the spacing inside it.
-  highlight('- DISK:')
-  const line = await select('DISK', 'Which disk?', disks)
-  getLine('_pick-disk', 'DISK', line)
-  highlight('- SURE:')
-  const sure = await select('SURE', `Wipe ${line}? Everything on it goes.`, ['no', 'yes'])
-  getLine('_pick-disk', 'SURE', sure)
-  await sleep(250)
+    await at('call: _pick-disk', 'build-and-flash:')
+    let disk = ''
+    await call(task, '_pick-disk', async () => {
+      highlight('lsblk -dno')
+      await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', disks, 120))
+      await sleep(300)
+      highlight('- DISK:')
+      const line = await select('_pick-disk', 'DISK', 'Which disk?', disks)
+      varLine('_pick-disk', 'DISK', line)
+      highlight('- SURE:')
+      const sure = await select('_pick-disk', 'SURE', `Wipe ${line}? Everything on it goes.`, ['no', 'yes'])
+      varLine('_pick-disk', 'SURE', sure)
+      await sleep(250)
 
-  // The guard: `[ "no" = yes ]` exits 1, and the failed call stops the run.
-  highlight('= yes ]')
-  runLine('_pick-disk', `[ "${sure}" = yes ]`)
-  await sleep(400)
-  if (sure !== 'yes') {
-    failLine(task, 'call _pick-disk: exit status 1')
-    return
-  }
-  await step('split')
-  const disk = line.split(' ')[0]
+      highlight('= yes ]')
+      await step('_pick-disk', `[ "${sure}" = yes ]`, async () => {
+        await sleep(400)
+        if (sure !== 'yes') throw new Error('exit status 1')
+      })
+      await at('split')
+      disk = line.split(' ')[0]
+    })
 
-  await step('call: build', 'build-and-flash:')
-  // once: replays the first answer, so nothing is asked twice.
-  highlight('call: _pick-image', 'build:')
-  cachedLine('build', '_pick-image', `IMAGE=${image}`)
-  await sleep(400)
-  highlight('packer build')
-  const src = `qemu.${image.slice(image.lastIndexOf('/') + 1).replace(/\.pkr\.hcl$/, '')}`
-  runLine('build', `packer build -var out=output/os.img ${image}`)
-  await stream('build', [
-    `${src}: output will be in this color.`,
-    '',
-    `==> ${src}: Retrieving ISO`,
-    `==> ${src}: Starting VM, booting from CD-ROM`,
-    `==> ${src}: Waiting for SSH to become available...`,
-    `==> ${src}: Connected to SSH!`,
-    `==> ${src}: Provisioning with shell script: scripts/setup.sh`,
-    `==> ${src}: Gracefully halting virtual machine...`,
-    `==> ${src}: Converting hard drive to raw: output/os.img`,
-    `Build '${src}' finished after 6 minutes 12 seconds.`,
-    '',
-    '==> Builds finished. The artifacts of successful builds are:',
-    `--> ${src}: VM files in directory: output`,
-  ], 280)
-  await sleep(400)
+    await at('call: build', 'build-and-flash:')
+    await call(task, 'build', async () => {
+      highlight('call: _pick-image', 'build:')
+      callDoneEarlier('build', '_pick-image')
+      await sleep(400)
+      highlight('packer build')
+      const src = `qemu.${image.slice(image.lastIndexOf('/') + 1).replace(/\.pkr\.hcl$/, '')}`
+      await step('build', `packer build -var out=output/os.img ${image}`, () =>
+        stream('build', [
+          `${src}: output will be in this color.`,
+          '',
+          `==> ${src}: Retrieving ISO`,
+          `==> ${src}: Starting VM, booting from CD-ROM`,
+          `==> ${src}: Waiting for SSH to become available...`,
+          `==> ${src}: Connected to SSH!`,
+          `==> ${src}: Provisioning with shell script: scripts/setup.sh`,
+          `==> ${src}: Gracefully halting virtual machine...`,
+          `==> ${src}: Converting hard drive to raw: output/os.img`,
+          `Build '${src}' finished after 6 minutes 12 seconds.`,
+          '',
+          '==> Builds finished. The artifacts of successful builds are:',
+          `--> ${src}: VM files in directory: output`,
+        ], 280),
+      )
+      await sleep(400)
+    })
 
-  await step('call: flash', 'build-and-flash:')
-  highlight('call: _pick-disk', 'flash:')
-  cachedLine('flash', '_pick-disk', `DISK=${disk} DISKS=${JSON.stringify(disks)} SURE=yes`)
-  await sleep(500)
+    await at('call: flash', 'build-and-flash:')
+    await call(task, 'flash', async () => {
+      highlight('call: _pick-disk', 'flash:')
+      callDoneEarlier('flash', '_pick-disk')
+      await sleep(500)
 
-  highlight('sudo wipefs')
-  runLine('flash', `sudo wipefs --all /dev/${disk}`)
-  const end = disk === 'sda' ? '0x7363ffe00' : '0xee3d4c5e00'
-  await stream('flash', [
-    `/dev/${disk}: 8 bytes were erased at offset 0x00000200 (gpt): 45 46 49 20 50 41 52 54`,
-    `/dev/${disk}: 8 bytes were erased at offset ${end} (gpt): 45 46 49 20 50 41 52 54`,
-    `/dev/${disk}: 2 bytes were erased at offset 0x000001fe (PMBR): 55 aa`,
-  ], 200)
-  await sleep(400)
+      highlight('sudo wipefs')
+      await step('flash', `sudo wipefs --all /dev/${disk}`, () => {
+        const end = disk === 'sda' ? '0x7363ffe00' : '0xee3d4c5e00'
+        return stream('flash', [
+          `/dev/${disk}: 8 bytes were erased at offset 0x00000200 (gpt): 45 46 49 20 50 41 52 54`,
+          `/dev/${disk}: 8 bytes were erased at offset ${end} (gpt): 45 46 49 20 50 41 52 54`,
+          `/dev/${disk}: 2 bytes were erased at offset 0x000001fe (PMBR): 55 aa`,
+        ], 200)
+      })
+      await sleep(400)
 
-  highlight('sudo dd')
-  runLine('flash', `sudo dd if=output/os.img of=/dev/${disk} bs=4M status=progress conv=fsync`)
-  const total = 2147483648
-  outLine('flash', '')
-  for (let s = 1; s <= 7; s++) {
-    await sleep(350)
-    const bytes = Math.min(total, Math.round((total / 7.13) * s))
-    redraw('flash', `${bytes} bytes (${(bytes / 1e9).toFixed(1)} GB, ${(bytes / 2 ** 30).toFixed(1)} GiB) copied, ${s} s, 301 MB/s`)
-  }
-  await sleep(350)
-  redraw('flash', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`)
-  await stream('flash', ['512+0 records in', '512+0 records out', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`], 200)
-  doneLine(task)
+      highlight('sudo dd')
+      await step('flash', `sudo dd if=output/os.img of=/dev/${disk} bs=4M status=progress conv=fsync`, async () => {
+        const total = 2147483648
+        outLine('flash', '')
+        for (let s = 1; s <= 7; s++) {
+          await sleep(350)
+          const bytes = Math.min(total, Math.round((total / 7.13) * s))
+          redraw('flash', `${bytes} bytes (${(bytes / 1e9).toFixed(1)} GB, ${(bytes / 2 ** 30).toFixed(1)} GiB) copied, ${s} s, 301 MB/s`)
+        }
+        await sleep(350)
+        redraw('flash', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`)
+        await stream('flash', ['512+0 records in', '512+0 records out', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`], 200)
+      })
+    })
+  })
 }
 
-const RUNS: Record<DemoId, { task: string; run: () => Promise<void> }> = {
-  trivia: { task: 'ask-trivia', run: trivia },
-  deploy: { task: 'deploy', run: deploy },
-  flash: { task: 'build-and-flash', run: flash },
-}
+const RUNS: Record<DemoId, () => Promise<void>> = { trivia, deploy, flash }
 
 function reset() {
   runId++
+  stopClock()
   prompt.value = null
   lines.value = []
   typed.value = ''
@@ -590,7 +876,6 @@ async function start() {
   reset()
   state.value = 'running'
   const id = runId
-  const { task, run } = RUNS[active.value]
   try {
     for (const ch of demo.value.command) {
       typed.value += ch
@@ -599,12 +884,13 @@ async function start() {
     await sleep(250)
     print({ t: '$ ', c: 'prompt' }, { t: demo.value.command })
     typed.value = ''
-    await run()
+    await RUNS[active.value]()
   } catch (err) {
     if (err instanceof Cancelled || id !== runId) return
     prompt.value = null
-    failLine(task, err instanceof Error ? err.message : String(err))
+    if (!(err instanceof StepFailed)) print({ t: 'hobnob', c: 'b' }, { t: ' ' }, { t: '✗', c: RED }, { t: ' ' }, { t: err instanceof Error ? err.message : String(err) })
   }
+  stopClock()
   await sleep(600).catch(() => {})
   if (id !== runId) return
   highlight(null)
@@ -640,62 +926,36 @@ async function start() {
             <span v-for="(seg, j) in line" :key="j" :class="seg.c">{{ seg.t }}</span>
           </div>
 
-          <template v-if="prompt?.kind === 'select'">
+          <div
+            v-for="(r, i) in cardRows"
+            :key="'card' + i"
+            class="ln"
+            :class="{ item: r.row !== undefined, field: r.input }"
+            @mouseenter="r.row !== undefined && hoverRow(r.row)"
+            @click.stop="r.row !== undefined && clickRow(r.row)"
+          >
+            <span v-for="(seg, j) in r.pre" :key="'a' + j" :class="[seg.c, { 'hint-key': seg.click }]" @click="seg.click && ($event.stopPropagation(), seg.click())">{{ seg.t }}</span>
+            <input
+              v-if="r.input && prompt?.kind === 'text'"
+              :ref="setInput"
+              v-model="prompt.value"
+              class="text-input"
+              :type="prompt.secret ? 'password' : 'text'"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="anything will do"
+              @keydown.enter.prevent="submit"
+              @click.stop
+            />
+            <span v-for="(seg, j) in r.post" :key="'b' + j" :class="seg.c">{{ seg.t }}</span>
+          </div>
+          <div v-if="status" class="status">
             <div class="ln">&nbsp;</div>
-            <div class="ln">{{ prompt.multi ? 'Select values' : 'Select a value' }} for <span class="a14 b">{{ prompt.varName }}</span>.</div>
-            <div v-if="prompt.info" class="ln a8">{{ prompt.info }}</div>
-            <div
-              v-for="(item, i) in prompt.items"
-              :key="item"
-              class="ln item"
-              @mouseenter="prompt.cursor = i"
-              @click.stop="clickItem(i)"
-            ><span class="a14 b">{{ i === prompt.cursor ? '▶ ' : '  ' }}</span><template v-if="prompt.multi"><span v-if="prompt.picked[i]" class="a10">◉ </span><span v-else class="a8">○ </span></template>{{ item }}</div>
-            <div v-if="prompt.multi" class="ln a8">{{ '↑↓ move  space toggle  ' }}<span class="hint-key" @click.stop="submit">enter confirm</span></div>
-            <div v-else class="ln a8">{{ '↑↓ move  enter select' }}</div>
-          </template>
-
-          <template v-if="prompt?.kind === 'text'">
-            <div class="ln">&nbsp;</div>
-            <div class="ln">Enter a value for <span class="a14 b">{{ prompt.varName }}</span>.</div>
-            <div v-if="prompt.info" class="ln a8">{{ prompt.info }}</div>
-            <div class="ln field">
-              <span class="a14 b">› </span>
-              <input
-                ref="textInput"
-                v-model="prompt.value"
-                class="text-input"
-                :type="prompt.secret ? 'password' : 'text'"
-                autocomplete="off"
-                spellcheck="false"
-                placeholder="anything will do"
-                @keydown.enter.prevent="submit"
-                @click.stop
-              />
+            <div class="rule">
+              <span class="rule-fill">{{ '─'.repeat(300) }}</span>
+              <span class="rule-text">{{ ` ${status} ──` }}</span>
             </div>
-            <div class="ln a8">enter ↵</div>
-          </template>
-
-          <template v-if="prompt?.kind === 'path'">
-            <div class="ln">&nbsp;</div>
-            <div class="ln">Pick a file for <span class="a14 b">{{ prompt.varName }}</span>.</div>
-            <div v-if="prompt.info" class="ln a8">{{ prompt.info }}</div>
-            <div class="ln">&nbsp;</div>
-            <div class="ln"><span class="a14 b">› </span><span :class="dirText(prompt) ? 'b' : 'a8'">{{ dirText(prompt) || './' }}</span><span class="b">{{ prompt.seg }}</span><span class="a11 b">▏</span></div>
-            <div class="ln a8">{{ '─'.repeat(ruleWidth(prompt)) }}</div>
-            <div v-if="!pathRows(prompt).length" class="ln a8">{{ '  nothing matches' }}</div>
-            <div
-              v-for="(row, i) in pathRows(prompt)"
-              :key="row.name"
-              class="ln item"
-              @mouseenter="prompt.cursor = i"
-              @click.stop="clickPathRow(i)"
-            ><span class="a14 b">{{ i === prompt.cursor ? '▶ ' : '  ' }}</span><span :class="row.isDir ? 'a12' : undefined"><span v-for="(seg, j) in rowSegs(row)" :key="j" :class="seg.c">{{ seg.t }}</span>{{ row.isDir ? '/' : '' }}</span></div>
-            <div v-if="prompt.errMsg" class="ln a9">{{ prompt.errMsg }}</div>
-            <div class="ln">&nbsp;</div>
-            <div class="ln a8">{{ 'type to filter  ↑↓ move  ' }}<span class="hint-key" @click.stop="clickPathUp">← up</span>{{ '  → open  tab complete  enter pick' }}</div>
-          </template>
-
+          </div>
           <div v-if="state !== 'running' || typed" class="ln">
             <span class="prompt">$ </span>{{ typed }}<span class="cursor" />
           </div>
@@ -861,13 +1121,33 @@ async function start() {
   color: var(--vp-c-text-3);
 }
 
+/* The status line: a grey rule under the log, pinned to the bottom of the
+   screen while a run is on, with the clock on its right. */
+.status {
+  position: sticky;
+  bottom: -28px;
+  margin-bottom: -28px;
+  padding-bottom: 28px;
+  background: #0f131a;
+  color: #7d8794;
+}
+.rule {
+  display: flex;
+  white-space: pre;
+}
+.rule-fill {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 /* Prompt extras */
 .field {
   display: flex;
 }
 .text-input {
-  flex: 1;
-  min-width: 0;
+  flex: none;
+  width: 52ch;
   padding: 0;
   border: none;
   outline: none;
@@ -880,6 +1160,8 @@ async function start() {
 @media (pointer: coarse) {
   .text-input {
     font-size: 16px;
+    /* 52ch at the screen's 13px, so the row still ends at the border. */
+    width: calc(52ch * 13 / 16);
   }
 }
 .text-input::placeholder {
@@ -902,6 +1184,7 @@ async function start() {
 .a4 { color: #5b8def; }
 .a5 { color: #c678dd; }
 .a6 { color: #46b5c6; }
+.a7 { color: #d0d4da; }
 .a8 { color: #7d8794; }
 .a9 { color: #ff6b6b; }
 .a10 { color: #7ee2a0; }

@@ -25,17 +25,22 @@ func newSelectModel(varName, info string, items []string, multi bool, defaultVal
 		}
 	}
 	return selectModel{
-		varName:  varName,
-		info:     info,
-		items:    items,
-		multi:    multi,
-		cursor:   cursor,
-		selected: preselected,
+		varName:   varName,
+		info:      info,
+		items:     items,
+		multi:     multi,
+		listState: listState{cursor: cursor, offset: scrollTo(cursor, 0, menuListHeight)},
+		selected:  preselected,
 	}
 }
 
-func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret bool) (value.Value, error) {
+// PromptSelect shows a menu. validate, when non-nil, judges the choice on
+// enter (the whole list under multi) and checkDesc is what the error line
+// shows when it refuses: tui never needs to know how a check is evaluated.
+// Skipping an optional menu returns an empty value.
+func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret, optional bool, validate func(value.Value) (bool, error), checkDesc string) (value.Value, error) {
 	model := newSelectModel(varName, info, items, multi, defaultVal)
+	model.task, model.optional, model.validate, model.checkDesc = task, optional, validate, checkDesc
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
@@ -45,114 +50,172 @@ func PromptSelect(ctx context.Context, varName, info string, items []string, mul
 	if final.quit {
 		return value.Value{}, fmt.Errorf("aborted")
 	}
-
-	var chosen value.Value
-	display := final.value
-	if final.multi {
-		arr := make([]any, len(final.values))
-		for i, val := range final.values {
-			arr[i] = val
+	if final.skipped {
+		if multi {
+			return value.Of([]any{}), nil
 		}
-		chosen = value.Of(arr)
-		display = strings.Join(final.values, ", ")
-	} else {
-		chosen = value.Str(final.value)
+		return value.Str(""), nil
 	}
-	if secret {
-		display = SecretMask
-	}
-	printGetLine(task, final.varName, display)
-	return chosen, nil
+
+	return final.answer(), nil
 }
 
 type selectModel struct {
-	varName  string
-	info     string
-	items    []string
-	multi    bool
-	cursor   int
-	selected map[int]bool
-	value    string   // single-select result
-	values   []string // multi-select result
-	done     bool
-	quit     bool
+	varName   string
+	task      string
+	info      string
+	items     []string
+	multi     bool
+	optional  bool
+	validate  func(value.Value) (bool, error)
+	checkDesc string
+	listState
+	selected  map[int]bool
+	value     string   // single-select result
+	values    []string // multi-select result
+	errMsg    string
+	done      bool
+	skipped   bool
+	quit      bool
+	termWidth int
 }
 
 func (model selectModel) Init() tea.Cmd { return nil }
 
+func (model selectModel) rows() []listRow { return matchRows(model.items, model.filter) }
+
+func (model selectModel) answer() value.Value {
+	if !model.multi {
+		return value.Str(model.value)
+	}
+	arr := make([]any, len(model.values))
+	for i, val := range model.values {
+		arr[i] = val
+	}
+	return value.Of(arr)
+}
+
+func (model selectModel) picks() []string {
+	picked := []string{}
+	for i, item := range model.items {
+		if model.selected[i] {
+			picked = append(picked, item)
+		}
+	}
+	return picked
+}
+
 func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		model.termWidth = size.Width
+		return model, nil
+	}
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return model, nil
 	}
-	itemCount := len(model.items)
-	switch keyMsg.String() {
-	case "ctrl+c", "q":
+	switch keyMsg.Type {
+	case tea.KeyCtrlC:
 		model.quit = true
 		return model, tea.Quit
-	case "up", "k":
-		if model.cursor > 0 {
-			model.cursor--
+	case tea.KeyEsc:
+		switch {
+		case model.filter != "":
+			model.setFilter("")
+			model.errMsg = ""
+		case model.optional:
+			model.done, model.skipped = true, true
+			return model, tea.Quit
 		}
-	case "down", "j":
-		if model.cursor < itemCount-1 {
-			model.cursor++
+	case tea.KeyTab:
+		if rows := model.rows(); model.multi && len(rows) > 0 {
+			idx := rows[model.cursor].index
+			model.selected[idx] = !model.selected[idx]
+			model.errMsg = ""
 		}
-	case " ":
-		if model.multi {
-			model.selected[model.cursor] = !model.selected[model.cursor]
+	case tea.KeyEnter:
+		return model.confirm()
+	default:
+		if model.handleKey(keyMsg, func() int { return len(model.rows()) }) {
+			model.errMsg = ""
 		}
-	case "enter":
-		if model.multi {
-			vals := []string{}
-			for i, item := range model.items {
-				if model.selected[i] {
-					vals = append(vals, item)
-				}
-			}
-			model.values = vals
-		} else {
-			model.value = model.items[model.cursor]
-		}
-		model.done = true
-		return model, tea.Quit
 	}
 	return model, nil
+}
+
+func (model selectModel) confirm() (tea.Model, tea.Cmd) {
+	if model.multi {
+		model.values = model.picks()
+		if model.optional && len(model.values) == 0 {
+			model.done, model.skipped = true, true
+			return model, tea.Quit
+		}
+		if len(model.values) == 0 {
+			return model, nil
+		}
+	} else {
+		rows := model.rows()
+		if len(rows) == 0 {
+			return model, nil
+		}
+		model.value = model.items[rows[model.cursor].index]
+	}
+	if model.validate != nil && !(model.optional && model.answer().IsEmpty()) {
+		ok, err := model.validate(model.answer())
+		if err != nil {
+			model.errMsg = fmt.Sprintf("check failed: %v", err)
+			return model, nil
+		}
+		if !ok {
+			model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
+			return model, nil
+		}
+	}
+	model.done = true
+	return model, tea.Quit
 }
 
 func (model selectModel) View() string {
 	if model.done {
 		return ""
 	}
-	verb := "Select a value"
+	frame := card{
+		task:      model.task,
+		varName:   model.varName,
+		optional:  model.optional,
+		info:      model.info,
+		errMsg:    model.errMsg,
+		termWidth: model.termWidth,
+	}
+	hints := []hint{{"", "type to filter"}, {"↑↓", "move"}}
 	if model.multi {
-		verb = "Select values"
+		hints = append(hints, hint{"tab", "toggle"}, hint{"enter", "confirm"})
+	} else {
+		hints = append(hints, hint{"enter", "select"})
 	}
-	header := "\n" + verb + " for " + SLabel.Render(model.varName) + "."
-	if model.info != "" {
-		header += "\n" + SInfo.Render(model.info)
+	if model.optional {
+		hints = append(hints, hint{"esc", "skip"})
 	}
-	var builder strings.Builder
-	builder.WriteString(header + "\n")
-	for i, item := range model.items {
-		if model.cursor == i {
-			builder.WriteString(SArrow.Render("▶ "))
-		} else {
-			builder.WriteString("  ")
-		}
+	frame.hints = hints
+
+	rows := model.rows()
+	frame.body = model.body(frame.innerWidth(), len(rows), model.renderRow(rows))
+	return frame.render()
+}
+
+func (model selectModel) renderRow(rows []listRow) func(i int) string {
+	return func(i int) string {
+		row := rows[i]
+		var b strings.Builder
+		b.WriteString(cursorPrefix(i == model.cursor))
 		if model.multi {
-			if model.selected[i] {
-				builder.WriteString(SChecked.Render("◉ "))
+			if model.selected[row.index] {
+				b.WriteString(SChecked.Render("◉ "))
 			} else {
-				builder.WriteString(SInfo.Render("○ "))
+				b.WriteString(SInfo.Render("○ "))
 			}
 		}
-		builder.WriteString(item + "\n")
+		b.WriteString(highlightMatch(model.items[row.index], row.positions))
+		return b.String()
 	}
-	if model.multi {
-		builder.WriteString(SHint.Render("↑↓ move  space toggle  enter confirm"))
-	} else {
-		builder.WriteString(SHint.Render("↑↓ move  enter select"))
-	}
-	return builder.String()
 }

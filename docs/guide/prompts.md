@@ -14,6 +14,25 @@ tasks:
       - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
+The person sees a card, with the answer filled in to start with. Enter keeps it:
+
+```
+╭─ ask-trivia » CATEGORY ──────────────────────────────────────────────────╮
+│                                                                          │
+│  Which category?                                                         │
+│                                                                          │
+│  › general_knowledge                                                     │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter confirm
+```
+
+The answer is then logged as a variable line:
+
+```
+ask-trivia » CATEGORY=general_knowledge
+```
+
 If the variable is already set, hobnob doesn't ask. So the same task asks a
 person, but takes the value straight from a command-line argument:
 
@@ -45,6 +64,21 @@ tasks:
               multi: true
 ```
 
+```
+╭─ quiz » CATEGORIES ──────────────────────────────────────────────────────╮
+│                                                                          │
+│  Which categories?                                                       │
+│                                                                          │
+│    ◉ history                                                             │
+│  ▶ ◉ science                                                             │
+│    ○ music                                                               │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • tab toggle • enter confirm
+```
+
+Type to filter a menu, and tab toggles an item in a `multi:` menu.
+
 ## Menus from live data
 
 `options:` can be a variable holding a list, so a menu can come from an
@@ -64,8 +98,6 @@ tasks:
               options: .CATEGORIES
 ```
 
-The menu only offers categories the API really has.
-
 ## Checking an answer
 
 `check:` is a shell condition the answer must pass. If it fails, the prompt
@@ -80,6 +112,21 @@ tasks:
               info: How many questions?
               default: 3
               check: "[ {{.COUNT}} -le 10 ]"
+```
+
+Typing `99` keeps the prompt open with the error shown:
+
+```
+╭─ quiz » COUNT ───────────────────────────────────────────────────────────╮
+│                                                                          │
+│  How many questions?                                                     │
+│                                                                          │
+│  › 99                                                                    │
+│                                                                          │
+│  ✗ validation failed: [ {{.COUNT}} -le 10 ]                              │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter confirm
 ```
 
 ## Picking a file or directory
@@ -99,9 +146,24 @@ tasks:
       - run: jq length {{.QUESTIONS}}
 ```
 
-Type to narrow the list, `/` to step into a directory, ← to go back up and
-enter to pick. A path you pass yourself works too, and is turned into a full
-path the same way:
+```
+╭─ count-questions » QUESTIONS ────────────────────────────────────────────╮
+│                                                                          │
+│  Which questions file?                                                   │
+│                                                                          │
+│  › /home/you/trivia/q▏                                                   │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  ▶ questions/                                                            │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • ← up • → open • tab complete • enter pick
+```
+
+The line at the top of the picker holds a full path: everything up to its last
+`/` is the directory listed, and what you type after it narrows the list. → opens
+the highlighted directory, ← goes back up and enter picks. Enter never opens a
+directory, so on one in a `type: file` picker it does nothing. A path you pass
+yourself works too, and is turned into a full path the same way:
 
 ```bash
 hobnob count-questions QUESTIONS=questions/history.json
@@ -109,9 +171,11 @@ hobnob count-questions QUESTIONS=questions/history.json
 
 ```
 $ hobnob count-questions QUESTIONS=questions/history.json
-run: [count-questions] jq length …/questions/history.json
-[count-questions] 3
-✓ [count-questions] done
+count-questions » QUESTIONS=/home/you/trivia/questions/history.json # from the command line
+count-questions $ jq length /home/you/trivia/questions/history.json
+count-questions │ 3
+count-questions ✓ 0.0s
+count-questions ✓ done after 0.0s
 ```
 
 The picker starts in the task's working directory. Give a directory as
@@ -190,12 +254,22 @@ tells you which variable to pass.
   `options:`.
 - **`check:` never filters.** It only judges the final answer, and with
   `multi:` it sees the whole list. `match:` is what narrows the menu.
+- **CTRL+C is the only key that aborts the run.** In a menu, `q` is just a
+  letter to filter by.
+- **A choice that fails `check:` stays in the menu**, like a text answer.
+- **With `optional: true`, esc skips the prompt**, after clearing any filter
+  text first.
+- **A text prompt starts filled in with its `default:`**, so enter keeps it.
+  With `optional: true`, enter on an empty field skips the prompt. Without it,
+  enter on an empty field with no `default:` does nothing.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
   stops the task. An empty value means no picks.
 - **With `optional: true` and no answer**, the variable is set but empty
-  (`[]` with `multi:`), and `match:` and `check:` are skipped.
+  (`[]` with `multi:`), and `match:` and `check:` are skipped. On an optional
+  `multi:` menu, enter with nothing toggled counts as no answer, like esc.
+  Without `optional: true`, enter with nothing toggled does nothing.
 - **A menu with nothing left after `match:`** stops the task, naming the
   variable and the patterns. With `optional: true` the variable is set empty
   instead, without asking.
@@ -231,11 +305,8 @@ tells you which variable to pass.
   and the variable is set empty. An empty value never becomes the working
   directory.
 - **A failing `check:` opens the picker again.**
-- **The picker lists hidden files** like any other. Only operating-system
-  clutter is never listed, whatever `match:` says: `.DS_Store`, `._*`,
-  `.Spotlight-V100`, `.Trashes`, `.fseventsd`, `.TemporaryItems`, `Icon\r`,
-  `Thumbs.db`, `desktop.ini`, `$RECYCLE.BIN` and `System Volume Information`.
-  Names are compared ignoring case.
+- **The picker lists hidden files** like any other, but never operating-system
+  clutter such as `.DS_Store` or `Thumbs.db`, whatever `match:` says.
 
 ### Patterns in `match:`
 

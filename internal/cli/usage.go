@@ -6,6 +6,7 @@ import (
 
 	"hobnob/internal/config"
 	"hobnob/internal/scope"
+	"hobnob/internal/tui"
 )
 
 // DisplayVersion returns version, or "dev" when version is empty (unset by
@@ -30,36 +31,40 @@ const ReferenceURL = docsBase + "reference/"
 const docsBase = "https://jakesmd.github.io/hobnob/docs/"
 
 func PrintUsage(out io.Writer, version string) {
-	displayVersion := DisplayVersion(version)
-	fmt.Fprintf(out, `hobnob %s
+	heading := tui.SBold.Render
+	grey := tui.SInfo.Render
+	fmt.Fprintf(out, "%s %s\n\n", heading("hobnob"), grey(DisplayVersion(version)))
 
-Usage:
-  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
-  hobnob [--file <path>] --list
-  hobnob [--file <path>] --select
-  hobnob [--file <path>] --help
-  hobnob --demo
-  hobnob --version
-  hobnob --upgrade
+	fmt.Fprintln(out, heading("Usage"))
+	fmt.Fprintln(out, "  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]")
+	fmt.Fprintln(out, "  hobnob [--file <path>] --list | --select | --help")
+	fmt.Fprintln(out, "  hobnob --demo | --version | --upgrade")
 
-Flags:
-  --file <path>   Hobnob file to use instead of auto-discovery
-  --demo          Run the built-in demo taskfile instead of one of yours
-  --list          List all available tasks
-  --select        Interactively select a task to run
-  --help          Show this help
-  --no-input      Skip interactive prompts; fail if a required variable is missing
-  --version       Print version and exit
-  --upgrade       Upgrade hobnob to the latest release
+	fmt.Fprintf(out, "\n%s\n", heading("Flags"))
+	for _, flag := range [][2]string{
+		{"--file <path>", "Hobnob file to use instead of auto-discovery"},
+		{"--demo", "Run the built-in demo taskfile instead of one of yours"},
+		{"--list", "List all available tasks"},
+		{"--select", "Interactively select a task to run"},
+		{"--help", "Show this help"},
+		{"--no-input", "Skip interactive prompts; fail if a required variable is missing"},
+		{"--quiet, -q", "Print only each command and each task's end (or set HOBNOB_QUIET=1)"},
+		{"--version", "Print version and exit"},
+		{"--upgrade", "Upgrade hobnob to the latest release"},
+	} {
+		fmt.Fprintf(out, "  %-15s %s\n", flag[0], grey(flag[1]))
+	}
 
-Docs:
-  Guide      %s
-  Reference  %s
-
-`, displayVersion, GuideURL, ReferenceURL)
+	fmt.Fprintf(out, "\n%s\n", heading("Docs"))
+	fmt.Fprintf(out, "  Guide      %s\n", grey(GuideURL))
+	fmt.Fprintf(out, "  Reference  %s\n\n", grey(ReferenceURL))
 }
 
 func PrintHelp(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, version string) error {
 	PrintUsage(out, version)
-	return ListTasks(cfg, scope, out)
+	if rows, _ := buildTaskRows(cfg, scope); len(rows) == 0 {
+		return ListTasks(cfg, scope, out)
+	}
+	fmt.Fprintln(out, tui.SBold.Render("Tasks"))
+	return listTasks(cfg, scope, out, "  ")
 }

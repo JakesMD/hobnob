@@ -68,13 +68,16 @@ tasks:
 
 ```
 $ hobnob rollback SERVICE=api TAG=v2.4.0
-run: [rollback] kubectl get deploy -n prod -o json
-⊙ [rollback] output hidden
-run: [rollback] gh release list -R acme/api --json tagName
-⊙ [rollback] output hidden
-run: [rollback] kubectl set image deploy/api api=ghcr.io/acme/api:v2.4.0 -n prod
-[rollback] deployment.apps/api image updated
-✓ [rollback] done
+rollback $ kubectl get deploy -n prod -o json # output hidden
+rollback ✓ 0.0s
+rollback » SERVICE=api # from the command line
+rollback $ gh release list -R acme/api --json tagName # output hidden
+rollback ✓ 0.0s
+rollback » TAG=v2.4.0 # from the command line
+rollback $ kubectl set image deploy/api api=ghcr.io/acme/api:v2.4.0 -n prod
+rollback │ deployment.apps/api image updated
+rollback ✓ 0.0s
+rollback ✓ done after 0.0s
 ```
 
 </div>
@@ -129,18 +132,22 @@ hobnob asks. Here it's on the second question, with the first answered:
 
 ```
 $ hobnob rollback
-run: [rollback] kubectl get deploy -n prod -o json
-⊙ [rollback] output hidden
-get: [rollback] SERVICE: api
-run: [rollback] gh release list -R acme/api --json tagName
-⊙ [rollback] output hidden
+rollback $ kubectl get deploy -n prod -o json # output hidden
+rollback ✓ 0.0s
+rollback » SERVICE=api
+rollback $ gh release list -R acme/api --json tagName # output hidden
+rollback ✓ 0.0s
 
-Select a value for TAG.
-Roll api back to?
-  v2.5.0
-▶ v2.4.0
-  v2.3.1
-↑↓ move  enter select
+╭─ rollback » TAG ─────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Roll api back to?                                                       │
+│                                                                          │
+│  ▶ v2.5.0                                                                │
+│    v2.4.0                                                                │
+│    v2.3.1                                                                │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • enter select
 ```
 
 Task can show menus for missing variables too, when run with

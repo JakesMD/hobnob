@@ -45,6 +45,9 @@ func CollectSelectableTasks(cfg *config.ConfigFile, scope *scope.Scope) []tui.Ta
 	return tasks
 }
 
+// groupIndent is how far a grouped task sits right of the group heading.
+const groupIndent = 2
+
 // taskRow is one --list/--help row: a task plus its rendered info line.
 type taskRow struct {
 	name string
@@ -65,7 +68,14 @@ func buildTaskRows(cfg *config.ConfigFile, scope *scope.Scope) (rows []taskRow, 
 	return rows, maxNameLen
 }
 
+// ListTasks prints the visible tasks grouped by the part of their name before
+// the first colon; tasks without a colon come last, ungrouped.
 func ListTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer) error {
+	return listTasks(cfg, scope, out, "")
+}
+
+// listTasks is ListTasks with every line indented, for --help's Tasks section.
+func listTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, indent string) error {
 	rows, maxTaskLen := buildTaskRows(cfg, scope)
 
 	if len(rows) == 0 {
@@ -74,36 +84,68 @@ func ListTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer) error 
 		return nil
 	}
 
+	groups, groupNames, ungrouped := groupTaskRows(rows)
 	termWidth := listTermWidth()
+	heading := tui.SBold
 
-	fmt.Fprintln(out, "Available tasks for this project:")
-
-	identity := func(value string) string { return value }
-	label := func(value string) string { return tui.SLabel.Render(value) }
-	for _, row := range rows {
-		printListRow(out, "• ", 2, row.name, maxTaskLen, row.info, termWidth, label, identity)
+	wroteBlock := false
+	for _, group := range groupNames {
+		if wroteBlock {
+			fmt.Fprintln(out)
+		}
+		wroteBlock = true
+		fmt.Fprintln(out, indent+heading.Render(group))
+		for _, row := range groups[group] {
+			printListRow(out, indent+strings.Repeat(" ", groupIndent), row, maxTaskLen, termWidth, tui.TaskStyle(group))
+		}
 	}
-
+	if len(ungrouped) > 0 && wroteBlock {
+		fmt.Fprintln(out)
+	}
+	ungroupedWidth := maxTaskLen
+	if len(groupNames) > 0 {
+		ungroupedWidth += groupIndent
+	}
+	for _, row := range ungrouped {
+		printListRow(out, indent, row, ungroupedWidth, termWidth, tui.TaskStyle(row.name))
+	}
 	return nil
 }
 
-// printListRow writes one "<bullet><label><pad>  <info>" row to out, word-wrapping
-// info to fit termWidth and indenting continuation lines under the info column.
-// bulletWidth is the bullet's visual column width (e.g. "• " is 2 columns
-// even though the bullet rune itself is multiple bytes) — used for column
-// math, not string length.
-func printListRow(out io.Writer, bullet string, bulletWidth int, label string, labelWidth int, info string, termWidth int, renderLabel, renderInfo func(string) string) {
-	if info == "" {
-		fmt.Fprintf(out, "%s%s\n", bullet, renderLabel(label))
+// groupTaskRows splits rows (already sorted) by the part of the name before
+// the first colon. Names without a colon are returned as ungrouped.
+func groupTaskRows(rows []taskRow) (groups map[string][]taskRow, groupNames []string, ungrouped []taskRow) {
+	groups = map[string][]taskRow{}
+	for _, row := range rows {
+		group, _, grouped := strings.Cut(row.name, ":")
+		if !grouped {
+			ungrouped = append(ungrouped, row)
+			continue
+		}
+		if _, seen := groups[group]; !seen {
+			groupNames = append(groupNames, group)
+		}
+		groups[group] = append(groups[group], row)
+	}
+	return groups, groupNames, ungrouped
+}
+
+// printListRow writes one "<indent><name><pad>  <info>" row to out in nameStyle,
+// word-wrapping the grey info to fit termWidth and indenting continuation
+// lines under the info column.
+func printListRow(out io.Writer, indent string, row taskRow, nameWidth, termWidth int, nameStyle lipgloss.Style) {
+	name := nameStyle.Render(row.name)
+	if row.info == "" {
+		fmt.Fprintf(out, "%s%s\n", indent, name)
 		return
 	}
-	pad := strings.Repeat(" ", labelWidth-lipgloss.Width(label))
-	infoCol := bulletWidth + labelWidth + 2
-	indent := strings.Repeat(" ", infoCol)
-	infoLines := listWordWrap(info, termWidth-infoCol)
-	fmt.Fprintf(out, "%s%s%s  %s\n", bullet, renderLabel(label), pad, renderInfo(infoLines[0]))
+	pad := strings.Repeat(" ", nameWidth-lipgloss.Width(row.name))
+	infoCol := lipgloss.Width(indent) + nameWidth + 2
+	continuation := strings.Repeat(" ", infoCol)
+	infoLines := listWordWrap(row.info, termWidth-infoCol)
+	fmt.Fprintf(out, "%s%s%s  %s\n", indent, name, pad, tui.SInfo.Render(infoLines[0]))
 	for _, cont := range infoLines[1:] {
-		fmt.Fprintf(out, "%s%s\n", indent, renderInfo(cont))
+		fmt.Fprintf(out, "%s%s\n", continuation, tui.SInfo.Render(cont))
 	}
 }
 

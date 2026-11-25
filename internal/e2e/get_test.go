@@ -7,8 +7,8 @@ import "testing"
 // through --no-input mode: it exercises the same parsing and default/check
 // resolution a real prompt would, without needing a driven terminal. The
 // smaller set of tests that need TTY:true + Answers cover what --no-input
-// mode can't: the prompt actually firing, its ordering, and the check:
-// re-prompt loop.
+// mode can't: the prompt actually firing, its ordering, and a check: that
+// refuses an answer.
 
 func TestE2E_Get_NoDefaultNoInputFailsFast(t *testing.T) {
 	// given a get: with no default and no preset value, when run --no-input,

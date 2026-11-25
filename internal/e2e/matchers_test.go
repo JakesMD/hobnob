@@ -10,11 +10,9 @@ import (
 )
 
 // taskLineRe matches a line of a run: step's own stdout/stderr, which
-// internal/tui.LineWriter prefixes with "[task] " at column 0 — distinct from
-// hobnob's own chrome ("run: [task] ...", "✓ [task] done", "⊘ [task]
-// skipped", "⊙ [task] output hidden"), none of which start with "[" since
-// their own marker comes first.
-var taskLineRe = regexp.MustCompile(`(?m)^\[[^\]\n]+\] (.*)$`)
+// internal/tui.LineWriter prefixes with "task │ " at column 0 — distinct from
+// hobnob's own lines, whose mark is $, →, ⊘ or ✓.
+var taskLineRe = regexp.MustCompile(`(?m)^[^ \n]+ │ (.*)$`)
 
 // OK asserts the run succeeded (exit code 0).
 func (r *Result) OK(t *testing.T) {
@@ -87,8 +85,8 @@ func (r *Result) Order(t *testing.T, subs ...string) {
 }
 
 // Lines asserts exact equality against the run: steps' own printed output —
-// each line a command wrote to stdout, in order, with hobnob's own chrome
-// ("run:", "✓", "⊘", the task-name bracket itself) stripped away. This is
+// each line a command wrote to stdout, in order, with hobnob's own lines
+// and the "task │" prefix stripped away. This is
 // the workhorse for data-shaped assertions (set/into/loop/call/typed values):
 // it has golden-file precision — ordering, completeness, no extras — without
 // coupling the test to hobnob's decoration. See taskLineRe.

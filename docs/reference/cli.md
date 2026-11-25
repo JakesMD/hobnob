@@ -1,7 +1,7 @@
 # CLI
 
 ```
-hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input]
+hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q]
 hobnob [--file <path> | --demo] (--list | --select | --help)
 hobnob (--version | --upgrade | completion <shell>)
 ```
@@ -39,6 +39,27 @@ agents get it for free.
 hobnob ask-trivia --no-input
 ```
 
+## `--quiet`, `-q`
+
+Quiet run, for agents and logs: it hides command output, variables, calls,
+skips and notes, and prints only each `run:` command and every task's end. A
+failing step still shows its output, and a prompt a command prints with no
+newline (`read`, `sudo`, `[y/N]`) shows as it arrives. `HOBNOB_QUIET=1` does the
+same. Nothing else turns it on: not a pipe, not CI, not a detected agent.
+
+```bash
+hobnob deploy -q
+HOBNOB_QUIET=1 hobnob deploy
+```
+
+```
+$ hobnob deploy -q
+setup $ npm ci
+setup ✓ done after 1.1s
+deploy $ go build ./...
+deploy ✓ done after 2.1s
+```
+
 ## `--file <path>`
 
 Uses a specific taskfile.
@@ -63,8 +84,17 @@ hobnob --demo --list
 
 ## `--list`
 
-Prints every public task with its `info:`. Internal tasks and modules are
-omitted.
+Prints every public task with its `info:`, grouped by the part of the name
+before the first `:`; tasks without one come last. Internal tasks and modules
+are omitted.
+
+```
+$ hobnob --list
+trivia
+  trivia:random  Fetch a random question.
+
+standup
+```
 
 ## `--select`
 
@@ -73,7 +103,7 @@ CI, or with `--no-input`, it prints the task list instead.
 
 ## `--help`
 
-Prints usage, the docs links, and the task list.
+Prints usage, the flags, the docs links, and the grouped task list.
 
 ## `--version`
 

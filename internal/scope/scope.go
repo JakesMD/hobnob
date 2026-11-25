@@ -128,12 +128,20 @@ func (scope *Scope) claimed(key string) bool {
 }
 
 // Display renders key's value for terminal output: tui.SecretMask when key
-// is a secret, its string form otherwise.
+// is a secret, its string form otherwise, a list's items joined by ", ".
 func (scope *Scope) Display(key string) string {
 	if scope.secrets[key] {
 		return tui.SecretMask
 	}
-	return scope.vars[key].String()
+	val := scope.vars[key]
+	if items, ok := val.Any().([]any); ok {
+		texts := make([]string, len(items))
+		for i, item := range items {
+			texts[i] = value.Of(item).String()
+		}
+		return strings.Join(texts, ", ")
+	}
+	return val.String()
 }
 
 // Mask replaces each secret value in text — every secret variable's, and
@@ -229,6 +237,17 @@ func (scope *Scope) Copy() *Scope {
 // HOBNOB_INVOCATION_DIR rather than to a task.
 func (scope *Scope) FromInvocation(key string) bool {
 	return scope.fromCLI[key] || scope.ambient[key]
+}
+
+// FromCLI reports whether key's value is a command-line argument nothing
+// has overwritten since.
+func (scope *Scope) FromCLI(key string) bool {
+	return scope.fromCLI[key]
+}
+
+// FromEnv reports whether key's value is still the OS environment's.
+func (scope *Scope) FromEnv(key string) bool {
+	return scope.ambient[key]
 }
 
 // InvocationDir returns the built-in HOBNOB_INVOCATION_DIR: the directory

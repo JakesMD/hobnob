@@ -14,9 +14,10 @@ tasks:
 
 ```
 $ hobnob greet
-run: [greet] echo "Hello, Ada"
-[greet] Hello, Ada
-✓ [greet] done
+greet $ echo "Hello, Ada"
+greet │ Hello, Ada
+greet ✓ 0.0s
+greet ✓ done after 0.0s
 ```
 
 The dot in `.NAME` means "the variable called `NAME`". Variable names are
@@ -79,9 +80,10 @@ overrides the `vars:` default, but passing `API=…` changes nothing, because
 
 ```
 $ hobnob ask CATEGORY=science
-run: [ask] echo "https://the-trivia-api.com/v2/questions?categories=science"
-[ask] https://the-trivia-api.com/v2/questions?categories=science
-✓ [ask] done
+ask $ echo "https://the-trivia-api.com/v2/questions?categories=science"
+ask │ https://the-trivia-api.com/v2/questions?categories=science
+ask ✓ 0.0s
+ask ✓ done after 0.0s
 ```
 
 Entries in both blocks are written like `set:` entries, and each can use the
