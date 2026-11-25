@@ -818,7 +818,9 @@ connect or disconnect, and never runs while steps run. When it fires,
 `giveUp` calls `Cancel` if a prompt is open, then closes `abandoned`, which
 `PickTask`, `AwaitHome` and `AwaitDelivery` all select on. The page closes its
 `EventSource` on `another-tab`, since it would otherwise reconnect and take
-the page back.
+the page back. On any other error it leaves the `EventSource` to reconnect and
+shows "hobnob has stopped" after eight seconds without a snapshot, unless the
+page is on Done or Failed (Cancelled is a Failed screen).
 
 **Cancel.** `runOnPage` runs each task, in both flows, under a context of its own and hands
 the server `SetInterrupt(stop, kill)` (and `ClearInterrupt` when the run ends): `stop` cancels that context (a first

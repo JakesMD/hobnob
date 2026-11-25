@@ -311,8 +311,10 @@ function stopped() {
   app.replaceChildren(el('div', { class: 'solo' }, 'hobnob has stopped.'));
 }
 
+let gone;
 const events = new EventSource('/events?token=' + encodeURIComponent(token));
 events.onmessage = (event) => {
+  clearTimeout(gone);
   snap = JSON.parse(event.data);
   received = Date.now();
   if (snap.screen === 'another-tab') {
@@ -323,10 +325,12 @@ events.onmessage = (event) => {
   }
   render();
 };
+// EventSource reconnects by itself, so a dropped connection (a laptop asleep
+// while hobnob runs) heals; hobnob has stopped only when it stays unreachable.
 events.onerror = () => {
-  events.close();
-  if (snap && snap.screen === 'another-tab') return;
-  if (!snap || (snap.screen !== 'done' && snap.screen !== 'failed')) stopped();
+  if (snap && (snap.screen === 'another-tab' || snap.screen === 'done' || snap.screen === 'failed')) return;
+  clearTimeout(gone);
+  gone = setTimeout(stopped, 8000);
 };
 </script>
 </body>

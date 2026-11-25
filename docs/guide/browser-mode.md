@@ -126,7 +126,10 @@ failure, and 0 when no run happened.
 A tab counts as open while its page is connected. Only one tab drives the run:
 opening the address again replaces the earlier tab, which shows "hobnob is open
 in another tab" and disconnects. A tab that connects, or reconnects after being
-closed, shows the screen the run is at, with the answers and setup so far.
+closed, shows the screen the run is at, with the answers and setup so far. A tab
+whose connection drops while hobnob still runs, as when a laptop sleeps,
+reconnects by itself; it shows "hobnob has stopped" only once hobnob has been
+unreachable for several seconds.
 
 When no tab is open, hobnob waits 60 seconds for one. The wait only counts
 while hobnob is waiting on you: at the task picker, at a prompt, or on Done,
