@@ -144,9 +144,13 @@
 //
 // 122. forward a CTRL+C byte to the PTY instead of signalling hobnob    -> runner/run_stdin_test.go (CtrlCReachesHobnobNotTheCommand)
 // 123. drop the terminal restore in runner.attachStdin's stop           -> runner/run_stdin_test.go (ForwardsKeysToTheCommand)
-// 124. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
-// 125. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
-// 126. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
+//
+// 124. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
+// 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
+// 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 127. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
+// 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
+// 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
 package e2e
 
 import (
@@ -239,6 +243,7 @@ type PromptCall struct {
 	Optional bool
 	Task     string
 	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
+	Error    string // what a picker reopened with on its error line
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -653,7 +658,7 @@ func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task stri
 	raw := answers[idx]
 	s.pathIdx[prompt.VarName] = idx + 1
 	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type}
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Error: prompt.Error}
 	for _, p := range s.probe {
 		full := filepath.Join(s.dir, p)
 		info, err := os.Stat(full)

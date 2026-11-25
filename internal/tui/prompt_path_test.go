@@ -64,8 +64,20 @@ var (
 
 func names(m pathModel) []string {
 	var out []string
-	for _, r := range m.rows() {
-		out = append(out, r.label())
+	listing := false
+	for _, line := range strings.Split(m.View(), "\n") {
+		line = strings.TrimSpace(strings.Trim(strings.TrimSpace(line), "│"))
+		switch {
+		case strings.HasPrefix(line, "──"):
+			listing = true
+		case strings.HasPrefix(line, "╰"):
+			listing = false
+		case !listing, line == "":
+		default:
+			line = strings.TrimSpace(strings.TrimPrefix(line, "▶"))
+			line = strings.TrimSpace(strings.TrimLeft(line, "◉○"))
+			out = append(out, line)
+		}
 	}
 	return out
 }
@@ -256,8 +268,8 @@ func TestPathModel_View_NonexistentDirectoryShowsNoDirectoryMessage(t *testing.T
 	if !strings.Contains(view, `no directory "/nope/"`) {
 		t.Errorf("view missing message:\n%s", view)
 	}
-	if got := names(m); len(got) != 0 {
-		t.Errorf("rows: got %v, want none", got)
+	if got := names(m); len(got) != 1 || got[0] != `no directory "/nope/"` {
+		t.Errorf("rows: got %v, want only the message", got)
 	}
 }
 
@@ -979,5 +991,23 @@ func TestPathModel_Multi_DefaultsThatMissMatchAreNotMarked(t *testing.T) {
 	}
 	if len(dir.picks) != 0 {
 		t.Errorf("dir picker: picks %v, want none", dir.picks)
+	}
+}
+
+func TestPathModel_View_ShowsTheErrorItOpensWith(t *testing.T) {
+	// given a picker opened with an error, when viewed, then the error line shows it until the next key
+	// (why: a check that errors reopens the picker, which must say why)
+	// Arrange
+	root := tree(t, "a.txt")
+	m := newPathModel(PathPrompt{Type: "file", Invoke: root, Error: "check failed: boom"})
+
+	// Act
+	opened := m.View()
+	next, _ := m.Update(keyDown)
+	moved := next.(pathModel).View()
+
+	// Assert
+	if !strings.Contains(opened, "✗ check failed: boom") || strings.Contains(moved, "check failed") {
+		t.Errorf("opened:\n%s\nafter a key:\n%s", opened, moved)
 	}
 }

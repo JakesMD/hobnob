@@ -106,7 +106,11 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if model.validate != nil {
 			ok, err := model.validate(val)
-			if err != nil || !ok {
+			if err != nil {
+				model.frame.errMsg = fmt.Sprintf("check failed: %v", err)
+				return model, nil
+			}
+			if !ok {
 				model.frame.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 				return model, nil
 			}

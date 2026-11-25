@@ -25,13 +25,12 @@ func newSelectModel(varName, info string, items []string, multi bool, defaultVal
 		}
 	}
 	return selectModel{
-		varName:  varName,
-		info:     info,
-		items:    items,
-		multi:    multi,
-		cursor:   cursor,
-		offset:   scrollTo(cursor, 0, menuListHeight),
-		selected: preselected,
+		varName:   varName,
+		info:      info,
+		items:     items,
+		multi:     multi,
+		listState: listState{cursor: cursor, offset: scrollTo(cursor, 0, menuListHeight)},
+		selected:  preselected,
 	}
 }
 
@@ -70,9 +69,7 @@ type selectModel struct {
 	optional  bool
 	validate  func(value.Value) (bool, error)
 	checkDesc string
-	filter    string
-	cursor    int // position in the filtered rows
-	offset    int // first visible filtered row
+	listState
 	selected  map[int]bool
 	value     string   // single-select result
 	values    []string // multi-select result
@@ -125,51 +122,34 @@ func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case model.filter != "":
 			model.setFilter("")
+			model.errMsg = ""
 		case model.optional:
 			model.done, model.skipped = true, true
 			return model, tea.Quit
 		}
-	case tea.KeyUp:
-		model.moveTo(model.cursor - 1)
-	case tea.KeyDown:
-		model.moveTo(model.cursor + 1)
 	case tea.KeyTab:
 		if rows := model.rows(); model.multi && len(rows) > 0 {
 			idx := rows[model.cursor].index
 			model.selected[idx] = !model.selected[idx]
 			model.errMsg = ""
 		}
-	case tea.KeyBackspace:
-		if runes := []rune(model.filter); len(runes) > 0 {
-			model.setFilter(string(runes[:len(runes)-1]))
-		}
-	case tea.KeySpace:
-		if model.filter != "" {
-			model.setFilter(model.filter + " ")
-		}
-	case tea.KeyRunes:
-		model.setFilter(model.filter + string(keyMsg.Runes))
 	case tea.KeyEnter:
 		return model.confirm()
+	default:
+		if model.handleKey(keyMsg, func() int { return len(model.rows()) }) {
+			model.errMsg = ""
+		}
 	}
 	return model, nil
-}
-
-func (model *selectModel) setFilter(filter string) {
-	model.filter = filter
-	model.cursor, model.offset = 0, 0
-	model.errMsg = ""
-}
-
-func (model *selectModel) moveTo(cursor int) {
-	model.cursor = max(0, min(cursor, len(model.rows())-1))
-	model.offset = scrollTo(model.cursor, model.offset, menuListHeight)
-	model.errMsg = ""
 }
 
 func (model selectModel) confirm() (tea.Model, tea.Cmd) {
 	if model.multi {
 		model.values = model.picks()
+		if model.optional && len(model.values) == 0 {
+			model.done, model.skipped = true, true
+			return model, tea.Quit
+		}
 	} else {
 		rows := model.rows()
 		if len(rows) == 0 {
@@ -179,7 +159,11 @@ func (model selectModel) confirm() (tea.Model, tea.Cmd) {
 	}
 	if model.validate != nil && !(model.optional && model.answer().IsEmpty()) {
 		ok, err := model.validate(model.answer())
-		if err != nil || !ok {
+		if err != nil {
+			model.errMsg = fmt.Sprintf("check failed: %v", err)
+			return model, nil
+		}
+		if !ok {
 			model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 			return model, nil
 		}
@@ -212,12 +196,7 @@ func (model selectModel) View() string {
 	frame.hints = hints
 
 	rows := model.rows()
-	var lines []string
-	if model.filter != "" {
-		lines = append(lines, filterLine(model.filter, frame.innerWidth())...)
-	}
-	lines = append(lines, renderWindow(len(rows), model.offset, menuListHeight, model.renderRow(rows))...)
-	frame.body = strings.Join(lines, "\n")
+	frame.body = model.body(frame.innerWidth(), len(rows), model.renderRow(rows))
 	return frame.render()
 }
 
@@ -225,11 +204,7 @@ func (model selectModel) renderRow(rows []listRow) func(i int) string {
 	return func(i int) string {
 		row := rows[i]
 		var b strings.Builder
-		if i == model.cursor {
-			b.WriteString(SArrow.Render("▶ "))
-		} else {
-			b.WriteString("  ")
-		}
+		b.WriteString(cursorPrefix(i == model.cursor))
 		if model.multi {
 			if model.selected[row.index] {
 				b.WriteString(SChecked.Render("◉ "))

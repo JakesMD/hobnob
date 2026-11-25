@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // menuListHeight is how many rows a menu shows before it scrolls.
@@ -38,6 +40,71 @@ func matchRows(items []string, query string) []listRow {
 		rows[i] = h.row
 	}
 	return rows
+}
+
+// listState is the filter text and cursor shared by every filtered menu.
+type listState struct {
+	filter string
+	cursor int // position in the filtered rows
+	offset int // first visible filtered row
+}
+
+func (s *listState) setFilter(filter string) {
+	s.filter = filter
+	s.cursor, s.offset = 0, 0
+}
+
+func (s *listState) moveTo(cursor, total int) {
+	s.cursor = max(0, min(cursor, total-1))
+	s.offset = scrollTo(s.cursor, s.offset, menuListHeight)
+}
+
+// handleKey applies the keys every filtered menu shares: up, down, backspace,
+// space and typed runes. It reports whether the key changed the list state;
+// total is only read for a cursor move.
+func (s *listState) handleKey(key tea.KeyMsg, total func() int) bool {
+	switch key.Type {
+	case tea.KeyUp:
+		s.moveTo(s.cursor-1, total())
+	case tea.KeyDown:
+		s.moveTo(s.cursor+1, total())
+	case tea.KeyBackspace:
+		runes := []rune(s.filter)
+		if len(runes) == 0 {
+			return false
+		}
+		s.setFilter(string(runes[:len(runes)-1]))
+	case tea.KeySpace:
+		if s.filter == "" {
+			return false
+		}
+		s.setFilter(s.filter + " ")
+	case tea.KeyRunes:
+		s.setFilter(s.filter + string(key.Runes))
+	default:
+		return false
+	}
+	return true
+}
+
+// body is the filter line (once there is filter text) above the scrolling
+// window of total rows.
+func (s listState) body(innerWidth, total int, row func(i int) string) string {
+	var lines []string
+	if s.filter != "" {
+		lines = append(lines, filterLine(s.filter, innerWidth)...)
+	}
+	lines = append(lines, renderWindow(total, s.offset, menuListHeight, row)...)
+	return strings.Join(lines, "\n")
+}
+
+// cursorPrefix is the "▶ " marker on the highlighted row and its blank twin
+// on every other.
+func cursorPrefix(highlighted bool) string {
+	if highlighted {
+		return SArrow.Render("▶ ")
+	}
+	return "  "
 }
 
 // scrollTo returns the offset that keeps cursor inside a window of height rows.

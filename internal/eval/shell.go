@@ -35,8 +35,8 @@ func EvalCondition(ctx context.Context, condTmpl string, vars map[string]value.V
 
 // EvalCheckWithOverride evaluates check against vars with key temporarily set
 // to val, without mutating vars — the shared "does this candidate value pass
-// check:" pattern used by interactive re-prompt loops (runner.getInteractive)
-// ahead of committing the value to scope.
+// check:" pattern used by the prompts' validators (runner.selectValidator and
+// the text and path equivalents) ahead of committing the value to scope.
 func EvalCheckWithOverride(ctx context.Context, check string, vars map[string]value.Value, key string, val value.Value) (bool, error) {
 	merged := CloneMap(vars)
 	merged[key] = val
