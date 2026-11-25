@@ -190,6 +190,16 @@ tells you which variable to pass.
   `options:`.
 - **`check:` never filters.** It only judges the final answer, and with
   `multi:` it sees the whole list. `match:` is what narrows the menu.
+- **Every prompt is a card**: a rounded box titled with the task, `»` and the
+  variable name (`deploy » REPLICAS`, plus `(optional)` when allowed). The
+  `info:` sits inside it, word-wrapped, and the keys to press are listed under
+  it. The card is as wide as the terminal, up to 76 columns. A failing
+  `check:` shows `✗` and its message inside the card, which turns the border
+  red, and the prompt stays open.
+- **ctrl+c is the only key that aborts the run.**
+- **A text prompt starts filled in with its `default:`**, so enter keeps it
+  (a `secret:` default shows as `••••`). With `optional: true`, enter on an
+  empty field skips the prompt, and so does esc.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,

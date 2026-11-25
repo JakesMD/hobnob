@@ -628,8 +628,9 @@ end of the run.
 
 ### `internal/tui`
 
-`linewriter.go` (the prefixing writer for `run:` output),
-`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
+`linewriter.go` (the prefixing writer for `run:` output), `frame.go` (the
+card every prompt renders itself in: title, wrapped `info:`, error line, hint
+line; a prompt model's `View` supplies only its body), `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
 and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
