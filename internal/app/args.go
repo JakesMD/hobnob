@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 
 	"hobnob/internal/eval"
 )
@@ -52,13 +53,13 @@ func extractDemoFlag(args []string) (bool, []string) {
 	return false, args
 }
 
-// extractQuietFlag scans args for --quiet or -q, removes it, and reports
-// whether it was present.
-func extractQuietFlag(args []string) (bool, []string) {
+// extractFlag scans args for any of names, removes every occurrence, and
+// reports whether one was present.
+func extractFlag(args []string, names ...string) (bool, []string) {
 	found := false
 	remaining := make([]string, 0, len(args))
 	for _, arg := range args {
-		if arg == "--quiet" || arg == "-q" {
+		if slices.Contains(names, arg) {
 			found = true
 			continue
 		}
@@ -118,21 +119,6 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 		cliVars[key] = val
 	}
 	return noPrompts, cliVars, nil
-}
-
-// extractWebFlag scans args for --web, removes it, and reports whether it was
-// present.
-func extractWebFlag(args []string) (bool, []string) {
-	remaining := make([]string, 0, len(args))
-	found := false
-	for _, arg := range args {
-		if arg == "--web" {
-			found = true
-			continue
-		}
-		remaining = append(remaining, arg)
-	}
-	return found, remaining
 }
 
 // checkWebFlag rejects --web where the page has nothing to do: on Windows,

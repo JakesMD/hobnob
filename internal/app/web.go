@@ -27,6 +27,9 @@ func openBrowser(url string) error {
 // the terminal, and the page observes the same run. It returns once the page
 // has been sent how the run ended.
 func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
+	if err := runner.CheckTask(taskName, cfg); err != nil {
+		return failSilently(err)
+	}
 	server, err := web.Listen()
 	if err != nil {
 		return err
@@ -34,12 +37,8 @@ func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Sco
 	defer server.Close()
 	go server.Serve()
 
-	log := tui.NewRunLog(os.Stdout, os.Stderr)
-	log.SetQuiet(a.quiet)
+	log := a.newRunLog()
 	log.Listen(server)
-	if a.Screen != nil {
-		log.Watch(a.Screen())
-	}
 
 	tui.HobnobNote(os.Stdout, "Browser mode: "+server.URL())
 	if err := a.OpenBrowser(server.URL()); err != nil {
@@ -56,11 +55,5 @@ func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Sco
 		log.RunFailed(runErr.Error())
 	}
 	server.AwaitDelivery(ctx)
-	if runErr == nil {
-		return nil
-	}
-	if !runner.Reported(runErr) {
-		tui.HobnobError(os.Stderr, runErr.Error())
-	}
-	return ErrSilent
+	return failSilently(runErr)
 }

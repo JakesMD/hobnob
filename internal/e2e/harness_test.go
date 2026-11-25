@@ -185,6 +185,8 @@
 // 160. label a task by its name even when it has an info: in web.label  -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
 // 161. return before AwaitDelivery in app.execWebTask                   -> web_test.go (TaskWithoutPromptsEndsOnDone)
 // 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
+// 163. call app.checkWebFlag before --quiet is stripped, in app.run       -> web_test.go (FlagsThatCannotCombine, quiet cases)
+// 164. drop the runner.CheckTask call from app.execWebTask               -> web_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
 package e2e
 
 import (
@@ -444,6 +446,7 @@ func Run(t *testing.T, c Case) *Result {
 		res.URL = url
 		if c.Browser == nil {
 			t.Errorf("unexpected OpenBrowser(%s) — Case.Browser not set", url)
+			cancelRun()
 			return nil
 		}
 		browsers.Add(1)

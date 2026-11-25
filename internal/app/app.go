@@ -97,18 +97,30 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 	if a.web {
 		return a.execWebTask(ctx, taskName, scope, fileScopes, cfg, dir)
 	}
+	log := a.newRunLog()
+	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()))
+}
+
+// newRunLog is the run's log on this terminal, quiet if asked.
+func (a *App) newRunLog() *tui.RunLog {
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
 	log.SetQuiet(a.quiet)
 	if a.Screen != nil {
 		log.Watch(a.Screen())
 	}
-	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()); err != nil {
-		if !runner.Reported(err) {
-			tui.HobnobError(os.Stderr, err.Error())
-		}
-		return ErrSilent
+	return log
+}
+
+// failSilently prints a failure the run didn't already log, and turns any
+// failure into ErrSilent.
+func failSilently(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	if !runner.Reported(err) {
+		tui.HobnobError(os.Stderr, err.Error())
+	}
+	return ErrSilent
 }
 
 // Run is the CLI body: parse args, load the taskfile, dispatch. It never
@@ -129,13 +141,13 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 	useDemo, args := extractDemoFlag(args)
-	a.web, args = extractWebFlag(args)
+	flagQuiet, args := extractFlag(args, "--quiet", "-q")
+	a.web, args = extractFlag(args, "--web")
 	if a.web {
 		if err := checkWebFlag(args); err != nil {
 			return err
 		}
 	}
-	flagQuiet, args := extractQuietFlag(args)
 	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")

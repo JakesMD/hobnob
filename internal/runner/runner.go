@@ -146,6 +146,12 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 	return task, execCfg, nil
 }
 
+// CheckTask reports whether cfg has a task taskName, as ExecuteTask would.
+func CheckTask(taskName string, cfg *config.ConfigFile) error {
+	_, _, err := resolveTask(taskName, cfg)
+	return err
+}
+
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; call: goes through executeTask.

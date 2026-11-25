@@ -263,11 +263,14 @@ func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
 	// there)
 	// Arrange
 	for name, args := range map[string][]string{
-		"no-input": {"--web", "t", "--no-input"},
-		"list":     {"--web", "--list"},
-		"select":   {"--web", "--select"},
-		"help":     {"--web", "--help"},
-		"no task":  {"--web"},
+		"no-input":              {"--web", "t", "--no-input"},
+		"list":                  {"--web", "--list"},
+		"select":                {"--web", "--select"},
+		"help":                  {"--web", "--help"},
+		"no task":               {"--web"},
+		"quiet after, no task":  {"--web", "--quiet"},
+		"quiet before, no task": {"--quiet", "--web"},
+		"short quiet, no task":  {"-q", "--web"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Act
@@ -280,5 +283,23 @@ func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
 				t.Errorf("opened %s", res.URL)
 			}
 		})
+	}
+}
+
+func TestE2E_Web_UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage(t *testing.T) {
+	// given a task name the taskfile lacks, when run with --web, then it
+	// fails as the terminal run does and no page opens (why: a page showing a
+	// failed run of nothing is noise)
+	// Arrange
+	yml := "tasks:\n  t:\n    steps:\n      - run: echo hi\n"
+
+	// Act
+	res := Yml(t, yml, "--web", "nosuch")
+
+	// Assert
+	res.Fails(t)
+	res.Err(t, `no task "nosuch"`)
+	if res.URL != "" {
+		t.Errorf("opened %s", res.URL)
 	}
 }
