@@ -146,7 +146,7 @@ func isDirDefault(getEntry config.GetEntry, val value.Value, base string) bool {
 
 // getPathInteractive opens the picker for a type: file|dir entry. A picked
 // path goes through the same checks as a preset one; a failing check:
-// re-opens the picker, as promptSelectUntilValid does for menus.
+// re-opens the picker.
 func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	name := getEntry.VarName
 	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars())
