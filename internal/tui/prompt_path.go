@@ -11,13 +11,12 @@ import (
 	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // PathPrompt is everything the picker takes in. Paths written in the taskfile
-// (Default) resolve against WorkDir; the start directory and the input line
-// are relative to Invoke, so a WorkDir below Invoke shows as e.g. "sub/". The
-// caller passes both as absolute directories. Included and Excluded are the
+// (Default) resolve against WorkDir and the start directory against Invoke;
+// the filter line always holds the resulting absolute path. The caller passes
+// both as absolute directories. Included and Excluded are the
 // caller's predicates for match: (tui never learns about match:); both are
 // applied on top of the type and the junk-name list, and either may be nil.
 //
@@ -84,19 +83,19 @@ func (r pathRow) label() string {
 }
 
 type pathModel struct {
-	prompt  PathPrompt
-	home    string
-	form    string // how the directory is written: "rel", "home" or "abs"
-	cwd     string // absolute directory being listed
-	seg     string // the fuzzy-matched segment after the last "/"
-	cursor  int
-	offset  int
-	errMsg  string
-	picked  string
-	picks   []string // multi: absolute paths picked so far, in pick order
-	done    bool
-	quit    bool
-	skipped bool // esc on an optional picker: no answer
+	prompt    PathPrompt
+	task      string
+	home      string
+	text      string // the filter line: always an absolute path; up to the last "/" is the listed directory
+	cursor    int
+	offset    int
+	errMsg    string
+	picked    string
+	picks     []string // multi: absolute paths picked so far, in pick order
+	done      bool
+	quit      bool
+	skipped   bool // esc on an optional picker: no answer
+	termWidth int
 }
 
 func newPathModel(prompt PathPrompt) pathModel {
@@ -106,13 +105,13 @@ func newPathModel(prompt PathPrompt) pathModel {
 		m.prompt.WorkDir = prompt.Invoke
 	}
 	if prompt.Start == "" {
-		m.form, m.cwd = m.resolve("", m.prompt.WorkDir)
+		m.text = withSlash(m.resolve("", m.prompt.WorkDir))
 	} else {
-		m.form, m.cwd = m.resolve(prompt.Start, prompt.Invoke)
+		m.text = withSlash(m.resolve(prompt.Start, prompt.Invoke))
 	}
 	if prompt.Multi {
 		for _, d := range prompt.Default {
-			_, abs := m.resolve(d, m.prompt.WorkDir)
+			abs := m.resolve(d, m.prompt.WorkDir)
 			if info, err := os.Stat(abs); err == nil && info.IsDir() == (prompt.Type == "dir") && m.pickable(abs, info.IsDir()) {
 				m.picks = append(m.picks, abs)
 			}
@@ -124,18 +123,26 @@ func newPathModel(prompt PathPrompt) pathModel {
 	return m
 }
 
-// resolve turns a path as written into its form and absolute path; relative
-// paths resolve against base, and empty means base itself.
-func (m pathModel) resolve(written, base string) (form, abs string) {
+func withSlash(p string) string {
+	p = filepath.ToSlash(p)
+	if strings.HasSuffix(p, "/") {
+		return p
+	}
+	return p + "/"
+}
+
+// resolve turns a path as written into an absolute one; relative paths
+// resolve against base, and empty means base itself.
+func (m pathModel) resolve(written, base string) string {
 	switch {
 	case written == "":
-		return "rel", filepath.Clean(base)
+		return filepath.Clean(base)
 	case written == "~" || strings.HasPrefix(written, "~/"):
-		return "home", filepath.Join(m.home, strings.TrimPrefix(written, "~"))
+		return filepath.Join(m.home, strings.TrimPrefix(written, "~"))
 	case filepath.IsAbs(written):
-		return "abs", filepath.Clean(written)
+		return filepath.Clean(written)
 	}
-	return "rel", filepath.Join(base, written)
+	return filepath.Join(base, written)
 }
 
 // open positions the picker for a default: a default of the prompt's kind is
@@ -143,15 +150,14 @@ func (m pathModel) resolve(written, base string) (form, abs string) {
 // browsing starts, and anything else opens the nearest existing parent with
 // nothing selected.
 func (m *pathModel) open(written string) {
-	form, abs := m.resolve(written, m.prompt.WorkDir)
-	m.form = form
+	abs := m.resolve(written, m.prompt.WorkDir)
 	info, err := os.Stat(abs)
 	switch {
 	case err == nil && info.IsDir() && m.prompt.Type == "file":
-		m.cwd = abs
+		m.text = withSlash(abs)
 		return
 	case err == nil && info.IsDir() == (m.prompt.Type == "dir"):
-		m.cwd = filepath.Dir(abs)
+		m.text = withSlash(filepath.Dir(abs))
 		m.highlight(abs)
 		return
 	}
@@ -166,40 +172,35 @@ func (m *pathModel) open(written string) {
 		}
 		dir = next
 	}
-	m.cwd = dir
+	m.text = withSlash(dir)
 }
 
 func (m *pathModel) highlight(abs string) {
 	for i, row := range m.rows() {
-		if !row.here && filepath.Join(m.cwd, row.name) == abs {
+		if !row.here && filepath.Join(m.dir(), row.name) == abs {
 			m.cursor = i
 		}
 	}
 	m.clamp()
 }
 
-// dirText writes the listed directory the way the user started writing it.
+// dirText is the text up to and including its last "/": the directory the
+// listing shows.
 func (m pathModel) dirText() string {
-	withSlash := func(p string) string {
-		if p == "/" || strings.HasSuffix(p, string(filepath.Separator)) {
-			return p
-		}
-		return p + "/"
-	}
-	switch m.form {
-	case "home":
-		if m.home != "" && (m.cwd == m.home || strings.HasPrefix(m.cwd, m.home+string(filepath.Separator))) {
-			return withSlash("~" + filepath.ToSlash(strings.TrimPrefix(m.cwd, m.home)))
-		}
-	case "rel":
-		if rel, err := filepath.Rel(m.prompt.Invoke, m.cwd); err == nil {
-			if rel == "." {
-				return ""
-			}
-			return withSlash(filepath.ToSlash(rel))
-		}
-	}
-	return withSlash(filepath.ToSlash(m.cwd))
+	return m.text[:strings.LastIndex(m.text, "/")+1]
+}
+
+// seg is the text after the last "/": the only part that is fuzzy-matched.
+func (m pathModel) seg() string {
+	return m.text[strings.LastIndex(m.text, "/")+1:]
+}
+
+// dir is the absolute directory being listed.
+func (m pathModel) dir() string { return filepath.Clean(filepath.FromSlash(m.dirText())) }
+
+func (m pathModel) dirExists() bool {
+	info, err := os.Stat(m.dir())
+	return err == nil && info.IsDir()
 }
 
 // pickable reports whether a listed entry at abs could be picked: not junk,
@@ -213,13 +214,13 @@ func (m pathModel) pickable(abs string, isDir bool) bool {
 // entries lists the directory, applying the junk list, the type and the
 // caller's predicate. Directories come first, then by name ignoring case.
 func (m pathModel) entries() []pathEntry {
-	items, _ := os.ReadDir(m.cwd)
+	items, _ := os.ReadDir(m.dir())
 	var dirs, files []pathEntry
 	for _, item := range items {
 		if isJunk(item.Name()) {
 			continue
 		}
-		abs := filepath.Join(m.cwd, item.Name())
+		abs := filepath.Join(m.dir(), item.Name())
 		isDir := item.IsDir()
 		if item.Type()&os.ModeSymlink != 0 {
 			if info, err := os.Stat(abs); err == nil {
@@ -252,8 +253,12 @@ func (m pathModel) entries() []pathEntry {
 
 func (m pathModel) rows() []pathRow {
 	var out []pathRow
-	if m.prompt.Type == "dir" && m.seg == "" {
-		here := m.pickable(m.cwd, true)
+	if !m.dirExists() {
+		return nil
+	}
+	seg := m.seg()
+	if m.prompt.Type == "dir" && seg == "" {
+		here := m.pickable(m.dir(), true)
 		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true, pickable: here}, here: true})
 	}
 	type scored struct {
@@ -262,12 +267,12 @@ func (m pathModel) rows() []pathRow {
 	}
 	var hits []scored
 	for _, e := range m.entries() {
-		score, positions, ok := fuzzyMatch(m.seg, e.name)
+		score, positions, ok := fuzzyMatch(seg, e.name)
 		if ok {
 			hits = append(hits, scored{pathRow{pathEntry: e, positions: positions}, score})
 		}
 	}
-	if m.seg != "" {
+	if seg != "" {
 		sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
 	}
 	for _, h := range hits {
@@ -323,63 +328,27 @@ func (m *pathModel) clamp() {
 	m.offset = scrollTo(m.cursor, m.offset, pathListHeight)
 }
 
-func (m *pathModel) setSegment(seg string) {
-	m.seg = seg
+func (m *pathModel) setText(text string) {
+	m.text = text
 	m.cursor, m.offset = 0, 0
 }
 
-// enter moves the listing into dir, keeping the written form.
-func (m *pathModel) enter(dir string) {
-	m.cwd = filepath.Clean(dir)
-	m.setSegment("")
-}
-
 func (m *pathModel) up() {
-	prev := m.cwd
-	m.enter(filepath.Dir(m.cwd))
+	prev := m.dir()
+	m.setText(withSlash(filepath.Dir(prev)))
 	for i, row := range m.rows() {
-		if filepath.Join(m.cwd, row.name) == prev {
+		if filepath.Join(m.dir(), row.name) == prev {
 			m.cursor = i
 		}
 	}
 	m.clamp()
 }
 
-// slash turns the segment into a directory: an exact name if there is one,
-// else the highlighted directory.
-func (m *pathModel) slash() {
-	switch m.seg {
-	case "":
-		if m.dirText() == "" {
-			m.form = "abs"
-			m.enter(string(filepath.Separator))
-		}
-		return
-	case "~":
-		m.form = "home"
-		m.enter(m.home)
-		return
-	case ".":
-		m.setSegment("")
-		return
-	case "..":
-		m.up()
-		return
-	}
-	for _, e := range m.entries() {
-		if e.isDir && e.name == m.seg {
-			m.enter(filepath.Join(m.cwd, e.name))
-			return
-		}
-	}
-	if row, ok := m.highlighted(); ok && row.isDir && !row.here {
-		m.enter(filepath.Join(m.cwd, row.name))
-		return
-	}
-	m.errMsg = `no directory matching "` + m.seg + `" here`
-}
-
 func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		m.termWidth = size.Width
+		return m, nil
+	}
 	key, ok := msg.(tea.KeyMsg)
 	if !ok {
 		return m, nil
@@ -398,21 +367,19 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.up()
 	case "right":
 		if hasRow && row.isDir && !row.here {
-			m.enter(filepath.Join(m.cwd, row.name))
+			m.setText(m.dirText() + row.name + "/")
 		}
 	case "backspace":
-		if m.seg == "" {
-			m.up()
-		} else {
-			runes := []rune(m.seg)
-			m.setSegment(string(runes[:len(runes)-1]))
+		if m.text != "/" {
+			runes := []rune(m.text)
+			m.setText(string(runes[:len(runes)-1]))
 		}
 	case "ctrl+u":
-		m.setSegment("")
+		m.setText(m.dirText())
 	case "esc":
 		switch {
-		case m.seg != "":
-			m.setSegment("")
+		case m.seg() != "":
+			m.setText(m.dirText())
 		case m.prompt.Optional:
 			m.skipped, m.done = true, true
 			return m, tea.Quit
@@ -428,7 +395,7 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errMsg = "can't pick that"
 			}
 		case !row.here:
-			m.setSegment(row.name)
+			m.setText(m.dirText() + row.name)
 		}
 	case "enter":
 		switch {
@@ -437,8 +404,8 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case !hasRow:
 			m.errMsg = "nothing matches"
-		case row.isDir && !row.here && (m.prompt.Type == "file" || !row.pickable):
-			m.enter(filepath.Join(m.cwd, row.name))
+		case row.isDir && !row.here && m.prompt.Type == "file":
+			m.errMsg = "that's a directory: → opens it"
 		case !row.pickable:
 			m.errMsg = "doesn't match"
 		case m.prompt.Multi:
@@ -454,13 +421,7 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key.Type == tea.KeySpace {
 				text = " "
 			}
-			for _, r := range text {
-				if r == '/' {
-					m.slash()
-				} else {
-					m.setSegment(m.seg + string(r))
-				}
-			}
+			m.setText(m.text + text)
 		}
 	}
 	m.clamp()
@@ -469,9 +430,9 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m pathModel) rowPath(row pathRow) string {
 	if row.here {
-		return m.cwd
+		return m.dir()
 	}
-	return filepath.Join(m.cwd, row.name)
+	return filepath.Join(m.dir(), row.name)
 }
 
 func (m *pathModel) toggle(path string) {
@@ -499,66 +460,67 @@ func (m pathModel) finish(path string) (tea.Model, tea.Cmd) {
 	return m, tea.Quit
 }
 
+// pathLimit is how many characters of the path the filter line shows.
+const pathLimit = 40
+
+// shortPath cuts a long path from the left, "…" standing for the cut part.
+// Display only: typing and backspace edit the full path.
+func shortPath(text string) string {
+	runes := []rune(text)
+	if len(runes) <= pathLimit {
+		return text
+	}
+	return "…" + string(runes[len(runes)-pathLimit+1:])
+}
+
 func (m pathModel) View() string {
 	if m.done {
 		return ""
 	}
-	noun := "a file"
-	if m.prompt.Type == "dir" {
-		noun = "a directory"
+	frame := card{
+		task:      m.task,
+		varName:   m.prompt.VarName,
+		optional:  m.prompt.Optional,
+		info:      m.prompt.Info,
+		errMsg:    m.errMsg,
+		termWidth: m.termWidth,
 	}
-	var b strings.Builder
-	b.WriteString("\nPick " + noun + " for " + SLabel.Render(m.prompt.VarName) + ".")
-	if m.prompt.Info != "" {
-		b.WriteString("\n" + SInfo.Render(m.prompt.Info))
-	}
-	b.WriteString("\n")
-	if len(m.picks) > 0 {
-		b.WriteString(SInfo.Render(fmt.Sprintf("picked (%d):", len(m.picks))) + "\n")
-		for _, p := range m.picks {
-			b.WriteString("  " + SChecked.Render("◉ ") + p + "\n")
-		}
-	}
-	rows := m.rows()
-	dir := SInfo.Render("./")
-	if text := m.dirText(); text != "" {
-		dir = sPathInput.Render(text)
-	}
-	input := dir + sPathInput.Render(m.seg) + sPathMatch.Render("▏")
-	b.WriteString("\n" + SArrow.Render("› ") + input + "\n")
-	b.WriteString(SInfo.Render(strings.Repeat("─", m.ruleWidth(input, rows))) + "\n")
-	for _, line := range renderWindow(len(rows), m.offset, pathListHeight, m.renderRow(rows)) {
-		b.WriteString(line + "\n")
-	}
-	if m.errMsg != "" {
-		b.WriteString(SError.Render(m.errMsg) + "\n")
-	}
-	hint := "type to filter  ↑↓ move  ← up  → open  tab complete  enter pick"
+	tab := hint{"tab", "complete"}
+	enter := hint{"enter", "pick"}
 	if m.prompt.Multi {
-		hint = "type to filter  ↑↓ move  ← up  → open  tab toggle pick  enter confirm"
+		tab, enter = hint{"tab", "toggle"}, hint{"enter", "confirm"}
 	}
+	frame.hints = []hint{{"", "type to filter"}, {"↑↓", "move"}, {"←", "up"}, {"→", "open"}, tab, enter}
 	if m.prompt.Optional {
-		hint += "  esc skip"
+		frame.hints = append(frame.hints, hint{"esc", "skip"})
 	}
-	b.WriteString("\n" + SHint.Render(hint))
-	return b.String()
-}
 
-// ruleWidth is how long the rule between the input line and the list is: as
-// wide as the widest of the two, so it reads as a divider at any path length.
-func (m pathModel) ruleWidth(input string, rows []pathRow) int {
-	width := max(lipgloss.Width(input)+2, 24)
-	for _, row := range rows[m.offset:min(m.offset+pathListHeight, len(rows))] {
-		width = max(width, lipgloss.Width(row.label())+6)
+	var lines []string
+	if len(m.picks) > 0 {
+		lines = append(lines, SInfo.Render(fmt.Sprintf("picked (%d):", len(m.picks))))
+		for _, p := range m.picks {
+			lines = append(lines, "  "+SChecked.Render("◉ ")+p)
+		}
+		lines = append(lines, "")
 	}
-	return width
+	lines = append(lines, filterLine(shortPath(m.text), frame.innerWidth())...)
+	rows := m.rows()
+	if m.dirExists() {
+		lines = append(lines, renderWindow(len(rows), m.offset, pathListHeight, m.renderRow(rows))...)
+	} else {
+		lines = append(lines, SInfo.Render(fmt.Sprintf("  no directory %q", m.dirText())))
+	}
+	frame.body = strings.Join(lines, "\n")
+	return frame.render()
 }
 
 // PromptPath runs the picker and returns the picked absolute path.
 // With Multi the value is a list of absolute paths. answered is false when an
 // optional picker was escaped: there is no answer and nothing is printed.
 func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool) (val value.Value, answered bool, err error) {
-	result, err := tea.NewProgram(newPathModel(prompt), tea.WithContext(ctx)).Run()
+	model := newPathModel(prompt)
+	model.task = task
+	result, err := tea.NewProgram(model, tea.WithContext(ctx)).Run()
 	if err != nil {
 		return value.Value{}, false, err
 	}

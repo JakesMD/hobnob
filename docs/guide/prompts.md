@@ -105,9 +105,14 @@ tasks:
       - run: jq length {{.QUESTIONS}}
 ```
 
-Type to narrow the list, `/` to step into a directory, ← to go back up and
-enter to pick. A path you pass yourself works too, and is turned into a full
-path the same way:
+The line at the top of the picker holds a full path, and that text alone decides
+which directory is listed: everything up to its last `/` is the directory, and
+only what you type after it narrows the list. Longer than 40 characters, the
+line shows only the end, after a `…`; what you type still edits the whole path.
+Type to narrow the list, → to open the highlighted directory, ← to go back up
+and enter to pick. Enter never opens anything: on a directory in a `type: file`
+picker it says "that's a directory: → opens it". A path you pass yourself works
+too, and is turned into a full path the same way:
 
 ```bash
 hobnob count-questions QUESTIONS=questions/history.json
@@ -253,6 +258,12 @@ tells you which variable to pass.
   and the variable is set empty. An empty value never becomes the working
   directory.
 - **A failing `check:` opens the picker again.**
+- **The path line is plain text.** It always holds an absolute path, never a
+  `~` form, and the picker starts with the start directory written out in full.
+  Typing `/` or backspace only edits it; backspace can't delete the leading
+  `/`. If the text names no directory, the list says `no directory "…"`. ←
+  drops the last directory from the text and → adds the highlighted directory
+  and a `/`.
 - **The picker lists hidden files** like any other. Only operating-system
   clutter is never listed, whatever `match:` says: `.DS_Store`, `._*`,
   `.Spotlight-V100`, `.Trashes`, `.fseventsd`, `.TemporaryItems`, `Icon\r`,
