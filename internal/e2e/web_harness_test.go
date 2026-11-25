@@ -55,9 +55,6 @@ func (b *Browser) fail(format string, args ...any) {
 	runtime.Goexit()
 }
 
-// Interrupt is CTRL+C in the terminal hobnob runs in.
-func (b *Browser) Interrupt() { b.interrupt() }
-
 // Address is the host and port the page was opened on.
 func (b *Browser) Address() string { return strings.TrimPrefix(b.base, "http://") }
 
@@ -134,6 +131,9 @@ func (b *Browser) Post(action string, body any) int {
 	status, _ := b.do(http.MethodPost, "/actions/"+action, b.token, data)
 	return status
 }
+
+// Interrupt is CTRL+C in the terminal that started hobnob.
+func (b *Browser) Interrupt() { b.interrupt() }
 
 // Token is the secret the page was opened with.
 func (b *Browser) Token() string { return b.token }

@@ -126,9 +126,10 @@ function progress(s) {
   tick();
   clock = setInterval(tick, 200);
   return {
-    body: [el('h1', {}, s.progress.label), el('div', { class: 'progress' }),
+    body: [el('h1', {}, s.progress.cancelling ? 'Stopping…' : s.progress.label), el('div', { class: 'progress' }),
       el('div', { class: 'lastbox' }, s.progress.lastLine), elapsed],
-    bar: [el('span'), el('span', { class: 'note' }, 'Keep this window open while hobnob runs.')],
+    bar: [el('button', { class: 'btn alt', onclick: () => post('cancel') }, s.progress.cancelling ? 'Force stop' : 'Cancel'),
+      el('span', { class: 'note' }, 'Keep this window open while hobnob runs.')],
   };
 }
 

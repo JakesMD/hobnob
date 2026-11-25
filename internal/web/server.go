@@ -35,6 +35,8 @@ type Server struct {
 	listener net.Listener
 	http     *http.Server
 	actions  map[string]action
+	stop     func()
+	kill     func()
 
 	choice chan string
 	home   chan struct{}
@@ -70,6 +72,7 @@ func Listen() (*Server, error) {
 	server.changed = server.notify
 	server.actions["choose"] = server.chooseTask
 	server.actions["home"] = server.goHomeAction
+	server.initCancel()
 	server.actions["answer"] = server.answer
 	server.actions["skip"] = server.skip
 	mux := http.NewServeMux()
@@ -97,6 +100,12 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 	select {
 	case <-s.delivered:
 	case <-ctx.Done():
+		if s.hasStreams() {
+			select {
+			case <-s.delivered:
+			case <-time.After(interruptGrace):
+			}
+		}
 	case <-time.After(deliveryGrace):
 	}
 }

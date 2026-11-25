@@ -60,6 +60,8 @@ type Progress struct {
 	Label     string `json:"label"`
 	LastLine  string `json:"lastLine"`
 	ElapsedMS int64  `json:"elapsedMs"`
+	// Cancelling is true once Cancel was pressed and the run is stopping.
+	Cancelling bool `json:"cancelling"`
 }
 
 // Result is the Done, Failed or Cancelled screen.

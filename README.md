@@ -35,7 +35,8 @@ It reads like a book, and runs like one.
 - **Runs in CI too.** Pass the answers as `NAME=value` and the same wizard runs
   straight through.
 - **A page for non-terminal people.** `hobnob --web <task>` runs the same task
-  behind a local web page and opens it in the browser.
+  behind a local web page and opens it in the browser. `hobnob --web` alone
+  opens a task picker.
 
 [See it in action →](https://hobnob.jakesmd.dev/)
 

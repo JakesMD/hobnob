@@ -103,9 +103,13 @@ func (a *App) openPage() (*web.Server, error) {
 // runOnPage runs one task with a fresh run log that the page listens to, and
 // tells the page how it ended.
 func (a *App) runOnPage(ctx context.Context, server *web.Server, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	server.SetInterrupt(stop, func() { runner.KillRunningStep() })
+
 	log := a.newRunLog()
 	log.Listen(server)
-	runErr := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, false, dir, log, browserPrompts(server))
+	runErr := runner.ExecuteTask(runCtx, taskName, scope, fileScopes, cfg, false, dir, log, browserPrompts(server))
 	switch {
 	case runErr == nil:
 		log.RunSucceeded()

@@ -485,6 +485,103 @@ func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
 	}
 }
 
+func TestE2E_Web_CancelStopsAStepGracefullyAndTheResultIsCancelled(t *testing.T) {
+	// given a running step that cleans up on SIGTERM, when the page POSTs
+	// cancel, then the step gets the graceful stop, the page ends on
+	// Cancelled and the exit code is an interrupted run's (why: Cancel is a
+	// first CTRL+C)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: trap 'touch cleaned; exit 1' TERM; touch started; while :; do :; done
+	`
+	var result web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		b.Wait("started")
+		b.Post("cancel", struct{}{})
+		result = tab.Screen(web.ScreenFailed)
+		b.Wait("cleaned")
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if result.Result.Outcome != web.OutcomeCancelled {
+		t.Errorf("result = %+v", result.Result)
+	}
+}
+
+func TestE2E_Web_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
+	// given a running step that ignores SIGTERM, when the page POSTs cancel
+	// twice, then after the first the snapshot says it is cancelling and
+	// the step still runs, and the second kills it and ends on Cancelled
+	// (why: Force stop is the second CTRL+C)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: trap '' TERM; touch started; while :; do :; done
+	`
+	var before, cancelling, result web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		b.Wait("started")
+		before = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		b.Post("cancel", struct{}{})
+		cancelling = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil && s.Progress.Cancelling })
+		b.Post("cancel", struct{}{})
+		result = tab.Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if before.Progress.Cancelling || !cancelling.Progress.Cancelling {
+		t.Errorf("cancelling before = %v, after the first press = %v", before.Progress.Cancelling, cancelling.Progress.Cancelling)
+	}
+	if result.Result.Outcome != web.OutcomeCancelled {
+		t.Errorf("result = %+v", result.Result)
+	}
+}
+
+func TestE2E_Web_TerminalInterruptStillDeliversCancelledToAnOpenPage(t *testing.T) {
+	// given an open page and a running step, when CTRL+C reaches the
+	// terminal, then the page is still sent Cancelled before hobnob exits
+	// (why: the page must not show "hobnob has stopped" for a run it could
+	// have reported)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: touch started; while :; do :; done
+	`
+	var result web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		b.Wait("started")
+		b.Interrupt()
+		result = tab.Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if result.Result.Outcome != web.OutcomeCancelled {
+		t.Errorf("result = %+v", result.Result)
+	}
+}
+
 const pickerYml = `
 	tasks:
 	  default:

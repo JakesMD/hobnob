@@ -201,6 +201,14 @@
 // 176. put a secret answer on the rail unmasked in web.state.PromptText   -> web_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
 // 177. drop the prompt id check in web.state.openPrompt                   -> web_prompt_test.go (AnswerToAPromptThatIsNotOpenIsRefused)
 // 178. pass runner.TerminalPrompts() instead of browserPrompts in app.execWebTask -> web_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
+// 179. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 180. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 181. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 182. run a default task in app.run when --web names no task          -> web_test.go (WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault)
+// 183. keep the last run's setup entries in web.state.startPick           -> web_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
+// 184. keep the last run's log in web.state.startPick                     -> web_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
+// 185. offer Home on every finished run in web.state.snapshot             -> web_test.go (HomeIsOnlyOfferedWhenHobnobHadNoTask)
+// 186. accept any task name in web.state.choose                           -> web_test.go (PickerRefusesATaskItDidNotOffer)
 package e2e
 
 import (

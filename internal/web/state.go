@@ -28,6 +28,8 @@ type state struct {
 	prompt     *openPrompt
 	nextPrompt int
 	answers    []RailEntry
+
+	cancelling bool
 }
 
 type setupEntry struct {
@@ -145,7 +147,7 @@ func (s *state) startPick(tasks []Task, offerHome bool) {
 	s.update(func() {
 		s.task, s.setup, s.running, s.step = Task{}, nil, nil, stepState{}
 		s.started, s.result, s.logLines = time.Time{}, nil, nil
-		s.prompt, s.answers = nil, nil
+		s.prompt, s.answers, s.cancelling = nil, nil, false
 		s.picking, s.tasks, s.home, s.homed = true, tasks, offerHome, false
 	})
 }
@@ -216,6 +218,7 @@ func (s *state) snapshot() (Snapshot, int) {
 	if !s.started.IsZero() {
 		progress.ElapsedMS = time.Since(s.started).Milliseconds()
 	}
+	progress.Cancelling = s.cancelling
 	snap.Progress = progress
 	return snap, s.version
 }
