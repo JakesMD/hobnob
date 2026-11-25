@@ -20,6 +20,11 @@ type state struct {
 	started  time.Time
 	result   *Result
 	logLines []string
+
+	picking bool
+	tasks   []Task
+	home    bool
+	homed   bool
 }
 
 type setupEntry struct {
@@ -132,9 +137,50 @@ func (s *state) labelOf(task string) string {
 	return task
 }
 
+// startPick clears the last run and shows the task picker.
+func (s *state) startPick(tasks []Task, offerHome bool) {
+	s.update(func() {
+		s.task, s.setup, s.running, s.step = Task{}, nil, nil, stepState{}
+		s.started, s.result, s.logLines = time.Time{}, nil, nil
+		s.picking, s.tasks, s.home, s.homed = true, tasks, offerHome, false
+	})
+}
+
+// choose ends the pick for name, which must be one the picker offered.
+func (s *state) choose(name string) bool {
+	chosen := false
+	s.mu.Lock()
+	if s.picking {
+		for _, task := range s.tasks {
+			chosen = chosen || task.Name == name
+		}
+	}
+	if chosen {
+		s.picking = false
+		s.version++
+	}
+	s.mu.Unlock()
+	if chosen && s.changed != nil {
+		s.changed()
+	}
+	return chosen
+}
+
+// goHome accepts Home, once, on a finished run that offers it.
+func (s *state) goHome() bool {
+	s.mu.Lock()
+	ok := s.result != nil && s.home && !s.homed
+	s.homed = s.homed || ok
+	s.mu.Unlock()
+	return ok
+}
+
 func (s *state) snapshot() (Snapshot, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.picking {
+		return Snapshot{Screen: ScreenTasks, Tasks: s.tasks, Rail: Rail{Answers: []RailEntry{}, Setup: []RailEntry{}}}, s.version
+	}
 	snap := Snapshot{Screen: ScreenProgress, Task: s.task, Rail: Rail{Answers: []RailEntry{}, Setup: []RailEntry{}}}
 	for _, entry := range s.setup {
 		snap.Rail.Setup = append(snap.Rail.Setup, RailEntry{Label: entry.label, State: entry.state})
@@ -144,7 +190,9 @@ func (s *state) snapshot() (Snapshot, int) {
 		if s.result.Outcome != OutcomeDone {
 			snap.Screen = ScreenFailed
 		}
-		snap.Result = s.result
+		res := *s.result
+		res.Home = s.home
+		snap.Result = &res
 		return snap, s.version
 	}
 	progress := &Progress{}

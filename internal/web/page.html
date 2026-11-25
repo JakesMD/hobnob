@@ -63,6 +63,13 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .icon.ok { background: rgba(78,194,122,.15); color: var(--green); }
 .icon.bad { background: rgba(255,107,107,.12); color: var(--red); }
 .lead { color: var(--t2); max-width: 560px; margin: -14px 0 24px; }
+.tasks { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
+.task { width: 100%; text-align: left; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); transition: border-color .2s; }
+.task:hover { border-color: var(--brand-2); }
+.task b { display: block; font-weight: 600; }
+.task small { color: var(--t3); font: 12px var(--mono); }
+.search { width: 100%; max-width: 640px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-alt); color: var(--t1); font: inherit; }
+.empty { color: var(--t3); }
 .solo { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--t2); }
 </style>
 </head>
@@ -121,6 +128,26 @@ function progress(s) {
   };
 }
 
+function homeButton(s) {
+  return s.result.home ? el('button', { class: 'btn brand', onclick: () => post('home') }, 'Home') : null;
+}
+
+function tasks(s) {
+  const list = el('ul', { class: 'tasks' });
+  const search = el('input', { class: 'search', type: 'search', placeholder: 'Search tasks', 'aria-label': 'Search tasks' });
+  const fill = () => {
+    const needle = search.value.trim().toLowerCase();
+    const shown = s.tasks.filter(t => (t.name + ' ' + t.info).toLowerCase().includes(needle));
+    list.replaceChildren(...(shown.length ? shown.map(t => el('li', {}, el('button', { class: 'task', onclick: () => post('choose', { task: t.name }) },
+      el('b', {}, t.info || t.name), t.info ? el('small', {}, t.name) : null))) : [el('li', { class: 'empty' }, 'No tasks to show.')]));
+  };
+  search.addEventListener('input', fill);
+  fill();
+  app.replaceChildren(el('div', { class: 'solo' }, el('div', { style: 'text-align: left; width: 640px; max-width: 100%' },
+    el('div', { class: 'logo' }, el('i'), 'hobnob'), el('h1', { style: 'margin-top: 28px' }, 'What would you like to do?'), search, list)));
+  setTimeout(() => search.focus());
+}
+
 function result(s) {
   const r = s.result;
   const copy = el('button', { class: 'btn alt', onclick: async () => {
@@ -131,7 +158,7 @@ function result(s) {
     return {
       body: [el('div', { class: 'icon ok' }, '✓'), el('h1', {}, "You're all set"),
         el('p', { class: 'lead' }, (s.task.info || s.task.name) + ' finished in ' + duration(r.durationMs) + '.')],
-      bar: [el('span'), el('span', { class: 'note' }, 'You can close this window.')],
+      bar: [el('span', { class: 'note' }, s.result.home ? '' : 'You can close this window.'), homeButton(s)],
     };
   }
   const cancelled = r.outcome === 'cancelled';
@@ -140,13 +167,14 @@ function result(s) {
       el('h1', {}, cancelled ? 'Cancelled' : 'Something went wrong'),
       cancelled ? null : el('p', { class: 'lead' }, r.label ? 'Failed at: ' + r.label : 'The run failed.'),
       r.lastLine ? el('div', { class: 'lastbox' }, r.lastLine) : null],
-    bar: [el('span'), cancelled ? el('span') : copy],
+    bar: [el('span'), el('span', {}, cancelled ? null : copy, ' ', homeButton(s))],
   };
 }
 
 function render() {
   clearInterval(clock);
   const s = snap;
+  if (s.screen === 'tasks') return tasks(s);
   const screen = s.screen === 'progress' ? progress(s) : result(s);
   app.replaceChildren(el('div', { class: 'shell' }, rail(s),
     el('div', { class: 'main' }, el('main', { class: 'pagebody' }, screen.body), el('footer', { class: 'bar' }, screen.bar))));
@@ -161,7 +189,7 @@ const events = new EventSource('/events?token=' + encodeURIComponent(token));
 events.onmessage = (event) => { snap = JSON.parse(event.data); received = Date.now(); render(); };
 events.onerror = () => {
   events.close();
-  if (!snap || snap.screen === 'progress') stopped();
+  if (!snap || (snap.screen !== 'done' && snap.screen !== 'failed')) stopped();
 };
 </script>
 </body>

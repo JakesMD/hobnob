@@ -63,13 +63,15 @@ deploy ✓ done after 2.1s
 ## `--web`
 
 Runs the task behind a local web page and opens it in the default browser.
-The terminal keeps the usual run log, plus the page's address. It needs a
-task, combines with `--file`, `--demo`, `KEY=VALUE` and `--quiet`, is an error
+The terminal keeps the usual run log, plus the page's address. Without a task
+the page opens a task picker, even when the taskfile has a `default` task.
+It combines with `--file`, `--demo`, `KEY=VALUE` and `--quiet`, is an error
 with `--no-input`, `--list`, `--select` and `--help`, and is not yet supported
 on Windows. See [Browser mode](../guide/browser-mode.md).
 
 ```bash
 hobnob --web setup
+hobnob --web
 ```
 
 ## `--file <path>`

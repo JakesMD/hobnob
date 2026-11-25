@@ -2,6 +2,7 @@ package web
 
 // Screens a Snapshot can show.
 const (
+	ScreenTasks    = "tasks"
 	ScreenProgress = "progress"
 	ScreenDone     = "done"
 	ScreenFailed   = "failed"
@@ -25,13 +26,14 @@ const (
 // so a page that reconnects needs no replay.
 type Snapshot struct {
 	Screen   string    `json:"screen"`
+	Tasks    []Task    `json:"tasks,omitempty"`
 	Task     Task      `json:"task"`
 	Rail     Rail      `json:"rail"`
 	Progress *Progress `json:"progress,omitempty"`
 	Result   *Result   `json:"result,omitempty"`
 }
 
-// Task is the outermost task of the run.
+// Task is a task: the outermost task of the run, or one the task picker offers.
 type Task struct {
 	Name string `json:"name"`
 	Info string `json:"info"`
@@ -65,4 +67,5 @@ type Result struct {
 	LastLine   string `json:"lastLine"`
 	DurationMS int64  `json:"durationMs"`
 	Log        string `json:"log"`
+	Home       bool   `json:"home"`
 }

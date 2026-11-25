@@ -31,6 +31,26 @@ address. The page is a setup assistant:
 The page never shows a command. A step with [`quiet:`](./commands.md) shows no
 output line either.
 
+## Offering several tasks
+
+`--web` with no task opens a **task picker** instead. It lists every task
+`hobnob --list` shows: tasks whose name starts with `_`, and tasks from a module
+imported with a `_`-prefixed name, are left out. Each task shows its
+[`info:`](./tasks.md) as the title with the name smaller beneath it, and a
+search box filters the list. Choosing a task runs it.
+
+```bash
+hobnob --web
+```
+
+The picker opens even when the taskfile has a `default` task. This differs from
+the terminal, where a plain `hobnob` runs `default`; to run it in browser mode,
+name it: `hobnob default --web`.
+
+When hobnob was started without a task, Done and Failed also offer **Home**,
+which returns to the picker for another run. Each run starts with a fresh rail
+and log. A task named on the command line ends at Done with no Home.
+
 ## How a run ends
 
 - **Done** shows a tick, "You're all set", the task and how long it took.
@@ -39,18 +59,20 @@ output line either.
   run's log, with [secrets](./secrets.md) masked, to send to whoever can help.
 - **Cancelled** shows when the run was interrupted.
 
-hobnob exits once the page has been sent how the run ended. The page keeps
-that screen after hobnob has gone. The exit code is the one `hobnob <task>`
-reports: 0 on success, 1 on failure.
+With a task, hobnob exits once the page has been sent how the run ended. The
+page keeps that screen after hobnob has gone. Without a task, hobnob stays until
+the page is closed or CTRL+C stops it, so Home can start another run. The exit
+code is the last run's, as `hobnob <task>` reports it: 0 on success, 1 on
+failure, and 0 when no run happened.
 
 ## Rules
 
-- `--web` takes a task name, and combines with `--file`, `--demo`,
+- `--web` takes an optional task name, and combines with `--file`, `--demo`,
   `KEY=VALUE` and `--quiet`.
 - `--quiet` changes only the terminal. The page still shows each task's
   output line.
 - `--web` is an error with `--no-input`, `--list`, `--select` and `--help`,
-  and with no task. It is not yet supported on Windows.
+  It is not yet supported on Windows.
 - Prompts are on whatever the terminal is: the browser is the person. A command
   can't read from the terminal in browser mode, so don't write `run:` commands
   that `read` or ask `[y/N]`.

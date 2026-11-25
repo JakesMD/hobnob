@@ -72,6 +72,9 @@ func loadConfig(ctx context.Context, path string, cliVars map[string]string, inv
 }
 
 func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
+	if a.web {
+		return a.execWebHome(ctx, cli.CollectSelectableTasks(cfg, scope), scope, fileScopes, cfg)
+	}
 	if noPrompts || !a.IsTerminal() {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, a.Version)
@@ -197,7 +200,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			noPrompts := a.defaultNoPrompts()
-			if _, ok := cfg.Tasks["default"]; ok {
+			if _, ok := cfg.Tasks["default"]; ok && !a.web {
 				return a.execTask(ctx, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 			}
 			return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, true)

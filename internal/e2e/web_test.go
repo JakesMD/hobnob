@@ -289,19 +289,15 @@ func equalInts(a, b []int) bool {
 }
 
 func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
-	// given --web beside --no-input, --list, --select or no task, when run,
+	// given --web beside --no-input, --list, --select or --help, when run,
 	// then it is refused and no page opens (why: the page has nothing to do
 	// there)
 	// Arrange
 	for name, args := range map[string][]string{
-		"no-input":              {"--web", "t", "--no-input"},
-		"list":                  {"--web", "--list"},
-		"select":                {"--web", "--select"},
-		"help":                  {"--web", "--help"},
-		"no task":               {"--web"},
-		"quiet after, no task":  {"--web", "--quiet"},
-		"quiet before, no task": {"--quiet", "--web"},
-		"short quiet, no task":  {"-q", "--web"},
+		"no-input": {"--web", "t", "--no-input"},
+		"list":     {"--web", "--list"},
+		"select":   {"--web", "--select"},
+		"help":     {"--web", "--help"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Act
@@ -391,5 +387,191 @@ func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testin
 	res.Fails(t)
 	if failed.Result.LastLine != "no newline at end" || !strings.Contains(failed.Result.Log, "t │ no newline at end") {
 		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
+
+const pickerYml = `
+	tasks:
+	  default:
+	    info: The default
+	    steps:
+	      - run: echo ran-default
+	  setup:
+	    info: Set up the laptop
+	    steps:
+	      - run: echo ran-setup
+	  _private:
+	    steps:
+	      - run: echo no
+	  broken:
+	    steps:
+	      - run: exit 3
+`
+
+func TestE2E_Web_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t *testing.T) {
+	// given a taskfile with a default task and a _-prefixed task, when run with --web and no task, then the picker lists the visible
+	// tasks with their info and name, and the default does not run, and the
+	// exit code is 0 as nothing ran (why: one shortcut offers several wizards)
+	// Arrange
+	var picker web.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+		picker = b.Open().Screen(web.ScreenTasks)
+		b.Interrupt()
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.NotOut(t, "ran-default")
+	want := []web.Task{{Name: "broken"}, {Name: "default", Info: "The default"}, {Name: "setup", Info: "Set up the laptop"}}
+	if !equalTasks(picker.Tasks, want) {
+		t.Errorf("picker tasks = %+v, want %+v", picker.Tasks, want)
+	}
+}
+
+func equalTasks(got, want []web.Task) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestE2E_Web_ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun(t *testing.T) {
+	// given the picker, when a task is chosen, then it runs and ends on Done
+	// with Home, and Home returns to the picker, where a second task starts
+	// with a fresh rail and log (why: one page runs several tasks in a row)
+	// Arrange
+	var first, second web.Snapshot
+	var tab *Tab
+	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+		tab = b.Open()
+		tab.Screen(web.ScreenTasks)
+		b.Post("choose", map[string]string{"task": "setup"})
+		first = tab.Screen(web.ScreenDone)
+		b.Post("home", nil)
+		tab.Screen(web.ScreenTasks)
+		b.Post("choose", map[string]string{"task": "default"})
+		second = tab.Screen(web.ScreenDone)
+		b.Interrupt()
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "setup │ ran-setup", "default │ ran-default")
+	if !first.Result.Home || first.Task.Name != "setup" || !strings.Contains(first.Result.Log, "ran-setup") {
+		t.Errorf("first run = %+v", first)
+	}
+	wantRail := []web.RailEntry{{Label: "The default", State: web.StateDone}}
+	if second.Task.Name != "default" || !equalRail(second.Rail.Setup, wantRail) || strings.Contains(second.Result.Log, "ran-setup") {
+		t.Errorf("second run = %+v", second)
+	}
+}
+
+func TestE2E_Web_TheExitCodeIsTheLastRunsOutcome(t *testing.T) {
+	// given a failed run followed by a successful one, and the reverse, when
+	// the terminal is interrupted on the last Done or Failed page, then the
+	// exit code is the last run's (why: it reports like hobnob <task> does)
+	// Arrange
+	for name, order := range map[string][]string{
+		"ok last":     {"broken", "setup"},
+		"failed last": {"setup", "broken"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+				tab := b.Open()
+				for i, task := range order {
+					tab.Screen(web.ScreenTasks)
+					b.Post("choose", map[string]string{"task": task})
+					tab.Until(func(s web.Snapshot) bool { return s.Result != nil })
+					if i == 0 {
+						b.Post("home", nil)
+					}
+				}
+				b.Interrupt()
+			}}
+
+			// Act
+			res := Run(t, c)
+
+			// Assert
+			if failed := order[len(order)-1] == "broken"; failed != (res.ExitCode != 0) {
+				t.Errorf("exit code %d after %v", res.ExitCode, order)
+			}
+		})
+	}
+}
+
+func TestE2E_Web_HomeIsOnlyOfferedWhenHobnobHadNoTask(t *testing.T) {
+	// given a task named on the command line, when it ends, then Done offers
+	// no Home (why: a task-launched wizard ends at Done)
+	// Arrange
+	var done web.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--web", "setup"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if done.Result.Home {
+		t.Error("Done offered Home")
+	}
+}
+
+func TestE2E_Web_PickerRefusesATaskItDidNotOffer(t *testing.T) {
+	// given the picker, when a _-prefixed task is chosen, then the request is
+	// refused and the picker still works (why: hidden tasks are not runnable
+	// from the page)
+	// Arrange
+	var status int
+	var after web.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		tab.Screen(web.ScreenTasks)
+		status = b.Post("choose", map[string]string{"task": "_private"})
+		b.Post("choose", map[string]string{"task": "setup"})
+		after = tab.Screen(web.ScreenDone)
+		b.Interrupt()
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if status != http.StatusBadRequest || after.Task.Name != "setup" {
+		t.Errorf("status %d, then %+v", status, after)
+	}
+}
+
+func TestE2E_Web_DemoWithoutATaskOpensThePicker(t *testing.T) {
+	// given --demo beside --web and no task, when run, then the picker lists
+	// the demo's tasks (why: --demo --web works)
+	// Arrange
+	var picker web.Snapshot
+	c := Case{Args: []string{"--demo", "--web"}, Discover: true, Browser: func(b *Browser) {
+		picker = b.Open().Screen(web.ScreenTasks)
+		b.Interrupt()
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if len(picker.Tasks) == 0 || picker.Tasks[0].Name != "ask-trivia" {
+		t.Errorf("picker tasks = %+v", picker.Tasks)
 	}
 }

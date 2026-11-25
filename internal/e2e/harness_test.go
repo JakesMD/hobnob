@@ -460,7 +460,9 @@ func Run(t *testing.T, c Case) *Result {
 					cancelRun()
 				}
 			}()
-			c.Browser(newBrowser(t, url, dir))
+			browser := newBrowser(t, url, dir)
+			browser.interrupt = cancelRun
+			c.Browser(browser)
 			finished = true
 		}()
 		return nil

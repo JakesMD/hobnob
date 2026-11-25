@@ -122,7 +122,7 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 }
 
 // checkWebFlag rejects --web where the page has nothing to do: on Windows,
-// beside --no-input, and with --list, --select, --help or no task.
+// and beside --no-input, --list, --select and --help.
 func checkWebFlag(args []string) error {
 	if runtime.GOOS == "windows" {
 		return fmt.Errorf("--web is not yet supported on Windows")
@@ -131,9 +131,6 @@ func checkWebFlag(args []string) error {
 		if arg == "--no-input" || isListingFlag(arg) {
 			return fmt.Errorf("--web can't be combined with %s", arg)
 		}
-	}
-	if len(args) == 0 {
-		return fmt.Errorf("--web needs a task name")
 	}
 	return nil
 }

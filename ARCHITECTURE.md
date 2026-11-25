@@ -735,7 +735,14 @@ log line is built from, and `SecretMask`). The runner calls `PromptText`,
 ### `internal/web`: the browser front end
 
 `hobnob --web <task>` (`app/web.go`, `execWebTask`) runs the task as usual
-and has `web.Server` watch it. `web.Listen` binds a random port on 127.0.0.1
+and has `web.Server` watch it. `hobnob --web` with no task (`execWebHome`,
+reached from `selectAndRun`, so a `default` task never short-circuits it) shows
+the task picker: `Server.PickTask` clears the last run's state and blocks until
+the `choose` action names a task the picker offered; `runOnPage` runs it with a
+fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
+`home` action (only accepted on a finished run when no task was named) or
+until ctx ends or no page has been open for `deliveryGrace`. The exit code is
+the last run's. `web.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
 the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says.
@@ -752,7 +759,7 @@ ends), each variable line, and the run ending (`RunSucceeded`,
 failed step's task and reason, except that a soft-failed step is forgiven). Terminal output is unchanged.
 
 **State and snapshots.** `web.state` turns those events into a `Snapshot`
-(`snapshot.go`): the screen (progress, done or failed), the task, the rail
+(`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
 (answers and setup entries), progress (the innermost running task's `info:` or
 name, the last line, empty for a held step) and the result (outcome, label,
 last line, duration and the masked log). Every SSE event on `GET /events` is
@@ -761,8 +768,8 @@ screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `page.html`.
 
 **Requests.** Every request must carry the token (constant-time compare).
-`POST /actions/{name}` routes through `Server.actions`, empty until the prompt
-tickets register theirs. After the run ends `app` waits in `AwaitDelivery` for
+`POST /actions/{name}` routes through `Server.actions` (`choose` and `home` so
+far). After a task-launched run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
 outlive hobnob. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
 

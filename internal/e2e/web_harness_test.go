@@ -29,6 +29,8 @@ type Browser struct {
 	base  string
 	token string
 	dir   string
+
+	interrupt func()
 }
 
 func newBrowser(t *testing.T, opened, dir string) *Browser {
@@ -52,6 +54,9 @@ func (b *Browser) fail(format string, args ...any) {
 	b.t.Errorf(format, args...)
 	runtime.Goexit()
 }
+
+// Interrupt is CTRL+C in the terminal hobnob runs in.
+func (b *Browser) Interrupt() { b.interrupt() }
 
 // Address is the host and port the page was opened on.
 func (b *Browser) Address() string { return strings.TrimPrefix(b.base, "http://") }

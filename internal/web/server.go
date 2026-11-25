@@ -36,6 +36,9 @@ type Server struct {
 	http     *http.Server
 	actions  map[string]action
 
+	choice chan string
+	home   chan struct{}
+
 	deliveredOnce sync.Once
 	delivered     chan struct{}
 
@@ -59,10 +62,14 @@ func Listen() (*Server, error) {
 		token:     hex.EncodeToString(raw),
 		listener:  listener,
 		actions:   map[string]action{},
+		choice:    make(chan string, 1),
+		home:      make(chan struct{}, 1),
 		delivered: make(chan struct{}),
 		subs:      map[chan struct{}]struct{}{},
 	}
 	server.changed = server.notify
+	server.actions["choose"] = server.chooseTask
+	server.actions["home"] = server.goHomeAction
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", server.servePage)
 	mux.HandleFunc("GET /events", server.serveEvents)
@@ -90,6 +97,67 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 	case <-ctx.Done():
 	case <-time.After(deliveryGrace):
 	}
+}
+
+// PickTask shows the task picker, with the last run cleared, and returns the
+// name of the task the person chooses. offerHome is whether finished runs
+// show Home.
+func (s *Server) PickTask(ctx context.Context, tasks []Task, offerHome bool) (string, error) {
+	s.startPick(tasks, offerHome)
+	select {
+	case name := <-s.choice:
+		return name, nil
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+// AwaitHome blocks on a finished run until the person presses Home, which
+// reports true. It reports false when ctx ends or no page has been open for
+// the grace.
+func (s *Server) AwaitHome(ctx context.Context) bool {
+	idleSince := time.Now()
+	tick := time.NewTicker(100 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.home:
+			return true
+		case <-ctx.Done():
+			return false
+		case <-tick.C:
+			s.subMu.Lock()
+			open := len(s.subs)
+			s.subMu.Unlock()
+			if open > 0 {
+				idleSince = time.Now()
+			} else if time.Since(idleSince) >= deliveryGrace {
+				return false
+			}
+		}
+	}
+}
+
+func (s *Server) chooseTask(body json.RawMessage) error {
+	var req struct {
+		Task string `json:"task"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return err
+	}
+	if !s.choose(req.Task) {
+		return fmt.Errorf("no task %q to choose", req.Task)
+	}
+	s.choice <- req.Task
+	return nil
+}
+
+func (s *Server) goHomeAction(json.RawMessage) error {
+	if !s.goHome() {
+		return fmt.Errorf("home is not offered")
+	}
+	s.home <- struct{}{}
+	return nil
 }
 
 func (s *Server) guard(next http.Handler) http.Handler {
