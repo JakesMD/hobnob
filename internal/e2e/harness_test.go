@@ -108,9 +108,9 @@
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
 // 89. leave the source note off a variable line in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom)
 // 90. print a skipped optional get: as an empty value, not ⊘ NAME -> log_lines_test.go (SkippedOptionalPromptPrintsAMarkedName, SkippedOptionalWithPromptsOffPrintsAMarkedName)
-// 95. skip the step end line in runner.endRunStep                    -> log_ends_test.go (StepAndTaskEndWithTheirOwnLines)
-// 94. skip the task end line for a called task in runner.executeTask -> log_ends_test.go (FailureTwoCallsDeepEndsEveryTaskInnermostFirst)
-// 95. log a soft failure with StepFailed in runner.endRunStep        -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 91. skip the step end line in runner.endRunStep                    -> log_ends_test.go (StepAndTaskEndWithTheirOwnLines)
+// 92. skip the task end line for a called task in runner.executeTask -> log_ends_test.go (FailureTwoCallsDeepEndsEveryTaskInnermostFirst)
+// 93. log a soft failure with StepFailed in runner.endRunStep        -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
 // 94. drop the soft count increment in runner.executeSteps           -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
 // 95. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 package e2e
