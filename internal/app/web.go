@@ -24,9 +24,7 @@ func browserPrompts(server *web.Server) runner.Prompts {
 			func(value.Value) (bool, error), string) (value.Value, error) {
 			return value.Value{}, errNotInBrowser
 		},
-		Path: func(context.Context, tui.PathPrompt, string, bool) (value.Value, bool, error) {
-			return value.Value{}, false, errNotInBrowser
-		},
+		Path: server.PromptPath,
 	}
 }
 
