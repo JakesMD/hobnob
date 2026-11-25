@@ -157,11 +157,19 @@
 // 133. drop the step clock (live.stepBegin in tui.RunLog.Run)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
 // 134. drop the note from tui.RunLog.Stopping                         -> live_test.go (SaysStoppingOnItsLeftAfterCtrlC)
 // 135. drop the clear in tui.liveArea.pause                          -> live_test.go (IsClearedWhileACardPromptIsOpen)
-// 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRows)
+// 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
 // 137. never notice a waiting prompt in tui.liveArea.redrawLocked     -> live_test.go (StaysUnderAPromptWaitingForInputWithItsClockFrozen)
 // 138. drop the partial-line write in runner.promptWriter.Write       -> log_quiet_test.go (QuietRunStillShowsAPromptButNotWholeLines)
 // 139. drop the field as written from execSet, execFor or execGet errors -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
 // 140. print Go's raw JSON syntax error from value.filterJSON            -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 141. write a piped partial line only at its newline in tui.LineWriter.text -> log_quiet_test.go (PipedPartialLineContinuesAsOnePrefixedLine), linewriter_test.go
+// 142. drop the prefix of lines before a cursor move in tui.LineWriter.Write -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
+// 143. never unhide in tui.liveArea.write after drawIdle                   -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
+// 144. write once per grapheme in tui.LineWriter.text                       -> linewriter_test.go (ReachesTheTerminalInOneWritePerChunk)
+// 145. take the owed prefix from the area, not the writing step, in tui.liveArea.write -> live_test.go (LateWriteFromAnEarlierStepUsesItsOwnPrefix)
+// 146. drop tui.ClearStatusLine from the forced exit in cmd/hobnob/main.go -> live_test.go (ClearStatusLineLeavesNoRuleBehind)
+// 147. discard the stdin PTY's output in runner.attachStdin instead of copying it to the terminal -> runner/run_stdin_test.go (ShowsWhatTheCommandWritesToItsTerminalWhenStdoutIsPiped)
+// 148. make tui.LineWriter.Restart write col directly instead of flagging -> live_test.go (RestartingTheOtherStreamsWriterIsRaceFree, under -race)
 package e2e
 
 import (

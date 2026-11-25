@@ -150,3 +150,24 @@ func TestE2E_Log_QuietRunStillShowsAPromptButNotWholeLines(t *testing.T) {
 	res.OK(t)
 	res.streamMatches(t, "stdout", res.Stdout, `^deploy \$ printf [^\n]*\ndeploy │ Continue\? \ndeploy ✓ done after `+secs+`\n$`)
 }
+
+func TestE2E_Log_PipedPartialLineContinuesAsOnePrefixedLine(t *testing.T) {
+	// given a step that writes a prompt with no newline, reads and then
+	// writes more, when it runs piped, then the prompt and what follows are one
+	// prefixed line (why: the prompt is written as it arrives, and the log
+	// stays one prefix per line)
+	// Arrange
+	yml := `
+		tasks:
+		  ask:
+		    steps:
+		      - run: printf 'Name? '; read n; echo "got $n"
+	`
+
+	// Act
+	res := Run(t, Case{Yml: yml, Args: []string{"ask"}, Stdin: "bob\n"})
+
+	// Assert
+	res.OK(t)
+	res.streamMatches(t, "stdout", res.Stdout, `(?m)^ask │ Name\? got bob\n`)
+}

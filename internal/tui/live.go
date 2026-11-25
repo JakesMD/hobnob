@@ -5,6 +5,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -31,10 +32,11 @@ type liveArea struct {
 	now    func() time.Time
 	tick   time.Duration // 0 runs no clock: tests call redraw themselves
 
-	// restart is called when the command's open line was ended behind its line
-	// writers' backs; it resets them and returns the prefix the next text
-	// needs, which they will not write because they think the line is open.
-	restart   func() []byte
+	// owePrefix: the command's open line was ended behind its line writers'
+	// backs, so the next text needs its prefix, which they will not write
+	// because they think the line is open. The writer that brings that text
+	// supplies it (see liveWriter), so a late write from an earlier step never
+	// takes a later step's.
 	owePrefix bool
 
 	frame bytes.Buffer
@@ -54,10 +56,12 @@ type liveArea struct {
 	lastOut  time.Time
 	rows     int // rows of the live area on screen
 
-	// hidden: a tool is redrawing several rows, so the area stays away until
-	// the step ends and its bytes pass through untouched.
+	// hidden: a tool is redrawing several rows, so the area stays away and the
+	// tool's bytes pass through untouched, until it has moved the cursor no
+	// more for drawIdle or the step ends.
 	hidden   bool
-	hiddenNL bool // the tool's last byte was a newline
+	hiddenNL bool      // the tool's last byte was a newline
+	hiddenAt time.Time // when the tool last moved the cursor
 
 	// waiting: the command's unfinished line is a prompt. The status line is
 	// drawn once below it, its clock frozen, so the cursor can stay at the
@@ -66,6 +70,17 @@ type liveArea struct {
 	waiting bool
 	below   bool
 	atStart bool
+}
+
+// running is the live area of the run on screen, for ClearStatusLine.
+var running atomic.Pointer[liveArea]
+
+// ClearStatusLine erases the status line of the run on screen, if any, so a
+// forced exit leaves nothing of it in the scrollback.
+func ClearStatusLine() {
+	if a := running.Load(); a != nil {
+		a.end()
+	}
 }
 
 func newLiveArea(out io.Writer, screen *Screen) *liveArea {
@@ -101,6 +116,7 @@ func (a *liveArea) begin() {
 	defer a.mu.Unlock()
 	defer a.flush()
 	a.active, a.paused = true, false
+	running.Store(a)
 	a.runStart = a.now()
 	a.stop = make(chan struct{})
 	if a.tick > 0 {
@@ -133,6 +149,7 @@ func (a *liveArea) end() {
 	a.clear()
 	a.finishCur(a.out)
 	a.active, a.hidden, a.waiting = false, false, false
+	running.CompareAndSwap(a, nil)
 	close(a.stop)
 }
 
@@ -150,18 +167,8 @@ func (a *liveArea) stepEnd() {
 	defer a.mu.Unlock()
 	defer a.flush()
 	a.clear()
-	if a.waiting {
-		if !a.atStart {
-			a.frame.WriteString("\n")
-		}
-		a.waiting, a.atStart = false, true
-	}
-	if a.hidden {
-		if !a.hiddenNL {
-			a.frame.WriteString("\n")
-		}
-		a.hidden = false
-	}
+	a.endWaiting()
+	a.unhide()
 	a.finishCur(a.out)
 	a.inStep = false
 	a.cur, a.last, a.progress = nil, nil, false
@@ -203,19 +210,40 @@ func (a *liveArea) line(dst io.Writer, text []byte) {
 		return
 	}
 	a.clear()
-	if a.waiting {
-		if !a.atStart {
-			a.frame.WriteString("\n")
-		}
-		a.waiting, a.atStart = false, true
-	}
-	if a.hidden && !a.hiddenNL {
-		a.frame.WriteString("\n")
-		a.hiddenNL = true
+	a.endWaiting()
+	if a.hidden {
+		a.endHiddenLine()
 	}
 	a.finishCur(dst)
 	a.emit(dst, text)
 	a.draw()
+}
+
+// endWaiting ends a waiting prompt's line, if there is one.
+func (a *liveArea) endWaiting() {
+	if !a.waiting {
+		return
+	}
+	if !a.atStart {
+		a.frame.WriteString("\n")
+	}
+	a.waiting, a.atStart = false, true
+}
+
+// endHiddenLine ends the line a tool left unfinished.
+func (a *liveArea) endHiddenLine() {
+	if !a.hiddenNL {
+		a.frame.WriteString("\n")
+		a.hiddenNL = true
+	}
+}
+
+// unhide ends a tool's display so the area can come back.
+func (a *liveArea) unhide() {
+	if a.hidden {
+		a.endHiddenLine()
+		a.hidden = false
+	}
 }
 
 // finishCur ends the command's unfinished line where it is.
@@ -229,7 +257,7 @@ func (a *liveArea) finishCur(dst io.Writer) {
 }
 
 // write takes a command's output, as its line writers produce it.
-func (a *liveArea) write(dst io.Writer, p []byte) {
+func (a *liveArea) write(dst io.Writer, p []byte, restart func() []byte) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	defer a.flush()
@@ -239,9 +267,15 @@ func (a *liveArea) write(dst io.Writer, p []byte) {
 	}
 	a.lastOut = a.now()
 	if a.hidden {
-		a.hiddenNL = p[len(p)-1] == '\n'
-		a.emit(dst, p)
-		return
+		if cursorMove.Match(p) {
+			a.hiddenAt = a.lastOut
+		}
+		if a.lastOut.Sub(a.hiddenAt) <= drawIdle {
+			a.hiddenNL = p[len(p)-1] == '\n'
+			a.emit(dst, p)
+			return
+		}
+		a.unhide()
 	}
 	a.clear()
 	if a.waiting {
@@ -260,14 +294,14 @@ func (a *liveArea) write(dst io.Writer, p []byte) {
 	}
 	if cursorMove.Match(p) {
 		a.finishCur(dst)
-		a.hidden, a.hiddenNL = true, p[len(p)-1] == '\n'
+		a.hidden, a.hiddenNL, a.hiddenAt = true, p[len(p)-1] == '\n', a.lastOut
 		a.emit(dst, p)
 		return
 	}
 	if a.owePrefix {
 		a.owePrefix = false
-		if a.restart != nil {
-			if prefix := a.restart(); !bytes.HasPrefix(p, prefix) {
+		if restart != nil {
+			if prefix := restart(); !bytes.HasPrefix(p, prefix) {
 				a.cur = append(a.cur[:0], prefix...)
 			}
 		}
@@ -309,8 +343,14 @@ func (a *liveArea) redraw() {
 }
 
 func (a *liveArea) redrawLocked() {
-	if !a.active || a.paused || a.hidden || a.waiting {
+	if !a.active || a.paused || a.waiting {
 		return
+	}
+	if a.hidden {
+		if a.now().Sub(a.hiddenAt) <= drawIdle {
+			return
+		}
+		a.unhide()
 	}
 	if len(a.cur) > 0 && !a.progress && a.now().Sub(a.lastOut) > promptIdle {
 		a.clear()
@@ -405,10 +445,13 @@ func ruleLine(left, right string, width int) string {
 type liveWriter struct {
 	area *liveArea
 	dst  io.Writer
+
+	// restart resets the step's line writers and returns the prefix they owe.
+	restart func() []byte
 }
 
 func (w liveWriter) Write(p []byte) (int, error) {
-	w.area.write(w.dst, p)
+	w.area.write(w.dst, p, w.restart)
 	return len(p), nil
 }
 

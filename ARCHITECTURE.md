@@ -80,6 +80,7 @@ internal/literal/ references, literals and argv: parsed at load, evaluated at ru
 internal/eval/    template rendering, accessor rewriting, shell evaluation
 internal/value/   the typed scope value, its filters and accessor engine
 internal/glob/    match: path patterns compiled to a matcher (doublestar)
+internal/termsim/ replays a terminal's output stream onto a grid, for tests
 internal/e2e/     end-to-end CLI suite (test files only)
 tools/testconventions/  golangci-lint plugin enforcing the test shape (its own Go module)
 ```
@@ -632,8 +633,11 @@ read end, goes through the same copy, `handoff` and leftover code. stderr is
 always a pipe. `RunLog.OnResize` (SIGWINCH, `screen_unix.go`) resizes the PTY
 while the step runs. Both `LineWriter`s are `Watch`ed too: they write text as
 it arrives (a prompt with no newline), wrap long lines under their own text,
-and, once a chunk holds a cursor-movement sequence, pass everything after it
-through unprefixed for the rest of the step.
+and, once a chunk holds a cursor-movement sequence, pass everything from it
+on through unprefixed until the tool has moved the cursor no more for
+`drawIdle`; lines before the sequence keep their prefix. Each `Write` reaches
+the terminal in one write. Piped, a `LineWriter` also writes a partial line as
+it arrives and continues it.
 
 On Windows, `stepio_windows.go`'s `newPTYPipe` makes a ConPTY in passthrough
 mode (older Windows rejects the flag, and the step gets pipes). os/exec can't
@@ -653,7 +657,8 @@ the command a PTY as stdin and controlling terminal (`Setsid`, so its group
 is that PTY's foreground and `read` is never stopped by SIGTTIN; the step's
 stdout PTY is reused when there is one), puts the real terminal in a mode that
 passes every key (output processing stays on) and forwards the keys to the
-PTY. A CTRL+C byte is not forwarded: it becomes a SIGINT to hobnob itself, so
+PTY; with no stdout PTY, the stdin PTY's output (the echo, and what the
+command writes to /dev/tty) is copied to hobnob's terminal. A CTRL+C byte is not forwarded: it becomes a SIGINT to hobnob itself, so
 `main.go`'s first and second CTRL+C work for every command, even one that
 traps SIGINT. The forwarder polls, so it never holds a read that would
 swallow the next prompt's keys. The terminal is restored when the shell exits
@@ -664,12 +669,13 @@ calls before the forced exit.
 `liveArea` and routes every write to the terminal through it: hobnob's own
 lines (`lineSink`, whole lines) and the command's output (`liveWriter`, from
 the `LineWriter`s). The area is the command's unfinished line, a blank row and
-the rule, erased and redrawn in one write on each line and on a 100ms clock;
+the rule, erased and redrawn in one write on each chunk and on a 100ms clock;
 lines above it are only ever appended. `Enter` of the outermost task starts
 it, its `leave` ends it; `Run` starts the step clock and each step-end method
 stops it; `Stopping` puts the note on the rule's left; `RunLog.Pause` (around
 each card prompt in `get.go`, `getpath.go`) clears it. A chunk with a cursor
-movement hides the area until the step ends, and an unfinished line unchanged
+movement hides the area until the tool has moved the cursor no more for
+`drawIdle` (the clock notices too), and an unfinished line unchanged
 for 200ms is a prompt: the rule is drawn once below it, its clock frozen,
 and the answer's echo (the stdin PTY's) continues the prompt's line. Unwatched,
 none of this exists, so pipes get plain lines. `internal/termsim` replays the

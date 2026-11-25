@@ -131,9 +131,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		// never fails silently.
 		stdoutDest, stderrDest = &stdoutBuf, &stderrBuf
 		if execState.log.Quiet() {
-			_, _, watched := execState.log.PTYSize(execState.task)
-			stdoutDest = &promptWriter{held: &stdoutBuf, shown: stdoutLineWriter, watched: watched}
-			stderrDest = &promptWriter{held: &stderrBuf, shown: stderrLineWriter, watched: watched}
+			stdoutDest = &promptWriter{held: &stdoutBuf, shown: stdoutLineWriter}
+			stderrDest = &promptWriter{held: &stderrBuf, shown: stderrLineWriter}
 		}
 	case len(step.IntoEntries) > 0:
 		stdoutDest = io.MultiWriter(stdoutLineWriter, &stdoutBuf)

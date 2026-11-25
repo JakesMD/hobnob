@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLineWriter_Write(t *testing.T) {
@@ -36,9 +37,9 @@ func TestLineWriter_Write(t *testing.T) {
 			want:  "[t] 100%\r\033[K[t] 5%\r",
 		},
 		{
-			name:  "given no line terminator at all, when written, then nothing is flushed yet (why: partial lines wait for Flush so they aren't split mid-write)",
+			name:  "given no line terminator at all, when written, then the prefixed partial line is written at once (why: a prompt with no newline must show before the answer, piped or not)",
 			input: "no terminator",
-			want:  "",
+			want:  "[t] no terminator",
 		},
 		{
 			name:  "given a CRLF-terminated line, when written, then it is flushed once as an ordinary line with no clear-to-eol (why: \\r\\n is a plain line ending, not a progress redraw — treating it as one erased the content just written)",
@@ -117,9 +118,9 @@ func TestLineWriter_Flush(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "given a partial line with no terminator, when Flush called, then it is prefixed and newline-terminated (why: last partial line must still reach the terminal)",
+			name:  "given a partial line with no terminator, when Flush called, then it is newline-terminated (why: the last partial line must end before the next line starts)",
 			input: "partial",
-			want:  "[t] partial\n",
+			want:  "\n",
 		},
 		{
 			name:  "given an empty buffer, when Flush called, then nothing is written (why: must not emit a stray empty line every step)",
@@ -132,9 +133,9 @@ func TestLineWriter_Flush(t *testing.T) {
 			want:  "",
 		},
 		{
-			name:  "given a \\r redraw followed by unterminated trailing text, when Flush called, then clear-to-eol precedes the final line (why: the final partial line sits where the last \\r left the cursor, so leftovers must be wiped too)",
+			name:  "given a \\r redraw followed by unterminated trailing text, when Flush called, then the line is newline-terminated (why: the text was already written with its clear-to-eol)",
 			input: "100%\rdone",
-			want:  "\033[K[t] done\n",
+			want:  "\n",
 		},
 	}
 
@@ -189,6 +190,11 @@ func TestLineWriter_Watched_Write(t *testing.T) {
 			writes: []string{"one\n", "\x1b[1Atwo\n", "three\n"},
 			want:   "[t] one\n\x1b[1Atwo\nthree\n",
 		},
+		{
+			name:   "given lines before a cursor move in the same write, when written, then they keep their prefix (why: only what the tool redraws is unprefixed)",
+			writes: []string{"a\nb\n\x1b[2Ac\n"},
+			want:   "[t] a\n[t] b\n\x1b[2Ac\n",
+		},
 	}
 
 	for _, test := range tests {
@@ -223,6 +229,79 @@ func TestLineWriter_Piped_Write_LongLineIsNotWrapped(t *testing.T) {
 
 	// Assert
 	if want := "[t] " + long + "\n"; buf.String() != want {
+		t.Errorf("got %q, want %q", buf.String(), want)
+	}
+}
+
+func TestLineWriter_Watched_Write_PrefixesReturnOnceTheToolStopsMovingTheCursor(t *testing.T) {
+	// given a tool that moved the cursor, when it writes plain lines after a
+	// pause, then they are prefixed again (why: one redraw must not strip the
+	// prefix from the rest of a long step)
+	// Arrange
+	var buf bytes.Buffer
+	now := time.Unix(1000, 0)
+	lineWriter := NewLineWriter(&buf, "[t] ")
+	lineWriter.Watch(func() int { return 40 })
+	lineWriter.now = func() time.Time { return now }
+	lineWriter.Write([]byte("\x1b[2Ax\n"))
+
+	// Act
+	now = now.Add(drawIdle / 2)
+	lineWriter.Write([]byte("during\n"))
+	now = now.Add(drawIdle)
+	lineWriter.Write([]byte("after\n"))
+
+	// Assert
+	if want := "\x1b[2Ax\nduring\n[t] after\n"; buf.String() != want {
+		t.Errorf("got %q, want %q", buf.String(), want)
+	}
+}
+
+type countingWriter struct{ bytes, writes int }
+
+func (c *countingWriter) Write(p []byte) (int, error) {
+	c.bytes += len(p)
+	c.writes++
+	return len(p), nil
+}
+
+func TestLineWriter_Watched_Write_ReachesTheTerminalInOneWritePerChunk(t *testing.T) {
+	// given a watched writer, when a chunk of many long lines arrives, then it
+	// reaches the terminal in one write (why: a write per grapheme made a
+	// verbose build flood the terminal)
+	// Arrange
+	var out countingWriter
+	lineWriter := NewLineWriter(&out, "[t] ")
+	lineWriter.Watch(func() int { return 100 })
+	chunk := []byte(strings.Repeat(strings.Repeat("a", 80)+"\n", 50))
+
+	// Act
+	lineWriter.Write(chunk)
+
+	// Assert
+	if out.writes != 1 {
+		t.Errorf("writes = %d, want 1", out.writes)
+	}
+}
+
+func TestLineWriter_Piped_Write_PartialLineContinuesWhenMoreArrives(t *testing.T) {
+	// given a piped writer, when a prompt with no newline arrives and its
+	// answer follows, then the prompt is written at once and the line stays one
+	// prefixed line (why: the prompt must show before the command reads)
+	// Arrange
+	var buf bytes.Buffer
+	lineWriter := NewLineWriter(&buf, "[t] ")
+
+	// Act
+	lineWriter.Write([]byte("name? "))
+	atPrompt := buf.String()
+	lineWriter.Write([]byte("bob\n"))
+
+	// Assert
+	if atPrompt != "[t] name? " {
+		t.Errorf("at the prompt: %q", atPrompt)
+	}
+	if want := "[t] name? bob\n"; buf.String() != want {
 		t.Errorf("got %q, want %q", buf.String(), want)
 	}
 }

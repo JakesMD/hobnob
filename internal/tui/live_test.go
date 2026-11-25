@@ -196,11 +196,13 @@ func TestLiveStatusLineStaysUnderAPromptWaitingForInputWithItsClockFrozen(t *tes
 	}
 }
 
-func TestLiveStatusLineHidesWhileAToolRedrawsRows(t *testing.T) {
-	// given a command that moves the cursor between rows, when it draws,
-	// then the rule is gone and its bytes pass through unprefixed, and the
-	// rule returns once the step ends (why: a tool drawing its own display
-	// would fight the rule for the bottom row)
+func TestLiveStatusLineHidesWhileAToolRedrawsRowsAndReturnsWhenItStops(t *testing.T) {
+	// given a command that moves the cursor between rows, when it draws, then
+	// the rule is gone while it does, the lines before the move keep their
+	// prefix, and once it has moved the cursor no more the rule and prefixes
+	// are back, before the step ends (why: a tool drawing its own display
+	// would fight the rule for the bottom row, but a long step must not stay
+	// bare)
 
 	// Arrange
 	rig := newLiveRig(t, 40)
@@ -209,18 +211,129 @@ func TestLiveStatusLineHidesWhileAToolRedrawsRows(t *testing.T) {
 	stdout, _ := rig.log.Output("t")
 
 	// Act
-	stdout.Write([]byte("a\nb\n\x1b[1Ac\n"))
-	rig.advance(time.Second)
+	stdout.Write([]byte("a\nb\n\x1b[2Ac\n"))
+	rig.advance(drawIdle / 2)
 	during := strings.Join(rig.screen(), "\n")
-	rig.log.StepDone("t", time.Second)
-	after := rig.screen()
+	rig.now = rig.now.Add(drawIdle)
+	stdout.Write([]byte("after\n"))
+	rig.advance(time.Millisecond)
+	later := rig.screen()
 
 	// Assert
 	if strings.Contains(during, "──") {
 		t.Errorf("rule shown while the tool draws:\n%s", during)
 	}
-	if !strings.Contains(after[len(after)-1], "total 1.0s") {
-		t.Errorf("rule missing after the step:\n%s", strings.Join(after, "\n"))
+	if !strings.Contains(rig.out.String(), "t │ a\nt │ b\n") {
+		t.Errorf("lines before the move lost their prefix: %q", rig.out.String())
+	}
+	if !strings.Contains(later[len(later)-1], "total") || later[len(later)-3] != "t │ after" {
+		t.Errorf("prefix or rule missing after the tool stopped:\n%s", strings.Join(later, "\n"))
+	}
+}
+
+func TestLiveStatusLineComesBackOnItsOwnWhenAToolGoesQuiet(t *testing.T) {
+	// given a tool that moved the cursor and then stopped writing, when time
+	// passes, then the rule is back without more output (why: a step that
+	// goes quiet must not leave the bottom row bare)
+
+	// Arrange
+	rig := newLiveRig(t, 40)
+	rig.log.Enter("t")
+	rig.log.Run("t", "tool")
+	stdout, _ := rig.log.Output("t")
+	stdout.Write([]byte("a\n\x1b[1Ab\n"))
+
+	// Act
+	rig.advance(drawIdle + time.Millisecond)
+
+	// Assert
+	got := rig.screen()
+	if !strings.Contains(got[len(got)-1], "total") {
+		t.Errorf("rule missing:\n%s", strings.Join(got, "\n"))
+	}
+}
+
+func TestLiveWatchedOutputCostsAFewTimesItsSizeInTerminalWrites(t *testing.T) {
+	// given a verbose command, when it writes many 80-character lines in the
+	// chunks a PTY delivers, then the terminal gets a small multiple of that
+	// text (why: a redraw per grapheme flooded the terminal and ssh links)
+
+	// Arrange
+	lipgloss.SetColorProfile(termenv.Ascii)
+	var out countingWriter
+	var errs bytes.Buffer
+	log := NewRunLog(&out, &errs)
+	log.Watch(&Screen{
+		Size:     func() (int, int) { return 100, 24 },
+		OnResize: func(func()) func() { return func() {} },
+	})
+	log.live.tick = 0
+	log.Enter("t")
+	log.Run("t", "tool")
+	stdout, _ := log.Output("t")
+	chunk := []byte(strings.Repeat(strings.Repeat("a", 80)+"\n", 50))
+	before := out.bytes
+
+	// Act
+	for range 20 {
+		stdout.Write(chunk)
+	}
+
+	// Assert
+	input := 20 * len(chunk)
+	if got := out.bytes - before; got > 3*input {
+		t.Errorf("%d bytes written for %d bytes of output", got, input)
+	}
+}
+
+func TestLiveLateWriteFromAnEarlierStepUsesItsOwnPrefix(t *testing.T) {
+	// given a job a step backgrounded, when a later step starts and the job
+	// then writes after its own line was ended, then it takes its own step's
+	// prefix (why: a late write must not pick up the next step's writers;
+	// under -race this also checks the shared state is locked)
+
+	// Arrange
+	rig := newLiveRig(t, 60)
+	rig.log.Enter("a")
+	rig.log.Run("a", "bg")
+	lateOut, _ := rig.log.Output("a")
+	lateOut.Write([]byte("early"))
+	rig.log.StepDone("a", time.Second)
+	rig.log.Run("b", "next")
+
+	// Act
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		lateOut.Write([]byte(" late\n"))
+	}()
+	rig.log.Output("b")
+	<-done
+
+	// Assert
+	if got := rig.out.String(); !strings.Contains(got, "a │  late") {
+		t.Errorf("late output lost its step's prefix: %q", got)
+	}
+}
+
+func TestClearStatusLineLeavesNoRuleBehind(t *testing.T) {
+	// given a watched run, when the status line is cleared as on a forced
+	// exit, then no rule is left (why: the shell prompt must not land on it)
+
+	// Arrange
+	rig := newLiveRig(t, 40)
+	rig.log.Enter("t")
+	rig.log.Run("t", "sleep 9")
+	rig.log.Stopping()
+
+	// Act
+	ClearStatusLine()
+
+	// Assert
+	for _, row := range rig.screen() {
+		if strings.Contains(row, "──") {
+			t.Errorf("rule left on screen: %q", row)
+		}
 	}
 }
 
@@ -244,5 +357,37 @@ func TestLiveStatusLineNeverReachesAPipe(t *testing.T) {
 	// Assert
 	if strings.ContainsAny(out.String(), "\x1b\r") || strings.Contains(out.String(), "──") {
 		t.Errorf("piped output has live-area furniture: %q", out.String())
+	}
+}
+
+func TestLiveRestartingTheOtherStreamsWriterIsRaceFree(t *testing.T) {
+	// given stdout and stderr writers on two goroutines, when hobnob's own
+	// lines end the open line so stderr's next write restarts stdout's writer,
+	// then nothing races (why: Restart reached into the other stream's wrap
+	// column while it was being written; run under -race)
+
+	// Arrange
+	rig := newLiveRig(t, 40)
+	rig.log.Enter("t")
+	rig.log.Run("t", "tool")
+	stdout, stderr := rig.log.Output("t")
+	done := make(chan struct{})
+
+	// Act
+	go func() {
+		defer close(done)
+		for range 300 {
+			stdout.Write([]byte("aaaa"))
+		}
+	}()
+	for range 300 {
+		rig.log.Var("t", "X", "1", "")
+		stderr.Write([]byte("b"))
+	}
+	<-done
+
+	// Assert
+	if rig.out.Len() == 0 {
+		t.Error("nothing was written")
 	}
 }

@@ -3,6 +3,7 @@
 package runner
 
 import (
+	"io"
 	"os"
 	osExec "os/exec"
 	"sync"
@@ -60,7 +61,7 @@ func attachStdin(cmd *osExec.Cmd, pipes *stepPipes) (stop func()) {
 		}
 		slave = pipe.w
 		closeSlave = func() { slave.Close() }
-		go drain(master)
+		go showOnTerminal(master)
 	}
 	cmd.Stdin = slave
 	cmd.SysProcAttr.Setpgid = false
@@ -163,13 +164,14 @@ func (t *stdinTerm) forward(fd int) {
 	}
 }
 
-// drain discards what a stdin-only PTY's master receives, such as the echo
-// of typed keys, until it is closed.
-func drain(master *os.File) {
-	buf := make([]byte, 4096)
-	for {
-		if _, err := master.Read(buf); err != nil {
-			return
-		}
+// showOnTerminal copies what a stdin-only PTY's master receives, the echo of
+// typed keys and whatever the command writes to /dev/tty (a sudo or ssh
+// prompt), to hobnob's terminal until the master is closed. With stdout
+// piped, stderr is the terminal if it is one; otherwise stdin is.
+func showOnTerminal(master *os.File) {
+	dst := os.Stdin
+	if _, err := unix.IoctlGetTermios(int(os.Stderr.Fd()), getTermios); err == nil {
+		dst = os.Stderr
 	}
+	_, _ = io.Copy(dst, master)
 }
