@@ -45,6 +45,12 @@ tasks:
               multi: true
 ```
 
+Type to filter a menu: the best fuzzy match comes first, with the matched
+letters highlighted. Esc clears what you typed. A menu taller than about ten
+rows scrolls, with `↑ n more` and `↓ n more` showing what's out of view. In a
+`multi:` menu, tab toggles the highlighted item and enter confirms; picks stay
+when the filter changes.
+
 ## Menus from live data
 
 `options:` can be a variable holding a list, so a menu can come from an
@@ -196,7 +202,13 @@ tells you which variable to pass.
   it. The card is as wide as the terminal, up to 76 columns. A failing
   `check:` shows `✗` and its message inside the card, which turns the border
   red, and the prompt stays open.
-- **ctrl+c is the only key that aborts the run.**
+- **ctrl+c is the only key that aborts the run.** In a menu, `q` is just a
+  letter to filter by.
+- **A menu's filter line appears once you type.** A space as the first
+  character doesn't start a filter; after that it's an ordinary character.
+  With `optional: true`, esc clears the filter text first, then skips.
+- **A choice that fails `check:` stays in the menu**, with `validation failed:`
+  and the check on the error line, like a text answer.
 - **A text prompt starts filled in with its `default:`**, so enter keeps it
   (a `secret:` default shows as `••••`). With `optional: true`, enter on an
   empty field skips the prompt, and so does esc.
