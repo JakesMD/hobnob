@@ -14,11 +14,13 @@ tasks:
 
 ```
 $ hobnob list-categories
-run: [list-categories] echo "category history"
-[list-categories] category history
-run: [list-categories] echo "category science"
-[list-categories] category science
-✓ [list-categories] done
+list-categories $ echo "category history"
+list-categories │ category history
+list-categories ✓ 0.0s
+list-categories $ echo "category science"
+list-categories │ category science
+list-categories ✓ 0.0s
+list-categories ✓ done after 0.0s
 ```
 
 The list can come from a variable, so a loop can go over data an earlier
@@ -53,8 +55,13 @@ tasks:
 
 ```
 $ hobnob show-labels
-[show-labels] history = History buffs
-[show-labels] science = Lab coats
+show-labels $ echo "history = History buffs"
+show-labels │ history = History buffs
+show-labels ✓ 0.0s
+show-labels $ echo "science = Lab coats"
+show-labels │ science = Lab coats
+show-labels ✓ 0.0s
+show-labels ✓ done after 0.0s
 ```
 
 Entries come in order of their keys, sorted.
@@ -77,10 +84,19 @@ tasks:
 
 ```
 $ hobnob sample-grid
-[sample-grid] general_knowledge 1
-[sample-grid] general_knowledge 3
-[sample-grid] science 1
-[sample-grid] science 3
+sample-grid $ echo "general_knowledge 1"
+sample-grid │ general_knowledge 1
+sample-grid ✓ 0.0s
+sample-grid $ echo "general_knowledge 3"
+sample-grid │ general_knowledge 3
+sample-grid ✓ 0.0s
+sample-grid $ echo "science 1"
+sample-grid │ science 1
+sample-grid ✓ 0.0s
+sample-grid $ echo "science 3"
+sample-grid │ science 3
+sample-grid ✓ 0.0s
+sample-grid ✓ done after 0.0s
 ```
 
 The last name changes fastest.

@@ -24,9 +24,15 @@ tasks:
 
 ```
 $ hobnob ask-science
-…
-[ask-science] As what is infantile paralysis more commonly known?
-✓ [ask-science] done
+ask-science → _fetch-question
+_fetch-question $ curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories=science"
+_fetch-question │ [{"category":"science","id":"622a1c3a7cc59eab6f9510d4","correctAnswer":"Fo…
+_fetch-question ✓ 0.3s
+_fetch-question ✓ done after 0.3s
+ask-science $ echo "How fast (mph) can a kangaroo hop?"
+ask-science │ How fast (mph) can a kangaroo hop?
+ask-science ✓ 0.0s
+ask-science ✓ done after 0.3s
 ```
 
 The `_` at the start of `_fetch-question` hides it from the task list, since

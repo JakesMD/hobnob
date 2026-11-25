@@ -14,6 +14,25 @@ tasks:
       - run: curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories={{.CATEGORY}}"
 ```
 
+The person sees a card, with the answer filled in to start with. Enter keeps it:
+
+```
+╭─ ask-trivia » CATEGORY ──────────────────────────────────────────────────╮
+│                                                                          │
+│  Which category?                                                         │
+│                                                                          │
+│  › general_knowledge                                                     │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter confirm
+```
+
+The answer is then logged as a variable line:
+
+```
+ask-trivia » CATEGORY=general_knowledge
+```
+
 If the variable is already set, hobnob doesn't ask. So the same task asks a
 person, but takes the value straight from a command-line argument:
 
@@ -43,6 +62,19 @@ tasks:
               info: Which categories?
               options: [history, science, music]
               multi: true
+```
+
+```
+╭─ quiz » CATEGORIES ──────────────────────────────────────────────────────╮
+│                                                                          │
+│  Which categories?                                                       │
+│                                                                          │
+│    ◉ history                                                             │
+│  ▶ ◉ science                                                             │
+│    ○ music                                                               │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • tab toggle • enter confirm
 ```
 
 Type to filter a menu: the best fuzzy match comes first, with the matched
@@ -88,6 +120,21 @@ tasks:
               check: "[ {{.COUNT}} -le 10 ]"
 ```
 
+Typing `99` and pressing enter keeps the card open, with the error inside it:
+
+```
+╭─ quiz » COUNT ───────────────────────────────────────────────────────────╮
+│                                                                          │
+│  How many questions?                                                     │
+│                                                                          │
+│  › 99                                                                    │
+│                                                                          │
+│  ✗ validation failed: [ {{.COUNT}} -le 10 ]                              │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter confirm
+```
+
 ## Picking a file or directory
 
 `type: file` turns the prompt into a picker that browses your files, and
@@ -105,6 +152,19 @@ tasks:
       - run: jq length {{.QUESTIONS}}
 ```
 
+```
+╭─ count-questions » QUESTIONS ────────────────────────────────────────────╮
+│                                                                          │
+│  Which questions file?                                                   │
+│                                                                          │
+│  › /tmp/trivia/q▏                                                        │
+│  ──────────────────────────────────────────────────────────────────────  │
+│  ▶ questions/                                                            │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ type to filter • ↑↓ move • ← up • → open • tab complete • enter pick
+```
+
 The line at the top of the picker holds a full path, and that text alone decides
 which directory is listed: everything up to its last `/` is the directory, and
 only what you type after it narrows the list. Longer than 40 characters, the
@@ -120,9 +180,11 @@ hobnob count-questions QUESTIONS=questions/history.json
 
 ```
 $ hobnob count-questions QUESTIONS=questions/history.json
-run: [count-questions] jq length …/questions/history.json
-[count-questions] 3
-✓ [count-questions] done
+count-questions » QUESTIONS=/tmp/trivia/questions/history.json # from the command line
+count-questions $ jq length /tmp/trivia/questions/history.json
+count-questions │ 3
+count-questions ✓ 0.0s
+count-questions ✓ done after 0.0s
 ```
 
 The picker starts in the task's working directory. Give a directory as

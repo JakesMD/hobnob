@@ -56,10 +56,11 @@ HOBNOB_QUIET=1 hobnob deploy
 ```
 
 ```
-setup $ npm ci
-setup ✓ done after 1.6s
-deploy $ go build ./...
-deploy ✓ done after 7.5s
+$ hobnob deploy -q
+setup $ echo installing
+setup ✓ done after 0.0s
+deploy $ echo building
+deploy ✓ done after 0.0s
 ```
 
 ## `--file <path>`
@@ -91,6 +92,14 @@ Prints every public task with its `info:`, grouped by the part of the name
 before the first `:`; tasks without one come last. Internal tasks and modules
 are omitted.
 
+```
+$ hobnob --list
+trivia
+  trivia:random  Fetch a random question.
+
+standup
+```
+
 ## `--select`
 
 Opens the picker even when a `default` task exists. With no terminal, under
@@ -100,6 +109,34 @@ CI, or with `--no-input`, it prints the task list instead.
 
 Prints usage, the flags, the docs links, and the grouped task list under
 Tasks.
+
+```
+$ hobnob --help
+hobnob dev
+
+Usage
+  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
+  hobnob [--file <path>] --list | --select | --help
+  hobnob --demo | --version | --upgrade
+
+Flags
+  --file <path>   Hobnob file to use instead of auto-discovery
+  --demo          Run the built-in demo taskfile instead of one of yours
+  --list          List all available tasks
+  --select        Interactively select a task to run
+  --help          Show this help
+  --no-input      Skip interactive prompts; fail if a required variable is missing
+  --quiet, -q     Print only each command and each task's end (or set HOBNOB_QUIET=1)
+  --version       Print version and exit
+  --upgrade       Upgrade hobnob to the latest release
+
+Docs
+  Guide      https://jakesmd.github.io/hobnob/docs/guide/
+  Reference  https://jakesmd.github.io/hobnob/docs/reference/
+
+Tasks
+  ask-trivia  Ask a random trivia question.
+```
 
 ## `--version`
 

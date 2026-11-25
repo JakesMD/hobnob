@@ -46,12 +46,14 @@ tasks:
 
 ```
 $ hobnob greet
-run: [greet] echo Hello Ada; echo oops
-[greet] Hello Ada
-[greet] oops
-run: [greet] echo Hello 'Ada; echo oops'
-[greet] Hello Ada; echo oops
-✓ [greet] done
+greet $ echo Hello Ada; echo oops
+greet │ Hello Ada
+greet │ oops
+greet ✓ 0.0s
+greet $ echo Hello 'Ada; echo oops'
+greet │ Hello Ada; echo oops
+greet ✓ 0.0s
+greet ✓ done after 0.0s
 ```
 
 As text, the variable becomes part of the command, so the `;` started a
@@ -102,11 +104,11 @@ tasks:
 
 ```
 $ hobnob import-questions
-run: [import-questions] curl -o questions.json "https://the-trivia-api.com/v2/questions?limit=10"
-⊙ [import-questions] Downloading ten questions… (output hidden)
-run: [import-questions] ./import.sh
-⊙ [import-questions] output hidden
-✓ [import-questions] done
+import-questions $ curl -so questions.json "https://the-trivia-api.com/v2/questions?limit=10" # Downloading ten questions… (output hidden)
+import-questions ✓ 0.3s
+import-questions $ ./import.sh # output hidden
+import-questions ✓ 0.2s
+import-questions ✓ done after 0.5s
 ```
 
 If a quiet command fails, hobnob prints everything it hid, so you can see
@@ -129,11 +131,13 @@ tasks:
 
 ```
 $ hobnob play
-run: [play] ./quiz-server.sh &
-run: [play] ./play.sh
-[play] quiz server listening on :8000
-[play] question 1 of 10
-✓ [play] done
+play $ ./quiz-server.sh &
+play ✓ 0.0s
+play $ ./play.sh
+play │ quiz server listening on :8000
+play │ question 1 of 10
+play ✓ 0.7s
+play ✓ done after 0.7s
 ```
 
 To let jobs finish within their step, end it with `wait`:

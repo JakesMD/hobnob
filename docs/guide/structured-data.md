@@ -15,9 +15,13 @@ tasks:
 
 ```
 $ hobnob fetch-question
-…
-[fetch-question] In which country did the 'Bay of Pigs' invasion take place? Cuba
-✓ [fetch-question] done
+fetch-question $ curl -s "https://the-trivia-api.com/v2/questions?limit=1"
+fetch-question │ [{"category":"music","id":"622a1c347cc59eab6f94fb9d","correctAnswer":"Spong…
+fetch-question ✓ 0.3s
+fetch-question $ echo "Which cartoon theme song begins with the lyrics: "ARE YE READY, KIDS?…
+fetch-question │ Which cartoon theme song begins with the lyrics: ARE YE READY, KIDS?? Spong…
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.3s
 ```
 
 Numbers and `true`/`false` keep their type too. With the API's `/metadata`
@@ -167,11 +171,13 @@ tasks:
 
 ```
 $ hobnob report CATEGORIES='["history","science"]'
-run: [report] echo "history"
-[report] history
-run: [report] echo "science"
-[report] science
-✓ [report] done
+report $ echo "history"
+report │ history
+report ✓ 0.0s
+report $ echo "science"
+report │ science
+report ✓ 0.0s
+report ✓ done after 0.0s
 ```
 
 Env files and your shell's environment only ever give text, however much it
@@ -188,11 +194,13 @@ tasks:
 
 ```
 $ CATEGORIES='["history","science"]' hobnob report
-run: [report] echo "history"
-[report] history
-run: [report] echo "science"
-[report] science
-✓ [report] done
+report $ echo "history"
+report │ history
+report ✓ 0.0s
+report $ echo "science"
+report │ science
+report ✓ 0.0s
+report ✓ done after 0.0s
 ```
 
 Without `| json`, `.CATEGORIES` from your shell is 21 characters of text, not

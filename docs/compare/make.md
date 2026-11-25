@@ -62,14 +62,19 @@ tasks:
 
 ```
 $ hobnob release
-run: [release] git describe --tags --abbrev=0
-⊙ [release] output hidden
-
-Enter a value for VERSION.
-Last release was v1.4.2. New version?
-› 1.5
-validation failed: echo {{ .VERSION | quote }} | grep -Eq '^v[0-9]+[.][0-9]+[.][0-9]+$'
-enter ↵
+release $ git describe --tags --abbrev=0 # output hidden
+release ✓ 0.0s
+╭─ release » VERSION ──────────────────────────────────────────────────────╮
+│                                                                          │
+│  Last release was v1.4.2. New version?                                   │
+│                                                                          │
+│  › 1.5                                                                   │
+│                                                                          │
+│  ✗ validation failed: echo {{ .VERSION | quote }} | grep -Eq '^v[0-      │
+│  9]+[.][0-9]+[.][0-9]+$'                                                 │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter confirm
 ```
 
 </div>

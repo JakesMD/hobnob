@@ -13,8 +13,9 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-✗ [fetch-question] exit status 56
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ✗ 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question ✗ failed after 0.4s
 ```
 
 The failed step ends with `✗`, its time and the command with why it failed, as
@@ -38,10 +39,12 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-run: [fetch-question] echo "still running"
-[fetch-question] still running
-✓ [fetch-question] done
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ! 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question $ echo "still running"
+fetch-question │ still running
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.5s • 1 soft failure
 ```
 
 `soft:` works on a `call:` step too: if the called task fails, the caller
@@ -69,10 +72,12 @@ tasks:
 
 ```
 $ hobnob fetch-question
-run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
-run: [fetch-question] echo "no question with that id (curl exited 56)"
-[fetch-question] no question with that id (curl exited 56)
-✓ [fetch-question] done
+fetch-question $ curl -sf https://the-trivia-api.com/v2/question/no-such-id
+fetch-question ! 0.4s curl -sf https://the-trivia-api.com/v2/question/no-such-id: exit status 56
+fetch-question $ echo "no question with that id (curl exited 56)"
+fetch-question │ no question with that id (curl exited 56)
+fetch-question ✓ 0.0s
+fetch-question ✓ done after 0.5s • 1 soft failure
 ```
 
 ## Rules

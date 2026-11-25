@@ -15,11 +15,13 @@ tasks:
 
 ```
 $ hobnob build
-run: [build] git rev-parse --short HEAD
-[build] 54a1ede
-run: [build] echo "building 54a1ede"
-[build] building 54a1ede
-✓ [build] done
+build $ git rev-parse --short HEAD
+build │ 54a1ede
+build ✓ 0.2s
+build $ echo "building 54a1ede"
+build │ building 54a1ede
+build ✓ 0.0s
+build ✓ done after 0.2s
 ```
 
 `stdout` is what the command printed. Commands end their output with a

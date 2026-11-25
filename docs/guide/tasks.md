@@ -15,11 +15,13 @@ tasks:
 
 ```
 $ hobnob ask-trivia
-run: [ask-trivia] echo "Which planet is closest to the sun?"
-[ask-trivia] Which planet is closest to the sun?
-run: [ask-trivia] echo "Mercury"
-[ask-trivia] Mercury
-✓ [ask-trivia] done
+ask-trivia $ echo "Which planet is closest to the sun?"
+ask-trivia │ Which planet is closest to the sun?
+ask-trivia ✓ 0.0s
+ask-trivia $ echo "Mercury"
+ask-trivia │ Mercury
+ask-trivia ✓ 0.0s
+ask-trivia ✓ done after 0.0s
 ```
 
 hobnob prints each command on a `task $` line before running it, then what
@@ -35,8 +37,7 @@ grey `# …` note after the command.
 
 ```
 $ hobnob --list
-Available tasks for this project:
-• ask-trivia  Ask a random trivia question.
+ask-trivia  Ask a random trivia question.
 ```
 
 `--list` groups tasks under a bold heading: the part of the name before the
