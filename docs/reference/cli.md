@@ -78,8 +78,7 @@ that file's directory, not where you ran from.
 ## `--demo`
 
 Runs a small built-in taskfile. It replaces `--file` (passing both is an
-error) and combines with every other flag. A grey `hobnob »` line on stderr
-says so.
+error) and combines with every other flag.
 
 ```bash
 hobnob --demo ask-trivia
@@ -148,8 +147,6 @@ Prints the version. Works outside any taskfile.
 ## `--upgrade`
 
 Reruns the latest installer; see [Upgrading](../installation.md#upgrading).
-It writes in the log's style: `hobnob » downloading the latest installer…`, the
-installer's output under `hobnob │`, then `hobnob ✓ upgraded dev → v1.5.0`.
 
 ## `completion <shell>`
 
@@ -164,8 +161,6 @@ hobnob completion zsh > ~/.zsh/completions/_hobnob
 
 CTRL+C signals the running command and any
 [background jobs](../guide/commands.md#background-jobs), then waits for the
-command to exit; no further steps start. The log says `! stopping, ctrl+c again
-to force` on the running task, and the step and each task in the call chain end
-with `stopped` where a failure says `failed`. Jobs still running 2 seconds after
+command to exit; no further steps start. Jobs still running 2 seconds after
 that are killed. A second CTRL+C kills the command and the jobs immediately.
 Closing the terminal (`SIGHUP`) or sending `SIGTERM` stops a run like CTRL+C.

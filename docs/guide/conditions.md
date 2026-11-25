@@ -29,10 +29,6 @@ lab-check ✓ 0.0s
 lab-check ✓ done after 0.0s
 ```
 
-A step that `if:` skips prints one grey `⊘` line naming the command it
-skips, such as `lab-check ⊘ echo "lab coats on"`, without the condition. A
-skipped `call:` names the called task: `quiz ⊘ explain-answer`.
-
 ## How a condition works
 
 `if:` is a shell command. hobnob fills in its template, runs it, and runs the
@@ -76,9 +72,6 @@ explain-answer ⊘ skipped
 ```
 
 ## Calling a task that skips
-
-A call to a task that skips prints the call, then the task's own skip:
-`quiz → explain-answer`, then `explain-answer ⊘ skipped`.
 
 A skipped task isn't an error, but its steps don't run, so it sets nothing.
 When `explain-answer` skips, `EXPLAINED` is never set, so a caller reading it

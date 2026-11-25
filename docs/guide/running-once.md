@@ -33,8 +33,7 @@ tasks:
 ```
 
 `hobnob morning` asks for a category once. When `count-questions` calls
-`_pick-category`, hobnob doesn't ask again. It prints the call, then
-that the task is done:
+`_pick-category`, hobnob doesn't ask again:
 
 ```
 count-questions → _pick-category
