@@ -82,7 +82,9 @@ a column view like the Finder's: one column per folder, from your home folder
 (or the filesystem root when the start isn't under it) down to the open folder.
 It starts in the entry's `default:` folder, as in the terminal. Click a folder to
 open it; click a file to pick it. In a `type: dir` picker the open folder is the
-answer, so a `default:` folder starts out picked and Continue takes it at once.
+answer: a `default:` folder that exists starts out picked and Continue takes
+it at once, while a missing one opens the nearest existing folder with nothing
+picked.
 Under `multi:` a click ticks or unticks an entry (the `›` beside a folder opens
 it) and the bottom bar counts the picks. Entries `match:` excludes are hidden,
 not greyed out, as in the terminal; a folder that only fails the plain patterns

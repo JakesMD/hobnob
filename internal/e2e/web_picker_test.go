@@ -248,3 +248,76 @@ func TestE2E_Web_OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer(t
 		t.Error("an empty answer to a required picker was accepted")
 	}
 }
+
+func TestE2E_Web_JunkNamedPathPostedToAFilePickerIsRefused(t *testing.T) {
+	// given a file get:, when the page answers with a junk-named file, then
+	// it is refused and the picker stays open (why: the same rules as the
+	// terminal, which never lists or picks junk)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		      - run: echo conf={{.CONF}}
+	`
+	files := Files{"hobnob.yml": yml, ".DS_Store": "x", "f.txt": "x"}
+	var refusal string
+	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked := tab.Screen(web.ScreenPrompt)
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir, ".DS_Store")})
+		refusal = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir, "f.txt")})
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if refusal == "" {
+		t.Error("a junk-named file was accepted")
+	}
+	res.Out(t, "conf="+filepath.Join(res.Dir, "f.txt"))
+}
+
+func TestE2E_Web_FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected(t *testing.T) {
+	// given a dir get: whose default: folder is missing, when the picker
+	// opens, then it shows the nearest existing folder with nothing selected
+	// (why: Continue must not answer an ancestor the person never chose)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - OUT:
+		              type: dir
+		              default: nope/deeper
+		      - run: echo out={{.OUT}}
+	`
+	files := Files{"hobnob.yml": yml}
+	var asked web.Snapshot
+	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked = tab.Screen(web.ScreenPrompt)
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir)})
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if got := asked.Prompt.Picker.Selected; len(got) != 0 {
+		t.Errorf("selected = %v, want nothing", got)
+	}
+	if got := asked.Prompt.Picker.Open; got != res.Dir {
+		t.Errorf("open = %s, want %s", got, res.Dir)
+	}
+}

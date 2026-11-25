@@ -61,7 +61,8 @@ Every change must preserve these. Each is explained in the section named.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
-  imports `value`, and `tui` only for the `PathPrompt` shape, never `eval`,
+  imports `value`, and `tui` only for path prompts (`PathPrompt` and its
+  shared rules), never `eval`,
   `runner` or `config`;
   it observes a run through `RunLog` and never changes
   what the runner does. ([web](#internalweb-the-browser-front-end))
@@ -136,8 +137,10 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `web` imports `value`, and `tui` only for `PathPrompt` (the picker's shape,
-  with its `Included`/`Excluded` predicates); it implements `tui.RunListener`
+- `web` imports `value`, and `tui` only for path prompts (`PathPrompt`, its
+  `Included`/`Excluded` predicates, and the picker rules `IsJunk`,
+  `ResolvePath`, `ListDir`, `NearestFolder` and `PathPrompt.Allows` that
+  the terminal and the page share); it implements `tui.RunListener`
   structurally, so it needs no `tui` import for that. `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 

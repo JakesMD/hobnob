@@ -49,7 +49,8 @@ var junkNames = []string{
 	"Icon\r", "Thumbs.db", "desktop.ini", "$RECYCLE.BIN", "System Volume Information",
 }
 
-func isJunk(name string) bool {
+// IsJunk reports whether name is never listed or picked.
+func IsJunk(name string) bool {
 	if strings.HasPrefix(name, "._") {
 		return true
 	}
@@ -125,15 +126,34 @@ func withSlash(p string) string {
 // resolve turns a path as written into an absolute one; relative paths
 // resolve against base, and empty means base itself.
 func (m pathModel) resolve(written, base string) string {
+	return ResolvePath(written, base, m.home)
+}
+
+// ResolvePath is resolve for a picker whose home folder is home.
+func ResolvePath(written, base, home string) string {
 	switch {
 	case written == "":
 		return filepath.Clean(base)
 	case written == "~" || strings.HasPrefix(written, "~/"):
-		return filepath.Join(m.home, strings.TrimPrefix(written, "~"))
+		return filepath.Join(home, strings.TrimPrefix(written, "~"))
 	case filepath.IsAbs(written):
 		return filepath.Clean(written)
 	}
 	return filepath.Join(base, written)
+}
+
+// NearestFolder is dir, or its nearest ancestor that exists as a folder.
+func NearestFolder(dir string) string {
+	for {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return dir
+		}
+		next := filepath.Dir(dir)
+		if next == dir {
+			return dir
+		}
+		dir = next
+	}
 }
 
 // open positions the picker for a default: a default of the prompt's kind is
@@ -152,17 +172,7 @@ func (m *pathModel) open(written string) {
 		m.highlight(abs)
 		return
 	}
-	dir := filepath.Dir(abs)
-	for {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			break
-		}
-		next := filepath.Dir(dir)
-		if next == dir {
-			break
-		}
-		dir = next
-	}
+	dir := NearestFolder(filepath.Dir(abs))
 	m.text = withSlash(dir)
 }
 
@@ -195,47 +205,70 @@ func (m pathModel) dirExists() bool {
 }
 
 // pickable reports whether a listed entry at abs could be picked: not junk,
-// not Excluded, and for a file Included, for a directory Included too.
+// not Excluded, and Included.
 func (m pathModel) pickable(abs string, isDir bool) bool {
-	return !isJunk(filepath.Base(abs)) &&
-		(m.prompt.Excluded == nil || !m.prompt.Excluded(abs, isDir)) &&
-		(m.prompt.Included == nil || m.prompt.Included(abs, isDir))
+	return m.prompt.Allows(abs, isDir)
 }
 
-// entries lists the directory, applying the junk list, the type and the
-// caller's predicate. Directories come first, then by name ignoring case.
+// Allows reports whether abs could be picked: not junk, not Excluded, and
+// Included.
+func (p PathPrompt) Allows(abs string, isDir bool) bool {
+	return !IsJunk(filepath.Base(abs)) &&
+		(p.Excluded == nil || !p.Excluded(abs, isDir)) &&
+		(p.Included == nil || p.Included(abs, isDir))
+}
+
+// PathEntry is a file or folder a picker lists. A folder that isn't Pickable
+// can still be opened.
+type PathEntry struct {
+	Name     string
+	Dir      bool
+	Pickable bool
+}
+
 func (m pathModel) entries() []pathEntry {
-	items, _ := os.ReadDir(m.dir())
-	var dirs, files []pathEntry
+	listed := ListDir(m.dir(), m.prompt)
+	out := make([]pathEntry, len(listed))
+	for i, e := range listed {
+		out[i] = pathEntry{e.Name, e.Dir, e.Pickable}
+	}
+	return out
+}
+
+// ListDir lists dir for a picker, applying the junk list, the type and the
+// caller's predicates. Directories come first, then by name ignoring case.
+func ListDir(dir string, prompt PathPrompt) []PathEntry {
+	items, _ := os.ReadDir(dir)
+	var dirs, files []PathEntry
 	for _, item := range items {
-		if isJunk(item.Name()) {
+		if IsJunk(item.Name()) {
 			continue
 		}
-		abs := filepath.Join(m.dir(), item.Name())
+		abs := filepath.Join(dir, item.Name())
 		isDir := item.IsDir()
 		if item.Type()&os.ModeSymlink != 0 {
 			if info, err := os.Stat(abs); err == nil {
 				isDir = info.IsDir()
 			}
 		}
-		if m.prompt.Type == "dir" && !isDir {
+		if prompt.Type == "dir" && !isDir {
 			continue
 		}
-		if m.prompt.Excluded != nil && m.prompt.Excluded(abs, isDir) {
+		if prompt.Excluded != nil && prompt.Excluded(abs, isDir) {
 			continue
 		}
-		included := m.prompt.Included == nil || m.prompt.Included(abs, isDir)
+		included := prompt.Included == nil || prompt.Included(abs, isDir)
 		if !isDir && !included {
 			continue
 		}
 		if isDir {
-			dirs = append(dirs, pathEntry{item.Name(), true, m.prompt.Type == "dir" && included})
+			dirs = append(dirs, PathEntry{item.Name(), true, prompt.Type == "dir" && included})
 		} else {
-			files = append(files, pathEntry{item.Name(), false, true})
+			files = append(files, PathEntry{item.Name(), false, true})
 		}
 	}
-	byName := func(s []pathEntry) {
-		sort.SliceStable(s, func(i, j int) bool { return strings.ToLower(s[i].name) < strings.ToLower(s[j].name) })
+	byName := func(s []PathEntry) {
+		sort.SliceStable(s, func(i, j int) bool { return strings.ToLower(s[i].Name) < strings.ToLower(s[j].Name) })
 	}
 	byName(dirs)
 	byName(files)

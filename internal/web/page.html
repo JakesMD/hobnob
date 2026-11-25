@@ -239,32 +239,32 @@ let pick = { id: null, selected: [] };
 
 function picker(s) {
   const p = s.prompt, v = p.picker;
+  const multi = p.multi;
   if (pick.id !== p.id) pick = { id: p.id, selected: v.selected.slice() };
   const folderPicker = v.type === 'dir';
   const join = (dir, name) => (dir.endsWith('/') ? dir : dir + '/') + name;
   const openFolder = (path) => post('open', { id: p.id, path });
   const choose = (path, entry) => {
-    if (v.multi) {
+    if (multi) {
       const at = pick.selected.indexOf(path);
       if (at >= 0) pick.selected.splice(at, 1); else pick.selected.push(path);
       render();
-    } else if (folderPicker) openFolder(path);
+    } else if (folderPicker) { pick.selected = [path]; openFolder(path); }
     else pick.selected = [path], render();
   };
   const cols = v.columns.map(col => el('div', { class: 'col' }, col.entries.length ? col.entries.map(e => {
     const path = join(col.path, e.name);
-    const picked = (folderPicker && !v.multi && v.open === path) || pick.selected.includes(path);
+    const picked = pick.selected.includes(path);
     const cls = 'ent' + (picked ? ' sel' : col.next === e.name ? ' open' : '');
     if (e.dir && !e.pickable) return el('button', { class: cls, onclick: () => openFolder(path) }, el('span', {}, e.name), el('span', { class: 'chev' }, '›'));
     if (e.dir) return el('button', { class: cls, onclick: () => choose(path, e), ondblclick: () => openFolder(path) },
-      el('span', {}, e.name), v.multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
+      el('span', {}, e.name), multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
     return el('button', { class: cls, onclick: () => choose(path, e) }, el('span', {}, e.name));
   }) : el('div', { class: 'ent empty' }, 'Nothing to pick here')));
-  const answer = folderPicker && !v.multi ? [v.open] : pick.selected;
-  const ready = folderPicker && !v.multi ? v.openPickable : answer.length > 0;
-  const statement = v.multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
-    : answer.length && ready ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
-  const send = () => post('answer', { id: p.id, value: v.multi ? answer : (answer[0] || '') });
+  const answer = pick.selected;
+  const statement = multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
+    : answer.length ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
+  const send = () => post('answer', { id: p.id, value: multi ? answer : (answer[0] || '') });
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
   buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));

@@ -35,10 +35,11 @@ type Prompt struct {
 	Refusal string `json:"refusal,omitempty"`
 	// Picker is the folder listing of a picker prompt.
 	Picker *Picker `json:"picker,omitempty"`
-	// Options, Multi and Defaults belong to a menu: what it offers, whether
-	// several may be chosen, and the options ticked to start with.
+	// Multi says several may be chosen, in a menu or a picker.
+	Multi bool `json:"multi,omitempty"`
+	// Options and Defaults belong to a menu: what it offers and the options
+	// ticked to start with.
 	Options  []string `json:"options,omitempty"`
-	Multi    bool     `json:"multi,omitempty"`
 	Defaults []string `json:"defaults,omitempty"`
 }
 

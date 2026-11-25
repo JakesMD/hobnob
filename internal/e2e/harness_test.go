@@ -91,7 +91,7 @@
 // 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff, MultiDirectoryDefaultIsNoAnswerWithPromptsOff, MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
 // 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
-// 74. let a plain match: pattern hide directories in the file picker (tui.pathModel.entries) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
+// 74. let a plain match: pattern hide directories in the file picker (tui.ListDir) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
 // 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
 // 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
@@ -216,8 +216,8 @@
 // 191. take every option a multi menu is answered with, offered or not, in web.menuPicks -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
 // 192. drop the multi menu's ticked defaults from web.state.PromptSelect -> web_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
 // 193. let a required multi menu go through with nothing ticked in web.state.PromptSelect -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 194. show what match: excludes in web.pickerRules.list (drop the Excluded check) -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 195. list files that match: doesn't include in web.pickerRules.list -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 194. show what match: excludes in tui.ListDir (drop the Excluded check) -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 195. list files that match: doesn't include in tui.ListDir -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
 // 196. open a file's folder instead of the default folder in web.pickerRules.start -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
 // 197. leave a folder picker's default unselected in web.pickerRules.start -> web_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
 // 198. open a path that is not a folder in web.state.askPicker -> web_picker_test.go (OpeningAFolderByPostChangesTheListing)
@@ -231,6 +231,8 @@
 // 206. drop the abandoned case from web.Server.AwaitHome -> web_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
 // 207. drop the watchGrace call when a tab closes in web.Server.serveEvents -> web_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
 // 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
+// 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
+// 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 package e2e
 
 import (

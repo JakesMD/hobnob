@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"hobnob/internal/tui"
@@ -19,13 +18,9 @@ const KindPath = "path"
 // Picker is a picker prompt's own part of the snapshot: the Finder-style
 // column view down to the open folder.
 type Picker struct {
-	Type  string `json:"type"` // "file" or "dir"
-	Multi bool   `json:"multi,omitempty"`
-	Open  string `json:"open"`
-	// OpenPickable says the open folder itself may be the answer of a folder
-	// picker.
-	OpenPickable bool     `json:"openPickable,omitempty"`
-	Columns      []Column `json:"columns"`
+	Type    string   `json:"type"` // "file" or "dir"
+	Open    string   `json:"open"`
+	Columns []Column `json:"columns"`
 	// Selected is what the picker starts with picked; the page tracks the
 	// picks after that.
 	Selected []string `json:"selected"`
@@ -47,24 +42,6 @@ type Entry struct {
 	Pickable bool   `json:"pickable,omitempty"`
 }
 
-// junkNames are never listed, as in the terminal picker.
-var junkNames = []string{
-	".DS_Store", ".Spotlight-V100", ".Trashes", ".fseventsd", ".TemporaryItems",
-	"Icon\r", "Thumbs.db", "desktop.ini", "$RECYCLE.BIN", "System Volume Information",
-}
-
-func isJunk(name string) bool {
-	if strings.HasPrefix(name, "._") {
-		return true
-	}
-	for _, junk := range junkNames {
-		if strings.EqualFold(name, junk) {
-			return true
-		}
-	}
-	return false
-}
-
 // pickerRules is what a picker prompt allows, from its tui.PathPrompt.
 type pickerRules struct {
 	prompt tui.PathPrompt
@@ -80,65 +57,25 @@ func newPickerRules(prompt tui.PathPrompt) pickerRules {
 }
 
 func (r pickerRules) resolve(written, base string) string {
-	switch {
-	case written == "":
-		return filepath.Clean(base)
-	case written == "~" || strings.HasPrefix(written, "~/"):
-		return filepath.Join(r.home, strings.TrimPrefix(written, "~"))
-	case filepath.IsAbs(written):
-		return filepath.Clean(written)
-	}
-	return filepath.Join(base, written)
+	return tui.ResolvePath(written, base, r.home)
 }
 
 func (r pickerRules) isDirPicker() bool { return r.prompt.Type == "dir" }
 
-// allows says abs may be picked: not Excluded, and Included.
+// allows says abs may be picked, by the terminal picker's rules.
 func (r pickerRules) allows(abs string, isDir bool) bool {
-	return (r.prompt.Excluded == nil || !r.prompt.Excluded(abs, isDir)) &&
-		(r.prompt.Included == nil || r.prompt.Included(abs, isDir))
+	return r.prompt.Allows(abs, isDir)
 }
 
 func (r pickerRules) kindFits(isDir bool) bool { return isDir == r.isDirPicker() }
 
-// list reads dir, hiding junk, the wrong kind of file and what match:
-// excludes. Folders come first, then by name ignoring case.
 func (r pickerRules) list(dir string) []Entry {
-	items, _ := os.ReadDir(dir)
-	var dirs, files []Entry
-	for _, item := range items {
-		if isJunk(item.Name()) {
-			continue
-		}
-		abs := filepath.Join(dir, item.Name())
-		isDir := item.IsDir()
-		if item.Type()&os.ModeSymlink != 0 {
-			if info, err := os.Stat(abs); err == nil {
-				isDir = info.IsDir()
-			}
-		}
-		if r.isDirPicker() && !isDir {
-			continue
-		}
-		if r.prompt.Excluded != nil && r.prompt.Excluded(abs, isDir) {
-			continue
-		}
-		included := r.prompt.Included == nil || r.prompt.Included(abs, isDir)
-		switch {
-		case isDir:
-			dirs = append(dirs, Entry{Name: item.Name(), Dir: true, Pickable: r.isDirPicker() && included})
-		case included:
-			files = append(files, Entry{Name: item.Name(), Pickable: true})
-		}
+	listed := tui.ListDir(dir, r.prompt)
+	entries := make([]Entry, len(listed))
+	for i, e := range listed {
+		entries[i] = Entry{Name: e.Name, Dir: e.Dir, Pickable: e.Pickable}
 	}
-	byName := func(entries []Entry) {
-		sort.SliceStable(entries, func(i, j int) bool {
-			return strings.ToLower(entries[i].Name) < strings.ToLower(entries[j].Name)
-		})
-	}
-	byName(dirs)
-	byName(files)
-	return append(dirs, files...)
+	return entries
 }
 
 // view lists the columns from the home folder, or the filesystem root when
@@ -153,8 +90,7 @@ func (r pickerRules) view(open string, selected []string) *Picker {
 		dir = filepath.Dir(dir)
 		chain = append([]string{dir}, chain...)
 	}
-	view := &Picker{Type: r.prompt.Type, Multi: r.prompt.Multi, Open: open, Selected: selected,
-		OpenPickable: r.isDirPicker() && r.allows(open, true), Columns: []Column{}}
+	view := &Picker{Type: r.prompt.Type, Open: open, Selected: selected, Columns: []Column{}}
 	for i, dir := range chain {
 		column := Column{Path: dir, Entries: r.list(dir)}
 		if i+1 < len(chain) {
@@ -168,10 +104,8 @@ func (r pickerRules) view(open string, selected []string) *Picker {
 	return view
 }
 
-// start is where the picker opens and what it starts with picked. A default
-// of the picker's kind is picked and its folder shown (a folder picker opens
-// the default folder itself); a folder given to a file picker is where it
-// starts; anything else opens the nearest folder that exists.
+// start is where the picker opens and what it starts with picked. See
+// docs/guide/browser-mode.md for the rules.
 func (r pickerRules) start() (open string, selected []string) {
 	prompt := r.prompt
 	open = r.resolve("", prompt.WorkDir)
@@ -196,24 +130,7 @@ func (r pickerRules) start() (open string, selected []string) {
 			open = abs
 		}
 	}
-	open = nearestFolder(open)
-	if r.isDirPicker() && !prompt.Multi && r.allows(open, true) {
-		selected = []string{open}
-	}
-	return open, selected
-}
-
-func nearestFolder(dir string) string {
-	for {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return dir
-		}
-		next := filepath.Dir(dir)
-		if next == dir {
-			return dir
-		}
-		dir = next
-	}
+	return tui.NearestFolder(open), selected
 }
 
 // pick checks the answer's paths, whatever the page sent, and says why not.
@@ -264,7 +181,7 @@ func (s *state) PromptPath(ctx context.Context, prompt tui.PathPrompt, _ string,
 	rules := newPickerRules(prompt)
 	open, selected := rules.start()
 	p := Prompt{Kind: KindPath, VarName: prompt.VarName, Info: prompt.Info, Optional: prompt.Optional,
-		Refusal: prompt.Error, Picker: rules.view(open, selected)}
+		Multi: prompt.Multi, Refusal: prompt.Error, Picker: rules.view(open, selected)}
 	var picked []string
 	skipped, err := s.askPicker(ctx, p, rules, func(raw json.RawMessage) (RailEntry, string, bool) {
 		paths, refusal := rules.pick(raw)
