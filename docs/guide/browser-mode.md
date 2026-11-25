@@ -129,15 +129,15 @@ in another tab" and disconnects. A tab that connects, or reconnects after being
 closed, shows the screen the run is at, with the answers and setup so far.
 
 When no tab is open, hobnob waits 60 seconds for one. The wait only counts
-while hobnob is waiting on you: at the task picker, at a prompt, or on Done or
-Failed. It never runs while steps run, and it starts when a run ends with no tab
+while hobnob is waiting on you: at the task picker, at a prompt, or on Done,
+Failed or Cancelled. It never runs while steps run, and it starts when a run ends with no tab
 open. A tab connecting stops it. When it runs out:
 
 - at a prompt, hobnob cancels the run as a first CTRL+C does and exits like an
   interrupted run (1);
 - anywhere else it just exits, with the last run's exit code.
 
-Done and Failed, including **Copy details**, keep working in the page after
+Done, Failed and Cancelled, including **Copy details**, keep working in the page after
 hobnob has exited.
 
 ## Rules

@@ -811,8 +811,8 @@ outlive hobnob. A terminal CTRL+C ends that wait at once, as it ends
 **Tabs and the grace timer.** A tab is one open `GET /events` connection.
 The newest wins: a new connection closes the previous one's `replaced`
 channel, whose handler sends an `another-tab` snapshot and returns. While no
-tab is open and hobnob waits on the person (task picker, an open prompt, a
-result), `Server.watchGrace` keeps a `grace` timer (60s; `web.SetGrace`
+tab is open and hobnob waits on the person (task picker, an open prompt, or
+an end screen: Done, Failed or Cancelled), `Server.watchGrace` keeps a `grace` timer (60s; `web.SetGrace`
 shortens it) running; it re-evaluates on every state change and tab
 connect or disconnect, and never runs while steps run. When it fires,
 `giveUp` calls `Cancel` if a prompt is open, then closes `abandoned`, which
