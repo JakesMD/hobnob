@@ -106,6 +106,7 @@
 // 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
+// 89. let enter pick a task when the picker's filter matches nothing, in tui.taskSelectModel.Update -> prompt_taskselect_test.go (EnterWithNothingMatchingStaysOpen)
 package e2e
 
 import (
