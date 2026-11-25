@@ -65,9 +65,9 @@ func (c card) render() string {
 		content = append(content, "", SError.Render("✗ "+c.errMsg))
 	}
 
-	border := ColorBorder
+	border := colorBorder
 	if c.errMsg != "" {
-		border = ColorBorderError
+		border = colorBorderError
 	}
 	borderStyle := lipgloss.NewStyle().Foreground(border)
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(border).
