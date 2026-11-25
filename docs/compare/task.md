@@ -137,6 +137,7 @@ rollback ✓ 0.0s
 rollback » SERVICE=api
 rollback $ gh release list -R acme/api --json tagName # output hidden
 rollback ✓ 0.0s
+
 ╭─ rollback » TAG ─────────────────────────────────────────────────────────╮
 │                                                                          │
 │  Roll api back to?                                                       │

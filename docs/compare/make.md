@@ -64,6 +64,7 @@ tasks:
 $ hobnob release
 release $ git describe --tags --abbrev=0 # output hidden
 release ✓ 0.0s
+
 ╭─ release » VERSION ──────────────────────────────────────────────────────╮
 │                                                                          │
 │  Last release was v1.4.2. New version?                                   │

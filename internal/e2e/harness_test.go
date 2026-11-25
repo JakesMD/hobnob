@@ -170,6 +170,7 @@
 // 146. drop tui.ClearStatusLine from the forced exit in cmd/hobnob/main.go -> live_test.go (ClearStatusLineLeavesNoRuleBehind)
 // 147. discard the stdin PTY's output in runner.attachStdin instead of copying it to the terminal -> runner/run_stdin_test.go (ShowsWhatTheCommandWritesToItsTerminalWhenStdoutIsPiped)
 // 148. make tui.LineWriter.Restart write col directly instead of flagging -> live_test.go (RestartingTheOtherStreamsWriterIsRaceFree, under -race)
+// 149. drop the leading blank line in tui.card.render -> frame_test.go (OpensWithOneBlankLine)
 package e2e
 
 import (

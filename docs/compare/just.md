@@ -100,6 +100,7 @@ pull requests:
 $ hobnob review
 review $ gh pr list --json headRefName # output hidden
 review ✓ 0.0s
+
 ╭─ review » BRANCH ────────────────────────────────────────────────────────╮
 │                                                                          │
 │  Which pull request?                                                     │

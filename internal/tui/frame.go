@@ -24,7 +24,8 @@ var sKey = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Bold(true)
 type hint struct{ key, action string }
 
 // card is the frame every prompt renders itself in: only body differs
-// between prompt types. termWidth is the terminal's width, 0 until known.
+// between prompt types. It opens with a blank line that separates it from the
+// log above and goes with the card. termWidth is the terminal's width, 0 until known.
 type card struct {
 	task, varName string
 	// heading, when set, is the whole title: the task picker has no task or
@@ -87,7 +88,7 @@ func (c card) render() string {
 	title := ansi.Truncate(c.title(), outer-topEdgeFrame-1, "…")
 	fill := outer - lipgloss.Width(title) - topEdgeFrame
 	lines[0] = borderStyle.Render("╭─ ") + title + " " + borderStyle.Render(strings.Repeat("─", fill)+"╮")
-	return strings.Join(lines, "\n") + "\n " + renderHints(c.hints)
+	return "\n" + strings.Join(lines, "\n") + "\n " + renderHints(c.hints)
 }
 
 func wrapLines(text string, width int) []string {

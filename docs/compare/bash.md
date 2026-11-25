@@ -126,6 +126,7 @@ Run in a terminal, both ask the same three questions. hobnob's first one:
 $ hobnob deploy
 deploy $ gh api repos/acme/platform/contents/services # output hidden
 deploy ✓ 0.0s
+
 ╭─ deploy » SERVICES ──────────────────────────────────────────────────────╮
 │                                                                          │
 │  Which services?                                                         │

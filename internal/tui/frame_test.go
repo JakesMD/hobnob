@@ -31,7 +31,7 @@ func TestCard_Render_TopEdgeMatchesCardWidth(t *testing.T) {
 			frame := test.frame
 
 			// Act
-			lines := strings.Split(frame.render(), "\n")
+			lines := strings.Split(frame.render(), "\n")[1:]
 
 			// Assert
 			want := lipgloss.Width(lines[1])
@@ -67,7 +67,7 @@ func TestCard_Render_BorderColour(t *testing.T) {
 			frame := card{task: "t", varName: "V", body: "body", errMsg: test.errMsg}
 
 			// Act
-			lines := strings.Split(frame.render(), "\n")
+			lines := strings.Split(frame.render(), "\n")[1:]
 
 			// Assert
 			bottom := lines[len(lines)-2]
@@ -77,5 +77,21 @@ func TestCard_Render_BorderColour(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestCard_Render_OpensWithOneBlankLine(t *testing.T) {
+	// given a card, when rendered, then one blank line comes before the top
+	// edge (why: the card would run into the log above it otherwise)
+
+	// Arrange
+	frame := card{task: "t", varName: "V", body: "body"}
+
+	// Act
+	lines := strings.Split(frame.render(), "\n")
+
+	// Assert
+	if lines[0] != "" || !strings.Contains(lines[1], "╭") {
+		t.Errorf("first lines %q, want a blank line then the top edge", lines[:2])
 	}
 }

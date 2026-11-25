@@ -285,6 +285,7 @@ function card(p: { task: string; varName: string; info: string; body: BodyRow[];
   ]
   const fill = Math.max(1, CARD_W - width(title) - 5)
   const rows: CardRow[] = [
+    { pre: [{ t: ' ' }] },
     { pre: [{ t: '╭─ ', c: border }, ...title, { t: ' ' }, { t: '─'.repeat(fill) + '╮', c: border }] },
     blank,
   ]

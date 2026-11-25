@@ -96,7 +96,7 @@ func TestTextModel_View_WidthFollowsTerminalCappedAt76(t *testing.T) {
 			next, _ := model.Update(tea.WindowSizeMsg{Width: test.termWidth})
 
 			// Act
-			lines := strings.Split(next.View(), "\n")
+			lines := strings.Split(next.View(), "\n")[1:]
 
 			// Assert
 			if got := len([]rune(lines[0])); got != test.wantWidth {
