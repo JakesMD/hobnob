@@ -116,6 +116,8 @@
 // 96. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 // 97. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
 // 98. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
+// 99. drop the Stopping call in runner.executeTask                    -> log_ends_test.go (InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped)
+// 100. print a stopped task's end as "failed" in runner.executeTask   -> log_ends_test.go (InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped)
 package e2e
 
 import (
@@ -128,6 +130,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
 
 	"hobnob/internal/app"
 	"hobnob/internal/runner"
@@ -157,9 +161,10 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Probe    []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
-	Cwd      string   // subdir of the temp root to chdir into (default: the root itself)
-	Discover bool     // omit --file, exercise findTaskfile's upward walk
+	Interrupt string   // var name whose text prompt ends as if CTRL+C had torn it down
+	Probe     []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd       string   // subdir of the temp root to chdir into (default: the root itself)
+	Discover  bool     // omit --file, exercise findTaskfile's upward walk
 }
 
 // PromptCall records one prompt the run actually made.
@@ -298,7 +303,7 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	state := newPromptState(t, c.Answers)
-	state.dir, state.probe = dir, c.Probe
+	state.dir, state.probe, state.interrupt = dir, c.Probe, c.Interrupt
 	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
 	defer restorePrompts()
 
@@ -466,14 +471,15 @@ func copyTestdataDir(t *testing.T, name, destRoot string) {
 // prevents that — but the drain goroutines in captureOutput never touch it,
 // so no locking is needed for those.
 type promptState struct {
-	t       *testing.T
-	answers map[string][]string
-	textIdx map[string]int
-	selIdx  map[string]int
-	pathIdx map[string]int
-	calls   []PromptCall
-	dir     string   // the temp root, for resolving probe paths
-	probe   []string // see Case.Probe
+	t         *testing.T
+	answers   map[string][]string
+	textIdx   map[string]int
+	selIdx    map[string]int
+	pathIdx   map[string]int
+	calls     []PromptCall
+	dir       string   // the temp root, for resolving probe paths
+	probe     []string // see Case.Probe
+	interrupt string   // see Case.Interrupt
 }
 
 func newPromptState(t *testing.T, answers map[string][]string) *promptState {
@@ -496,6 +502,9 @@ func (s *promptState) record(c PromptCall) {
 // than hanging if every answer is exhausted without success.
 func (s *promptState) text(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
 	s.t.Helper()
+	if varName == s.interrupt {
+		return "", tea.ErrProgramKilled
+	}
 	answers := s.answers[varName]
 	start := s.textIdx[varName]
 	for i := start; i < len(answers); i++ {

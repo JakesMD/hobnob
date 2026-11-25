@@ -603,7 +603,10 @@ values on exit.
 `runner_unix.go`/`runner_windows.go` manage process groups. The first CTRL+C
 signals the whole group, catching children a single-PID signal would miss, and
 waits; a `context.AfterFunc` in `ExecuteTask` (`termLeftovers`) SIGTERMs every
-leftover group at the same moment. The second force-kills via `KillRunningStep`, which
+leftover group at the same moment, and another calls `RunLog.Stopping`, which
+logs `stopping, ctrl+c again to force` once, on the innermost task (`executeTask`
+tracks it with `RunLog.Enter`). The paths that end an interrupted step or task
+call it too, so it always comes before the first `stopped` line. The second force-kills via `KillRunningStep`, which
 also SIGKILLs every leftover group. A mutex guards the running PID, and on
 Linux and macOS it is cleared before the process is reaped, so a racing
 second CTRL+C never hits a reused PID.

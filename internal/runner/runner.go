@@ -150,6 +150,8 @@ func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileS
 	defer stopLeftovers()
 	stopTerm := context.AfterFunc(ctx, termLeftovers)
 	defer stopTerm()
+	stopSay := context.AfterFunc(ctx, log.Stopping)
+	defer stopSay()
 	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log}, taskName, literal.Expr{}, scope)
 }
 
@@ -166,6 +168,7 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	if _, _, err := resolveTask(taskName, execState.cfg); err != nil {
 		return err
 	}
+	defer execState.log.Enter(taskName)()
 	began := time.Now()
 	softs := 0
 	skipped, err := runTask(execState, taskName, callDirTmpl, scope, &softs)
@@ -176,7 +179,11 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 		if !Reported(err) {
 			execState.log.StepError(taskName, false, err.Error())
 		}
-		execState.log.TaskFailed(taskName, time.Since(began), errors.Is(err, ErrInterrupted))
+		stopped := errors.Is(err, ErrInterrupted)
+		if stopped {
+			execState.log.Stopping()
+		}
+		execState.log.TaskFailed(taskName, time.Since(began), stopped)
 		return reportedError{err}
 	}
 	return nil

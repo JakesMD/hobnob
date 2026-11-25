@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -14,12 +15,42 @@ import (
 type RunLog struct {
 	stdout io.Writer
 	stderr io.Writer
+
+	mu       sync.Mutex
+	running  []string
+	stopping bool
 }
 
 // NewRunLog returns a RunLog writing to stdout, with failures and command
 // stderr going to stderr.
 func NewRunLog(stdout, stderr io.Writer) *RunLog {
 	return &RunLog{stdout: stdout, stderr: stderr}
+}
+
+// Enter marks task as the one now running and returns the func that leaves it,
+// so Stopping can name the innermost task.
+func (l *RunLog) Enter(task string) (leave func()) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.running = append(l.running, task)
+	return func() {
+		l.mu.Lock()
+		defer l.mu.Unlock()
+		l.running = l.running[:len(l.running)-1]
+	}
+}
+
+// Stopping logs the first CTRL+C on the innermost running task. Later calls
+// print nothing, so every path that notices the interrupt can call it.
+func (l *RunLog) Stopping() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.stopping || len(l.running) == 0 {
+		return
+	}
+	l.stopping = true
+	task := l.running[len(l.running)-1]
+	fmt.Fprintln(l.stdout, lead(task, SStep.Render("!"))+SStep.Render("stopping, ctrl+c again to force"))
 }
 
 // Run logs a run: step's command, which the caller passes already masked. The first line carries the notes,
