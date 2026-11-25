@@ -16,12 +16,12 @@ tasks:
 ```
 $ hobnob fetch-question
 fetch-question $ curl -s "https://the-trivia-api.com/v2/questions?limit=1"
-fetch-question │ [{"category":"music","id":"622a1c347cc59eab6f94fb9d","correctAnswer":"Spong…
-fetch-question ✓ 0.3s
-fetch-question $ echo "Which cartoon theme song begins with the lyrics: "ARE YE READY, KIDS?…
-fetch-question │ Which cartoon theme song begins with the lyrics: ARE YE READY, KIDS?? Spong…
+fetch-question │ [{"category":"sport_and_leisure","id":"622a1c367cc59eab6f950078","correctAnswer":"Belgium","incorrectAnswers":["France","Italy","Austria"],"question":{"text":"Where were the 1920 Olympics held?"},"tags":["category:sport-and-leisure","category:geography","category:history","sport:olympic-games","sport:sports","place:belgium","place:europe","place:benelux","place:western-europe","era:1920s","era:20th-century"],"type":"text_choice","difficulty":"hard","regions":[],"isNiche":false,"hint":"The host country is home to Brussels and the port city of Antwerp.","explanation":"Belgium hosted the first Summer Olympics held after World War I; the 1916 Games had been canceled because of the war.","sources":{"urls":["https://en.wikipedia.org/w/index.php?title=1920_Summer_Olympics&oldid=1380786826#:~:text=commonly%20known%20as%20Antwerp,1920%20in%20Antwerp%2C%20Belgium"],"checkedAt":"2026-11-18T14:42:50.192Z"}}]
+fetch-question ✓ 0.4s
+fetch-question $ echo "Where were the 1920 Olympics held? Belgium"
+fetch-question │ Where were the 1920 Olympics held? Belgium
 fetch-question ✓ 0.0s
-fetch-question ✓ done after 0.3s
+fetch-question ✓ done after 0.4s
 ```
 
 Numbers and `true`/`false` keep their type too. With the API's `/metadata`
