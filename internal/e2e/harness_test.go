@@ -141,6 +141,9 @@
 // 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
 // 120. drop the HOBNOB_QUIET=1 check in app.Run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
 // 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
+//
+// 122. forward a CTRL+C byte to the PTY instead of signalling hobnob    -> runner/run_stdin_test.go (CtrlCReachesHobnobNotTheCommand)
+// 123. drop the terminal restore in runner.attachStdin's stop           -> runner/run_stdin_test.go (ForwardsKeysToTheCommand)
 package e2e
 
 import (

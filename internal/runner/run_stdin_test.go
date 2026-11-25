@@ -56,9 +56,11 @@ func TestExecRun_TerminalStdin_ForwardsKeysToTheCommand(t *testing.T) {
 	done := make(chan error, 1)
 
 	// Act
-	go func() { done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr)) }()
+	go func() {
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+	}()
 	time.Sleep(200 * time.Millisecond)
-	keys.WriteString("bob\n")
+	_, _ = keys.WriteString("bob\n")
 	err := <-done
 
 	// Assert
@@ -90,15 +92,17 @@ func TestExecRun_TerminalStdin_CtrlCReachesHobnobNotTheCommand(t *testing.T) {
 	done := make(chan error, 1)
 
 	// Act
-	go func() { done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr)) }()
+	go func() {
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+	}()
 	time.Sleep(200 * time.Millisecond)
-	keys.Write([]byte{3})
+	_, _ = keys.Write([]byte{3})
 	var got os.Signal
 	select {
 	case got = <-sigs:
 	case <-time.After(2 * time.Second):
 	}
-	keys.WriteString("\n")
+	_, _ = keys.WriteString("\n")
 	<-done
 
 	// Assert

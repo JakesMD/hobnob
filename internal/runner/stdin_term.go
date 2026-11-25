@@ -91,7 +91,7 @@ func attachStdin(cmd *osExec.Cmd, pipes *stepPipes) (stop func()) {
 	go t.forward(fd)
 	return func() {
 		t.once.Do(func() {
-			syscall.Write(t.wake[1], []byte{0})
+			_, _ = syscall.Write(t.wake[1], []byte{0})
 			<-t.done
 			t.restore()
 			syscall.Close(t.wake[0])
@@ -152,7 +152,7 @@ func (t *stdinTerm) forward(fd int) {
 				i++
 			}
 			if i > 0 {
-				t.master.Write(rest[:i])
+				_, _ = t.master.Write(rest[:i])
 			}
 			if i == len(rest) {
 				break
