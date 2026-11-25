@@ -79,7 +79,7 @@ tasks:
   release:
     info: Tags origin/main with the next version; the Release workflow builds it and writes the notes
     steps:
-      - run: git fetch --quiet --tags origin main
+      - run: git fetch --quiet --tags --force origin main
       - run: git tag --list 'v*.*.*' --sort=-v:refname | head -n1
         into:
           - LATEST: stdout | trim
