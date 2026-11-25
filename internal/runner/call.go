@@ -49,7 +49,7 @@ func callCacheID(task config.Task) uintptr {
 func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 	taskName, err := eval.EvalTemplate(step.CallTarget, scope.Vars())
 	if err != nil {
-		return fmt.Errorf("call target template: %w", err)
+		return err
 	}
 
 	task, _, err := resolveTask(taskName, execState.cfg)

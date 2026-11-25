@@ -62,7 +62,7 @@ func TestE2E_TaskIf_BadConditionErrorsNamingTask(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, `task "t" if:`)
+	res.Err(t, "t ✗ if {{.MISSING_CLOSE_BRACE:")
 }
 
 func TestE2E_TaskIf_EvaluatedInTaskDirNotCallerDir(t *testing.T) {

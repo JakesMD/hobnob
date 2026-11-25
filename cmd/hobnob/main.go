@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,9 +43,6 @@ func main() {
 	}()
 
 	if err := app.New(version).Run(ctx, os.Args[1:]); err != nil {
-		if !errors.Is(err, app.ErrSilent) {
-			fmt.Fprintln(os.Stderr, "error:", err)
-		}
 		os.Exit(1)
 	}
 }

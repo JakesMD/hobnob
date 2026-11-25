@@ -22,7 +22,7 @@ func captureInto(kind string, entries []config.IntoEntry, source eval.IntoSource
 	for _, intoEntry := range entries {
 		val, err := intoEntry.Val.Eval(source, scope.Vars())
 		if err != nil {
-			return fmt.Errorf("%s into %q: %w", kind, intoEntry.ParentKey, err)
+			return fmt.Errorf("into %s: %w", intoEntry.ParentKey, err)
 		}
 		secret := child != nil && scope.Adopt(child, val)
 		scope.Set(intoEntry.ParentKey, val, secret)

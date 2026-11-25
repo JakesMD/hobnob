@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -32,7 +34,7 @@ func ParseConfigData(data []byte, filePath, dir string) (*ConfigFile, error) {
 	path := filePath
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("parse taskfile %s: %w", path, err)
+		return nil, plainYAMLError(path, err)
 	}
 	// An empty file (or one with only comments/whitespace) yields no document
 	// node at all; a file containing just "null"/"~" yields a null root node.
@@ -185,4 +187,16 @@ func parseStepSequence(node *yaml.Node) ([]Step, error) {
 		steps = append(steps, step)
 	}
 	return steps, nil
+}
+
+var yamlLine = regexp.MustCompile(`^yaml: line (\d+): `)
+
+// plainYAMLError names the file by its base name and drops the "yaml:" the
+// parser leads with: "hobnob.yml line 2: did not find expected ','".
+func plainYAMLError(path string, err error) error {
+	name := filepath.Base(path)
+	if m := yamlLine.FindStringSubmatch(err.Error()); m != nil {
+		return fmt.Errorf("%s line %s: %s", name, m[1], strings.TrimPrefix(err.Error(), m[0]))
+	}
+	return fmt.Errorf("%s: %s", name, strings.TrimPrefix(err.Error(), "yaml: "))
 }

@@ -54,7 +54,8 @@ that file's directory, not where you ran from.
 ## `--demo`
 
 Runs a small built-in taskfile. It replaces `--file` (passing both is an
-error) and combines with every other flag.
+error) and combines with every other flag. A grey `hobnob »` line on stderr
+says so.
 
 ```bash
 hobnob --demo ask-trivia
@@ -84,6 +85,8 @@ Prints the version. Works outside any taskfile.
 ## `--upgrade`
 
 Reruns the latest installer; see [Upgrading](../installation.md#upgrading).
+It writes in the log's style: `hobnob » downloading the latest installer…`, the
+installer's output under `hobnob │`, then `hobnob ✓ upgraded dev → v1.5.0`.
 
 ## `completion <shell>`
 

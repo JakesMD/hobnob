@@ -2,6 +2,7 @@ package literal
 
 import (
 	"fmt"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -27,6 +28,11 @@ func ParseArgv(n *yaml.Node) (Argv, error) {
 		elems[i], _ = templateLeaf(item.Value)
 	}
 	return Argv{elems: elems}, nil
+}
+
+// String returns the list form as written, elements joined by spaces.
+func (a Argv) String() string {
+	return strings.Join(a.elems, " ")
 }
 
 // IsZero reports whether a is the zero Argv: the step has no list form.

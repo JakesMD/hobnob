@@ -23,7 +23,8 @@ import (
 )
 
 // ErrSilent signals the caller to exit 1 without printing — Run already
-// printed the failure itself.
+// printed the failure itself, as a "hobnob ✗" line when it came before any
+// task ran.
 var ErrSilent = errors.New("")
 
 // App is the CLI body. Construct with New for real use; tests build one
@@ -86,7 +87,7 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
 	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
 		if !runner.Reported(err) {
-			log.StepError(taskName, false, err.Error())
+			tui.HobnobError(os.Stderr, err.Error())
 		}
 		return ErrSilent
 	}
@@ -97,6 +98,15 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 // reads os.Args or calls os.Exit, so it's safe to call repeatedly from a
 // single test process.
 func (a *App) Run(ctx context.Context, args []string) error {
+	err := a.run(ctx, args)
+	if err != nil && !errors.Is(err, ErrSilent) {
+		tui.HobnobError(os.Stderr, err.Error())
+		return ErrSilent
+	}
+	return err
+}
+
+func (a *App) run(ctx context.Context, args []string) error {
 	fileFlag, args, err := extractFileFlag(args)
 	if err != nil {
 		return err
@@ -112,7 +122,7 @@ func (a *App) Run(ctx context.Context, args []string) error {
 			fmt.Fprintln(os.Stdout, "hobnob "+cli.DisplayVersion(a.Version))
 			return nil
 		case "--upgrade":
-			return selfUpgrade()
+			return selfUpgrade(a.Version)
 		case "completion":
 			if len(args) < 2 {
 				return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")

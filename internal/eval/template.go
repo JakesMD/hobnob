@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"regexp"
 	"strings"
 	"sync"
 	"text/template"
@@ -294,7 +295,7 @@ func parseTemplateCached(tmpl string) (*template.Template, error) {
 	}
 	parsed, err := template.New("").Funcs(templateFuncs).Parse(rewritten)
 	if err != nil {
-		return nil, err
+		return nil, plainTemplateError(err)
 	}
 	actual, _ := templateCache.LoadOrStore(tmpl, parsed)
 	return actual.(*template.Template), nil
@@ -317,7 +318,7 @@ func EvalTemplate(tmpl string, vars map[string]value.Value) (string, error) {
 	}
 	var buf strings.Builder
 	if err := parsed.Execute(&buf, vars); err != nil {
-		return "", err
+		return "", plainTemplateError(err)
 	}
 	out := buf.String()
 	if msg, ok := value.ScanMissing(out); ok {
@@ -387,3 +388,26 @@ func ResolveItemStrings(fromList []string, from func(map[string]value.Value) (va
 	}
 	return strs, nil
 }
+
+// templateNoise is the position and call context text/template puts in front
+// of an error: `template: :1:8: executing "" at <upper .X>: error calling
+// upper: `. It says nothing a taskfile author can act on.
+var templateNoise = regexp.MustCompile(`^template: [^:]*:\d+(:\d+)?: (executing "[^"]*" at <[^>]*>: )?(error calling \w+: )?`)
+
+// plainTemplateError strips templateNoise from err's message, keeping err
+// unwrappable.
+func plainTemplateError(err error) error {
+	msg := templateNoise.ReplaceAllString(err.Error(), "")
+	if msg == err.Error() {
+		return err
+	}
+	return plainError{msg: msg, err: err}
+}
+
+type plainError struct {
+	msg string
+	err error
+}
+
+func (e plainError) Error() string { return e.msg }
+func (e plainError) Unwrap() error { return e.err }
