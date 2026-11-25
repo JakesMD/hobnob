@@ -24,7 +24,8 @@ address. The page is a setup assistant:
   task and for each task it [calls](./calling-tasks.md), added when it starts,
   ticked when it finishes, and crossed when it fails;
 - the **main area** shows the label of the task now running, an activity bar,
-  the last line of output and a clock. The label is the task's `info:`, or its
+  the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
+  of the time since the run began. The label is the task's `info:`, or its
   name when it has none;
 - a **bottom bar** holds the buttons for the screen.
 

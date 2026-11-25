@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"hobnob/internal/web"
 )
@@ -391,5 +392,67 @@ func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testin
 	res.Fails(t)
 	if failed.Result.LastLine != "no newline at end" || !strings.Contains(failed.Result.Log, "t │ no newline at end") {
 		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
+
+func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
+	// given a step printing coloured output, when it runs, then the page's
+	// last line and the log hold the text without escape sequences (why: the
+	// page shows text, not terminal codes)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf '\033[31mred alert\033[0m\n'; ` + waitForGo + `
+	`
+	var running, done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		running = b.Open().Until(func(s web.Snapshot) bool {
+			return s.Progress != nil && s.Progress.LastLine != ""
+		})
+		b.Release("go")
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if running.Progress.LastLine != "red alert" || strings.Contains(done.Result.Log, "\x1b") {
+		t.Errorf("last line = %q, log = %q", running.Progress.LastLine, done.Result.Log)
+	}
+}
+
+func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
+	// given a running step, when a page connects some time into the run, then
+	// its snapshot carries the time elapsed since the run began (why: the
+	// page's clock starts from it, also after a reconnect)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo started; ` + waitForGo + `
+	`
+	var later web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		b.Open().Until(func(s web.Snapshot) bool {
+			return s.Progress != nil && s.Progress.LastLine == "started"
+		})
+		time.Sleep(150 * time.Millisecond)
+		later = b.Open().Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		b.Release("go")
+		b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if later.Progress.ElapsedMS < 150 {
+		t.Errorf("elapsed = %dms", later.Progress.ElapsedMS)
 	}
 }
