@@ -64,8 +64,20 @@ var (
 
 func names(m pathModel) []string {
 	var out []string
-	for _, r := range m.rows() {
-		out = append(out, r.label())
+	listing := false
+	for _, line := range strings.Split(m.View(), "\n") {
+		line = strings.TrimSpace(strings.Trim(strings.TrimSpace(line), "│"))
+		switch {
+		case strings.HasPrefix(line, "──"):
+			listing = true
+		case strings.HasPrefix(line, "╰"):
+			listing = false
+		case !listing, line == "":
+		default:
+			line = strings.TrimSpace(strings.TrimPrefix(line, "▶"))
+			line = strings.TrimSpace(strings.TrimLeft(line, "◉○"))
+			out = append(out, line)
+		}
 	}
 	return out
 }
@@ -256,8 +268,8 @@ func TestPathModel_View_NonexistentDirectoryShowsNoDirectoryMessage(t *testing.T
 	if !strings.Contains(view, `no directory "/nope/"`) {
 		t.Errorf("view missing message:\n%s", view)
 	}
-	if got := names(m); len(got) != 0 {
-		t.Errorf("rows: got %v, want none", got)
+	if got := names(m); len(got) != 1 || got[0] != `no directory "/nope/"` {
+		t.Errorf("rows: got %v, want only the message", got)
 	}
 }
 
