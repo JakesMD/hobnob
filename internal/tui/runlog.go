@@ -10,8 +10,7 @@ import (
 )
 
 // RunLog is the one writer for the lines the runner and app print during a
-// run, and for the output of the commands it starts. The get: line is not
-// routed through it yet.
+// run, and for the output of the commands it starts.
 type RunLog struct {
 	stdout io.Writer
 	stderr io.Writer
@@ -42,6 +41,21 @@ func (l *RunLog) Run(task, cmd string, notes ...string) {
 // Call logs a call: step, the called task in its own colour.
 func (l *RunLog) Call(task, calledTask string) {
 	fmt.Fprintln(l.stdout, lead(task, taskMark(task, "→"))+TaskStyle(calledTask).Render(calledTask))
+}
+
+// Var logs a get: value used, display already masked when it is a secret.
+// note says where a value nobody typed came from.
+func (l *RunLog) Var(task, name, display, note string) {
+	line := lead(task, taskMark(task, "»")) + name + "=" + display
+	if note != "" {
+		line += " " + SInfo.Render("# "+note)
+	}
+	fmt.Fprintln(l.stdout, line)
+}
+
+// VarSkipped logs an optional get: that got no value.
+func (l *RunLog) VarSkipped(task, name string) {
+	l.RunSkipped(task, name)
 }
 
 // DoneEarlier logs the end of a once: task a call: found already run.

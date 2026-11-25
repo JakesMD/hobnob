@@ -276,53 +276,36 @@ func (m pathModel) rows() []pathRow {
 	return out
 }
 
-// fuzzyMatch reports whether query's letters appear in target in order,
-// with a score (higher is better) and the matched rune positions.
-func fuzzyMatch(query, target string) (score int, positions []int, ok bool) {
-	if query == "" {
-		return 0, nil, true
-	}
-	q := []rune(strings.ToLower(query))
-	t := []rune(strings.ToLower(target))
-	qi, last := 0, -2
-	for ti := 0; ti < len(t) && qi < len(q); ti++ {
-		if t[ti] != q[qi] {
-			continue
-		}
-		positions = append(positions, ti)
-		if ti == last+1 {
-			score += 5
-		}
-		if ti == 0 || strings.ContainsRune("_-.", t[ti-1]) {
-			score += 3
-		}
-		score++
-		last = ti
-		qi++
-	}
-	if qi < len(q) {
-		return 0, nil, false
-	}
-	return score*100 - len(t), positions, true
-}
-
-func highlightMatch(text string, positions []int) string {
-	if len(positions) == 0 {
-		return text
-	}
-	set := map[int]bool{}
-	for _, p := range positions {
-		set[p] = true
-	}
-	var b strings.Builder
-	for i, r := range []rune(text) {
-		if set[i] {
-			b.WriteString(sPathMatch.Render(string(r)))
+// renderRow draws one picker row: cursor, pick marker, then the name.
+func (m pathModel) renderRow(rows []pathRow) func(i int) string {
+	return func(i int) string {
+		row := rows[i]
+		var b strings.Builder
+		if i == m.cursor {
+			b.WriteString(SArrow.Render("▶ "))
 		} else {
-			b.WriteRune(r)
+			b.WriteString("  ")
 		}
+		if m.prompt.Multi {
+			switch {
+			case m.isPicked(m.rowPath(row)):
+				b.WriteString(SChecked.Render("◉ "))
+			case row.pickable:
+				b.WriteString(SInfo.Render("○ "))
+			default:
+				b.WriteString("  ")
+			}
+		}
+		switch {
+		case row.here:
+			b.WriteString(sPathDir.Render("./") + SInfo.Render(" (this directory)"))
+		case row.isDir:
+			b.WriteString(sPathDir.Render(highlightMatch(row.name, row.positions) + "/"))
+		default:
+			b.WriteString(highlightMatch(row.name, row.positions))
+		}
+		return b.String()
 	}
-	return b.String()
 }
 
 func (m pathModel) Init() tea.Cmd { return nil }
@@ -337,12 +320,7 @@ func (m pathModel) highlighted() (pathRow, bool) {
 
 func (m *pathModel) clamp() {
 	m.cursor = max(0, min(m.cursor, len(m.rows())-1))
-	if m.cursor < m.offset {
-		m.offset = m.cursor
-	}
-	if m.cursor >= m.offset+pathListHeight {
-		m.offset = m.cursor - pathListHeight + 1
-	}
+	m.offset = scrollTo(m.cursor, m.offset, pathListHeight)
 }
 
 func (m *pathModel) setSegment(seg string) {
@@ -549,42 +527,8 @@ func (m pathModel) View() string {
 	input := dir + sPathInput.Render(m.seg) + sPathMatch.Render("▏")
 	b.WriteString("\n" + SArrow.Render("› ") + input + "\n")
 	b.WriteString(SInfo.Render(strings.Repeat("─", m.ruleWidth(input, rows))) + "\n")
-	if len(rows) == 0 {
-		b.WriteString(SInfo.Render("  nothing matches") + "\n")
-	}
-	end := min(m.offset+pathListHeight, len(rows))
-	if m.offset > 0 {
-		b.WriteString(SInfo.Render(fmt.Sprintf("  ↑ %d more", m.offset)) + "\n")
-	}
-	for i := m.offset; i < end; i++ {
-		row := rows[i]
-		if i == m.cursor {
-			b.WriteString(SArrow.Render("▶ "))
-		} else {
-			b.WriteString("  ")
-		}
-		if m.prompt.Multi {
-			switch {
-			case m.isPicked(m.rowPath(row)):
-				b.WriteString(SChecked.Render("◉ "))
-			case row.pickable:
-				b.WriteString(SInfo.Render("○ "))
-			default:
-				b.WriteString("  ")
-			}
-		}
-		switch {
-		case row.here:
-			b.WriteString(sPathDir.Render("./") + SInfo.Render(" (this directory)"))
-		case row.isDir:
-			b.WriteString(sPathDir.Render(highlightMatch(row.name, row.positions) + "/"))
-		default:
-			b.WriteString(highlightMatch(row.name, row.positions))
-		}
-		b.WriteString("\n")
-	}
-	if end < len(rows) {
-		b.WriteString(SInfo.Render(fmt.Sprintf("  ↓ %d more", len(rows)-end)) + "\n")
+	for _, line := range renderWindow(len(rows), m.offset, pathListHeight, m.renderRow(rows)) {
+		b.WriteString(line + "\n")
 	}
 	if m.errMsg != "" {
 		b.WriteString(SError.Render(m.errMsg) + "\n")
@@ -633,18 +577,5 @@ func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool
 		}
 		val = value.Of(list)
 	}
-	printGetLine(task, prompt.VarName, pathDisplay(final.picked, final.picks, prompt.Multi, secret))
 	return val, true, nil
-}
-
-// pathDisplay is what the get: line shows for a pick: the path, the list
-// joined, or the mask for a secret.
-func pathDisplay(picked string, picks []string, multi, secret bool) string {
-	switch {
-	case secret:
-		return SecretMask
-	case multi:
-		return strings.Join(picks, ", ")
-	}
-	return picked
 }

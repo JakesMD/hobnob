@@ -992,34 +992,3 @@ func TestPathModel_Multi_DefaultsThatMissMatchAreNotMarked(t *testing.T) {
 		t.Errorf("dir picker: picks %v, want none", dir.picks)
 	}
 }
-
-func TestPathDisplay(t *testing.T) {
-	// given a picked path or list, when shown on the get: line, then a secret is masked and anything else is in full
-	// (why: secret: must not leak a picked path into the terminal)
-
-	// Arrange
-	tests := []struct {
-		name   string
-		picked string
-		picks  []string
-		multi  bool
-		secret bool
-		want   string
-	}{
-		{"single", "/x/a.txt", nil, false, false, "/x/a.txt"},
-		{"multi", "", []string{"/x/a", "/x/b"}, true, false, "/x/a, /x/b"},
-		{"secret single", "/x/a.txt", nil, false, true, SecretMask},
-		{"secret multi", "", []string{"/x/a", "/x/b"}, true, true, SecretMask},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Act
-			got := pathDisplay(tt.picked, tt.picks, tt.multi, tt.secret)
-
-			// Assert
-			if got != tt.want {
-				t.Errorf("got %q, want %q", got, tt.want)
-			}
-		})
-	}
-}

@@ -119,8 +119,8 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `tui` imports `value` but not `eval`: `PromptText` takes a validator closure
-  and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
+- `tui` imports `value` but not `eval`: `PromptText` and `PromptSelect` take a
+  validator closure and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
   from `internal/glob`, so the prompt layer never learns how a shell condition
   or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
@@ -571,7 +571,9 @@ declares the type.
 imports it, and for a `type: file|dir` picker the runner builds the
 `Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
 before it is shown (nothing left fails, or is empty under `optional:`), and
-join `check:` in the closure handed to `PromptText`. A value nobody typed at a
+join `check:` in the closure handed to `PromptText` or `PromptSelect`; a menu
+choice that fails it stays in the prompt, which shows the refusal on its error
+line. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before
 `check:`.
 
@@ -588,8 +590,7 @@ directory counts as no default (`isDirDefault`). With prompts on,
 `getPathInteractive` opens the picker through `promptPathFn` (the task's
 working directory as `WorkDir`, the `default:` as written, `match:` as
 `Included`/`Excluded` predicates). A pick goes through the same per-item
-checks, and a failing `check:` re-opens the picker, as `promptSelectUntilValid`
-does for menus. An escaped optional picker sets the variable empty.
+checks, and a failing `check:` re-opens the picker. An escaped optional picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -638,9 +639,9 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. The `get:` line is not routed yet: `printGetLine` in `styles.go` prints it directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
-line; a prompt model's `View` supplies only its body),
+line; a prompt model's `View` supplies only its body), `list.go` (what menus and the picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every

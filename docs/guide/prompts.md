@@ -45,6 +45,12 @@ tasks:
               multi: true
 ```
 
+Type to filter a menu: the best fuzzy match comes first, with the matched
+letters highlighted. Esc clears what you typed. A menu taller than about ten
+rows scrolls, with `↑ n more` and `↓ n more` showing what's out of view. In a
+`multi:` menu, tab toggles the highlighted item and enter confirms; picks stay
+when the filter changes.
+
 ## Menus from live data
 
 `options:` can be a variable holding a list, so a menu can come from an
@@ -196,7 +202,13 @@ tells you which variable to pass.
   it. The card is as wide as the terminal, up to 76 columns. A failing
   `check:` shows `✗` and its message inside the card, which turns the border
   red, and the prompt stays open.
-- **CTRL+C is the only key that aborts the run.**
+- **CTRL+C is the only key that aborts the run.** In a menu, `q` is just a
+  letter to filter by.
+- **A menu's filter line appears once you type.** A space as the first
+  character doesn't start a filter; after that it's an ordinary character.
+  With `optional: true`, esc clears the filter text first, then skips.
+- **A choice that fails `check:` stays in the menu**, with `validation failed:`
+  and the check on the error line, like a text answer.
 - **A text prompt starts filled in with its `default:`**, so enter keeps it
   (a `secret:` default shows as `••••`). With `optional: true`, enter on an
   empty field skips the prompt, and so does esc.
@@ -204,6 +216,10 @@ tells you which variable to pass.
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
   stops the task. An empty value means no picks.
+- **Every `get:` value is logged** as `deploy » ENV=prod`. A value nobody
+  typed carries a grey note, `# from the command line` or `# from the
+  environment`, and a `secret:` shows `****`. An optional entry with no answer
+  logs `deploy ⊘ REPLICAS` instead, for every kind of prompt.
 - **With `optional: true` and no answer**, the variable is set but empty
   (`[]` with `multi:`), and `match:` and `check:` are skipped.
 - **A menu with nothing left after `match:`** stops the task, naming the

@@ -163,3 +163,122 @@ func TestE2E_Log_SetLoopAndIntoPrintNothing(t *testing.T) {
 	res.Out(t, "t $ echo hi\n")
 	res.NotOut(t, "A", "B")
 }
+
+func TestE2E_Log_VariableLinesNameTheValueAndWhereItCameFrom(t *testing.T) {
+	// given a get: entry answered by typing, by a command-line argument, by
+	// the environment and by a secret, when executed, then each prints
+	// "task » NAME=value", with a grey note for a value nobody typed and
+	// **** for a secret (why: every get: value used is in the log)
+	tests := []struct {
+		name string
+		yml  string
+		c    Case
+		want string
+	}{
+		{
+			name: "typed",
+			yml:  "- get: [ENV]",
+			c:    Case{Args: []string{"t"}, Answers: map[string][]string{"ENV": {"prod"}}, TTY: true},
+			want: "t » ENV=prod\n",
+		},
+		{
+			name: "command line",
+			yml:  "- get: [ENV]",
+			c:    Case{Args: []string{"t", "ENV=prod"}},
+			want: "t » ENV=prod # from the command line\n",
+		},
+		{
+			name: "environment",
+			yml:  "- get: [ENV]",
+			c:    Case{Args: []string{"t"}, Env: map[string]string{"ENV": "prod"}},
+			want: "t » ENV=prod # from the environment\n",
+		},
+		{
+			name: "typed secret",
+			yml:  "- get:\n          - PW:\n              secret: true",
+			c:    Case{Args: []string{"t"}, Answers: map[string][]string{"PW": {"hunter2"}}, TTY: true},
+			want: "t » PW=****\n",
+		},
+		{
+			name: "secret from the command line",
+			yml:  "- get:\n          - PW:\n              secret: true",
+			c:    Case{Args: []string{"t", "PW=hunter2"}},
+			want: "t » PW=**** # from the command line\n",
+		},
+		{
+			name: "list",
+			yml:  "- get:\n          - ENV:\n              options: [a, b]\n              multi: true",
+			c:    Case{Args: []string{"t"}, Answers: map[string][]string{"ENV": {"a,b"}}, TTY: true},
+			want: "t » ENV=a, b\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			test.c.Yml = "tasks:\n  t:\n    steps:\n      " + test.yml + "\n"
+
+			// Act
+			res := Run(t, test.c)
+
+			// Assert
+			res.OK(t)
+			res.Out(t, test.want)
+			res.NotOut(t, "get:", "hunter2")
+		})
+	}
+}
+
+func TestE2E_Log_SkippedOptionalPromptPrintsAMarkedName(t *testing.T) {
+	// given an optional text, menu and picker prompt each skipped, when
+	// executed, then each prints "task ⊘ NAME" and no value (why: a skip
+	// reads the same whatever the prompt type)
+	tests := []struct {
+		name  string
+		entry string
+	}{
+		{"text", "REPLICAS:\n              optional: true"},
+		{"menu", "REPLICAS:\n              optional: true\n              options: [1, 2]"},
+		{"picker", "REPLICAS:\n              optional: true\n              type: file"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			c := Case{
+				Yml:     "tasks:\n  t:\n    steps:\n      - get:\n          - " + test.entry + "\n",
+				Args:    []string{"t"},
+				Answers: map[string][]string{"REPLICAS": {""}},
+				TTY:     true,
+			}
+
+			// Act
+			res := Run(t, c)
+
+			// Assert
+			res.OK(t)
+			res.Out(t, "t ⊘ REPLICAS\n")
+			res.NotOut(t, "REPLICAS=")
+		})
+	}
+}
+
+func TestE2E_Log_SkippedOptionalWithPromptsOffPrintsAMarkedName(t *testing.T) {
+	// given an optional get: with no value and --no-input, when executed,
+	// then it prints "task ⊘ NAME" (why: a skip is logged even when nobody
+	// was asked)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - REPLICAS:
+		              optional: true
+	`
+
+	// Act
+	res := Yml(t, yml, "t", "--no-input")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t ⊘ REPLICAS\n")
+}
