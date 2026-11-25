@@ -65,6 +65,28 @@ func (b *Browser) Release(name string) {
 	}
 }
 
+// Wait blocks until a fixture's command has created the named file in the
+// run's directory.
+func (b *Browser) Wait(name string) {
+	b.t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(filepath.Join(b.dir, name)); err == nil {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	b.fail("the command never created %s", name)
+}
+
+// WaitLate is Wait followed by a pause that lets a run with nothing left to
+// wait for end, so a page opened after it is a late one.
+func (b *Browser) WaitLate(name string) {
+	b.t.Helper()
+	b.Wait(name)
+	time.Sleep(50 * time.Millisecond)
+}
+
 // Get requests path with the given token (the right one is b's own) and
 // returns the status and body.
 func (b *Browser) Get(path, token string) (int, string) {

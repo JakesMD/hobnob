@@ -80,13 +80,13 @@ func (l *RunLog) RunCancelled() {
 	}
 }
 
-// recordFailure keeps the first, innermost failed step for RunFailed.
 func (l *RunLog) forgiveFailure() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.failed = nil
 }
 
+// recordFailure keeps the first, innermost failed step for RunFailed.
 func (l *RunLog) recordFailure(task, reason string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()

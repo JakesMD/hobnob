@@ -1,6 +1,5 @@
-// Package web is the browser front end: a local page that observes a run and,
-// in later tickets, answers its prompts. It sits beside tui, and like tui it
-// never imports eval, runner or config.
+// Package web is the browser front end: a local page that observes a run. It sits
+// beside tui, and like tui it never imports eval, runner or config.
 package web
 
 import (

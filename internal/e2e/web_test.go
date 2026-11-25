@@ -44,6 +44,33 @@ func TestE2E_Web_TaskWithoutPromptsEndsOnDone(t *testing.T) {
 	}
 }
 
+func TestE2E_Web_PageOpenedAfterTheRunEndedStillGetsTheOutcome(t *testing.T) {
+	// given a run that ended before any page connected, when a page opens
+	// late, then it gets Done and the run only returns after that (why: a
+	// slow browser must not miss how the run went)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: touch ran
+	`
+	var done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		b.WaitLate("ran")
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if done.Result == nil || done.Result.Outcome != web.OutcomeDone {
+		t.Errorf("late page saw %+v", done)
+	}
+}
+
 func TestE2E_Web_FileFlagRunsTheNamedTaskfile(t *testing.T) {
 	// given --file beside --web, when run, then that taskfile's task runs
 	// (why: --web combines with --file)
@@ -119,28 +146,28 @@ func equalRail(got, want []web.RailEntry) bool {
 
 func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 	// given a quiet: step and a step printing a secret, when they run, then
-	// the first shows an empty last line and the second shows the secret
-	// masked (why: a held step's output stays out of sight, and a secret
-	// never reaches the page)
+	// the first shows an empty last line and the log shows the secret masked
+	// (why: a held step's output stays out of sight, and a secret never
+	// reaches the page)
 	// Arrange
 	yml := `
 		tasks:
 		  t:
-		    vars:
-		      - TOKEN:
-		          value: hunter2
-		          secret: true
 		    steps:
-		      - run: echo hidden; ` + waitForGo + `
+		      - set:
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		      - run: echo hidden; i=0; while [ $i -lt 50000 ]; do i=$((i+1)); done; touch printed; ` + waitForGo + `
 		        quiet: true
 		      - run: echo "token is {{.TOKEN}}"
 	`
 	var held, after web.Snapshot
 	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		tab := b.Open()
-		held = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil && s.Progress.Label == "t" })
+		b.Wait("printed")
+		held = b.Open().Until(func(s web.Snapshot) bool { return s.Progress != nil })
 		b.Release("go")
-		after = tab.Screen(web.ScreenDone)
+		after = b.Open().Screen(web.ScreenDone)
 	}}
 
 	// Act
@@ -151,7 +178,7 @@ func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 	if held.Progress.LastLine != "" {
 		t.Errorf("held step showed %q", held.Progress.LastLine)
 	}
-	if strings.Contains(after.Result.Log, "hunter2") || !strings.Contains(after.Result.Log, "token is") {
+	if !strings.Contains(after.Result.Log, "token is ****") || strings.Contains(after.Result.Log, "hunter2") {
 		t.Errorf("log = %q", after.Result.Log)
 	}
 }
@@ -178,20 +205,24 @@ func TestE2E_Web_QuietChangesOnlyTheTerminal(t *testing.T) {
 	// Assert
 	res.OK(t)
 	res.NotOut(t, "t │ chatter")
-	if !strings.Contains(done.Result.Log, "chatter") {
+	if !strings.Contains(done.Result.Log, "t │ chatter") {
 		t.Errorf("log = %q", done.Result.Log)
 	}
 }
 
 func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
-	// given a task whose step fails, when it runs with --web, then the page
-	// ends on Failed naming the task of the step and its last line, the
-	// rail marks it failed and the exit code is 1 (why: the person must see
-	// what broke, and scripts must see the same exit code)
+	// given a task calling a task whose step fails, when it runs with --web,
+	// then the page ends on Failed naming the inner task of the step and its
+	// last line, the rail marks it failed and the exit code is 1 (why: the
+	// person must see what broke, and scripts must see the same exit code)
 	// Arrange
 	yml := `
 		tasks:
 		  t:
+		    info: Do everything
+		    steps:
+		      - call: inner
+		  inner:
 		    info: Install tools
 		    steps:
 		      - run: echo "disk is full"; exit 3
@@ -209,7 +240,7 @@ func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
 	if failed.Result.Outcome != web.OutcomeFailed || failed.Result.Label != "Install tools" || failed.Result.LastLine != "disk is full" {
 		t.Errorf("failed result = %+v", failed.Result)
 	}
-	if len(failed.Rail.Setup) != 1 || failed.Rail.Setup[0].State != web.StateFailed {
+	if len(failed.Rail.Setup) != 2 || failed.Rail.Setup[1].State != web.StateFailed {
 		t.Errorf("rail = %+v", failed.Rail)
 	}
 }

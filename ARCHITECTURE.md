@@ -60,8 +60,8 @@ Every change must preserve these. Each is explained in the section named.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
-  imports only `value` (and, for the picker prompt shape, `tui`), never `eval`,
-  `runner` or `config`; it observes a run through `RunLog` and never changes
+  imports only the stdlib, never `value`, `tui`, `eval`, `runner` or `config`;
+  it observes a run through `RunLog` and never changes
   what the runner does. ([web](#internalweb-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
@@ -118,7 +118,6 @@ flowchart TD
     literal --> eval
     eval --> value
     tui --> value
-    web --> value
 ```
 
 For readability the graph omits the direct `eval`/`value` imports from
@@ -135,7 +134,7 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `web` imports `value` and the stdlib; it implements `tui.RunListener`
+- `web` imports only the stdlib; it implements `tui.RunListener`
   structurally, so it needs no `tui` import for it. `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
