@@ -32,6 +32,24 @@ address. The page is a setup assistant:
 The page never shows a command. A step with [`quiet:`](./commands.md) shows no
 output line either.
 
+## Prompts
+
+A [`get:`](./prompts.md) text prompt gets its own page: the entry's `info:` as
+a large heading, a text box filled with its `default:` (a password field for
+`secret:`) and **Continue** in the bottom bar, plus **Skip** for an
+`optional:` prompt. An answer goes through the same rules as in the terminal:
+a required prompt needs an answer, then `match:` and `check:` run, and a
+`check:` that runs a shell condition behaves exactly as it does there. A refused
+answer keeps you on the page with the reason under the field.
+
+The rail's **Your answers** section gets one entry per answered prompt, labelled
+by the entry's `info:` (its variable name without one). A secret shows masked.
+A prompt skipped, or settled by a `KEY=VALUE` preset, has no entry; presets
+skip their prompts as in the terminal.
+
+There are no admin prompts in browser mode, and menus and pickers aren't
+supported on the page yet.
+
 ## How a run ends
 
 - **Done** shows a tick, "You're all set", the task and how long it took.

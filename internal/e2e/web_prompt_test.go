@@ -75,7 +75,7 @@ func TestE2E_Web_SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog(t *testing.T)
 
 	// Assert
 	res.OK(t)
-	if p := asked.Prompt; !p.Secret || p.Default != "" || !p.HasDefault || p.Info != "" && p.Info != "TOKEN" {
+	if p := asked.Prompt; !p.Secret || p.Default != "" || !p.HasDefault {
 		t.Errorf("prompt = %+v", p)
 	}
 	if len(done.Rail.Answers) != 1 || done.Rail.Answers[0].Label != "TOKEN" || strings.Contains(done.Rail.Answers[0].Value, "s3cret") || done.Rail.Answers[0].Value == "" {

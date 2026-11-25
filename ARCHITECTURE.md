@@ -56,7 +56,8 @@ Every change must preserve these. Each is explained in the section named.
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
-  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`.
+  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
+  or the page's prompts (`browserPrompts`) under `--web`.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
@@ -738,7 +739,8 @@ log line is built from, and `SecretMask`). The runner calls `PromptText`,
 and has `web.Server` watch it. `web.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
-the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says.
+the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says,
+asked through the page's prompts (`browserPrompts` in `app/web.go`), even in tests.
 
 **The run listener.** `tui.RunListener` is how a front end observes a run. A
 `RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
@@ -760,9 +762,23 @@ a whole snapshot; a stream that is behind gets only the latest. To add a
 screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `page.html`.
 
+**Prompts.** `web.state.ask` (`prompt.go`) shows a `Prompt` (kind, info,
+default, `secret:`, `optional:`, the refusal of the last answer) as the
+`prompt` screen and blocks until it is answered, skipped or its context ends.
+Each asking has an ID; `POST /actions/answer` and `POST /actions/skip` carry
+the ID and are refused when it isn't the open prompt's. An answer goes
+through the `judge` closure the prompt kind passes to `ask`, which wraps the
+validator closure the runner handed over (so `check:` and `match:` run exactly
+as in the terminal); a refusal is stored in the open prompt and comes back in
+the next snapshot, an accepted answer adds a rail answer (masked for
+`secret:`) and releases the caller. A secret's default never reaches the page
+(`hasDefault` says there is one). Context cancellation returns `ctx.Err()`,
+which `tui.IsInterrupted` counts as an interrupt. Menus and pickers add a
+`Kind`, fields and a `judge`; they are not in the page yet and `browserPrompts`
+refuses them.
+
 **Requests.** Every request must carry the token (constant-time compare).
-`POST /actions/{name}` routes through `Server.actions`, empty until the prompt
-tickets register theirs. After the run ends `app` waits in `AwaitDelivery` for
+`POST /actions/{name}` routes through `Server.actions` (`answer`, `skip`). After the run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
 outlive hobnob. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
 
