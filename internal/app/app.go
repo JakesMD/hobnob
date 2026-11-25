@@ -95,7 +95,7 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 	if a.Screen != nil {
 		log.Watch(a.Screen())
 	}
-	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
+	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()); err != nil {
 		if !runner.Reported(err) {
 			tui.HobnobError(os.Stderr, err.Error())
 		}

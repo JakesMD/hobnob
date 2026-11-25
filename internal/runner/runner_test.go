@@ -80,7 +80,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

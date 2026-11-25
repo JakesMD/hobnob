@@ -37,7 +37,7 @@ func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

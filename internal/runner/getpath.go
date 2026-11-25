@@ -189,7 +189,7 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 	}
 	for {
 		resume := execState.log.Pause()
-		picked, answered, err := promptPathFn(execState.ctx, prompt, execState.task, getEntry.Secret)
+		picked, answered, err := execState.prompts.Path(execState.ctx, prompt, execState.task, getEntry.Secret)
 		resume()
 		if err != nil {
 			return wrapPromptErr(name, err)

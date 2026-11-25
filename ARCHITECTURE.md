@@ -55,8 +55,10 @@ Every change must preserve these. Each is explained in the section named.
   reaches `into:` or a held (`quiet:` or `--quiet`) buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
-- **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel, path)
-  (restore func())`, never by reassigning `promptTextFn`/`promptSelectFn`/`promptPathFn`.
+- **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
+  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`.
+  Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
+  (restore func())`, never by reassigning a package variable.
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
   `keys`, `join` and accessors error on a String, naming `| json`, rather
@@ -572,7 +574,7 @@ A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
 `KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
-one, else sets an optional entry empty, else aborts; with prompts on it prompts through `promptTextFn`/`promptSelectFn`, or `promptPathFn` for a `type: file|dir` entry. A preset, a default and an
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `execCtx.prompts` (`Text`/`Select`, or `Path` for a `type: file|dir` entry). A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a

@@ -36,7 +36,7 @@ func Reported(err error) bool {
 	return errors.As(err, &reported)
 }
 
-// wrapPromptErr classifies a promptTextFn/promptSelectFn error: one caused by
+// wrapPromptErr classifies a text or select prompt error: one caused by
 // ctx cancellation (the prompt was torn down mid-input, e.g. a SIGTERM
 // arriving while a get: step is blocked waiting on the user) becomes
 // ErrInterrupted so callers treat it like any other graceful-shutdown exit,
@@ -130,6 +130,7 @@ type execCtx struct {
 	dir        string
 	memo       *callMemo
 	log        *tui.RunLog
+	prompts    Prompts
 	softs      *int
 }
 
@@ -152,7 +153,7 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer, and the jobs its run: steps leave running, which
 // get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
-func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog) error {
+func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog, prompts Prompts) error {
 	if _, _, err := resolveTask(taskName, cfg); err != nil {
 		return err
 	}
@@ -161,7 +162,7 @@ func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileS
 	defer stopTerm()
 	stopSay := context.AfterFunc(ctx, log.Stopping)
 	defer stopSay()
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log}, taskName, literal.Expr{}, scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log, prompts: prompts}, taskName, literal.Expr{}, scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
@@ -230,7 +231,7 @@ func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, ta
 			return true, nil
 		}
 	}
-	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, softs: softs}, task.Steps, scope)
+	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, prompts: execState.prompts, softs: softs}, task.Steps, scope)
 }
 
 // stepMessage is what a step that can't start reports: the step as written,
