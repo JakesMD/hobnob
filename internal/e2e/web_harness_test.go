@@ -224,3 +224,12 @@ func (t *Tab) Screen(screen string) web.Snapshot {
 	t.b.t.Helper()
 	return t.Until(func(s web.Snapshot) bool { return s.Screen == screen })
 }
+
+// Closed reports whether the page closes the stream after what was already
+// sent, as it does for a replaced tab.
+func (t *Tab) Closed() bool {
+	t.b.t.Helper()
+	for t.events.Scan() {
+	}
+	return t.events.Err() == nil
+}

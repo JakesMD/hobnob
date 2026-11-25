@@ -9,6 +9,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -19,9 +20,9 @@ import (
 //go:embed page.html
 var page []byte
 
-// deliveryGrace is how long a finished run waits for a page to take the
-// final snapshot before hobnob gives up on it.
-const deliveryGrace = 60 * time.Second
+// grace is how long hobnob waits on the person with no page open before it
+// gives up. SetGrace shortens it for tests.
+var grace = 60 * time.Second
 
 // action handles one POST from the page; body is the request's JSON.
 type action func(body json.RawMessage) error
@@ -45,7 +46,22 @@ type Server struct {
 	delivered     chan struct{}
 
 	subMu sync.Mutex
-	subs  map[chan struct{}]struct{}
+	subs  map[*tab]struct{}
+	// newest is the tab that holds the page; a newer connection replaces it.
+	newest *tab
+
+	graceMu     sync.Mutex
+	grace       time.Duration
+	graceTimer  *time.Timer
+	graceRun    int
+	abandonOnce sync.Once
+	abandoned   chan struct{}
+}
+
+// tab is one open SSE connection.
+type tab struct {
+	changed  chan struct{}
+	replaced chan struct{}
 }
 
 // Listen binds a random free port on 127.0.0.1 and makes a random token.
@@ -67,7 +83,9 @@ func Listen() (*Server, error) {
 		choice:    make(chan string, 1),
 		home:      make(chan struct{}, 1),
 		delivered: make(chan struct{}),
-		subs:      map[chan struct{}]struct{}{},
+		subs:      map[*tab]struct{}{},
+		abandoned: make(chan struct{}),
+		grace:     grace,
 	}
 	server.changed = server.notify
 	server.actions["choose"] = server.chooseTask
@@ -88,14 +106,23 @@ func (s *Server) URL() string {
 	return fmt.Sprintf("http://%s/?token=%s", s.listener.Addr(), s.token)
 }
 
-// Serve answers requests until Close; call it in its own goroutine.
-func (s *Server) Serve() { _ = s.http.Serve(s.listener) }
+// Serve answers requests until Close; call it in its own goroutine. It also
+// starts the grace timer, since no page has opened yet.
+func (s *Server) Serve() {
+	s.watchGrace()
+	_ = s.http.Serve(s.listener)
+}
 
 // Close stops the server and ends every open stream.
-func (s *Server) Close() { _ = s.http.Close() }
+func (s *Server) Close() {
+	s.graceMu.Lock()
+	s.stopGraceLocked()
+	s.graceMu.Unlock()
+	_ = s.http.Close()
+}
 
 // AwaitDelivery blocks until a page has been sent the finished run's
-// snapshot, ctx ends or the grace runs out.
+// snapshot, ctx ends or the person has been gone for the grace.
 func (s *Server) AwaitDelivery(ctx context.Context) {
 	select {
 	case <-s.delivered:
@@ -106,7 +133,7 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 			case <-time.After(interruptGrace):
 			}
 		}
-	case <-time.After(deliveryGrace):
+	case <-s.abandoned:
 	}
 }
 
@@ -120,32 +147,24 @@ func (s *Server) PickTask(ctx context.Context, tasks []Task, offerHome bool) (st
 		return name, nil
 	case <-ctx.Done():
 		return "", ctx.Err()
+	case <-s.abandoned:
+		return "", errAbandoned
 	}
 }
+
+var errAbandoned = errors.New("no page was open for the grace")
 
 // AwaitHome blocks on a finished run until the person presses Home, which
 // reports true. It reports false when ctx ends or no page has been open for
 // the grace.
 func (s *Server) AwaitHome(ctx context.Context) bool {
-	idleSince := time.Now()
-	tick := time.NewTicker(100 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-s.home:
-			return true
-		case <-ctx.Done():
-			return false
-		case <-tick.C:
-			s.subMu.Lock()
-			open := len(s.subs)
-			s.subMu.Unlock()
-			if open > 0 {
-				idleSince = time.Now()
-			} else if time.Since(idleSince) >= deliveryGrace {
-				return false
-			}
-		}
+	select {
+	case <-s.home:
+		return true
+	case <-ctx.Done():
+		return false
+	case <-s.abandoned:
+		return false
 	}
 }
 
@@ -223,14 +242,24 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
-	changed := make(chan struct{}, 1)
+	mine := &tab{changed: make(chan struct{}, 1), replaced: make(chan struct{})}
 	s.subMu.Lock()
-	s.subs[changed] = struct{}{}
+	if s.newest != nil {
+		delete(s.subs, s.newest)
+		close(s.newest.replaced)
+	}
+	s.newest = mine
+	s.subs[mine] = struct{}{}
 	s.subMu.Unlock()
+	s.watchGrace()
 	defer func() {
 		s.subMu.Lock()
-		delete(s.subs, changed)
+		delete(s.subs, mine)
+		if s.newest == mine {
+			s.newest = nil
+		}
 		s.subMu.Unlock()
+		s.watchGrace()
 	}()
 	for {
 		snap, _ := s.snapshot()
@@ -243,7 +272,12 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 			s.deliveredOnce.Do(func() { close(s.delivered) })
 		}
 		select {
-		case <-changed:
+		case <-mine.changed:
+		case <-mine.replaced:
+			data, _ := json.Marshal(Snapshot{Screen: ScreenAnotherTab})
+			_, _ = fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+			return
 		case <-r.Context().Done():
 			return
 		}
@@ -254,11 +288,12 @@ func (s *Server) serveEvents(w http.ResponseWriter, r *http.Request) {
 // that is behind gets one snapshot, the latest.
 func (s *Server) notify() {
 	s.subMu.Lock()
-	defer s.subMu.Unlock()
-	for changed := range s.subs {
+	for open := range s.subs {
 		select {
-		case changed <- struct{}{}:
+		case open.changed <- struct{}{}:
 		default:
 		}
 	}
+	s.subMu.Unlock()
+	s.watchGrace()
 }

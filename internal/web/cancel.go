@@ -48,6 +48,57 @@ func (s *Server) initCancel() {
 	}
 }
 
+// watchGrace starts or stops the grace timer to match the state: it runs
+// while no page is open and hobnob waits on the person (the task picker, a
+// prompt, Done or Failed), never while steps run.
+func (s *Server) watchGrace() {
+	s.graceMu.Lock()
+	defer s.graceMu.Unlock()
+	waiting := s.waitingOnPerson()
+	if waiting && !s.hasStreams() {
+		if s.graceTimer == nil {
+			s.graceRun++
+			run := s.graceRun
+			s.graceTimer = time.AfterFunc(s.grace, func() { s.giveUp(run) })
+		}
+		return
+	}
+	s.stopGraceLocked()
+}
+
+func (s *Server) stopGraceLocked() {
+	if s.graceTimer != nil {
+		s.graceTimer.Stop()
+		s.graceTimer = nil
+		s.graceRun++
+	}
+}
+
+func (s *Server) waitingOnPerson() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.picking || s.prompt != nil || s.result != nil
+}
+
+// giveUp is the grace running out: at a prompt it cancels as a first CTRL+C
+// does, and either way it releases everything waiting on the page.
+func (s *Server) giveUp(run int) {
+	s.graceMu.Lock()
+	current := s.graceTimer != nil && s.graceRun == run
+	s.graceTimer = nil
+	s.graceMu.Unlock()
+	if !current {
+		return
+	}
+	s.mu.Lock()
+	atPrompt := s.prompt != nil
+	s.mu.Unlock()
+	if atPrompt && s.stop != nil {
+		s.Cancel()
+	}
+	s.abandonOnce.Do(func() { close(s.abandoned) })
+}
+
 func (s *Server) hasStreams() bool {
 	s.subMu.Lock()
 	defer s.subMu.Unlock()

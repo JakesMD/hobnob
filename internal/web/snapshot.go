@@ -7,6 +7,8 @@ const (
 	ScreenProgress = "progress"
 	ScreenDone     = "done"
 	ScreenFailed   = "failed"
+	// ScreenAnotherTab is all a replaced tab is sent before it is closed.
+	ScreenAnotherTab = "another-tab"
 )
 
 // Outcomes of a finished run.

@@ -166,9 +166,10 @@ func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 	var held, after web.Snapshot
 	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
 		b.Wait("printed")
-		held = b.Open().Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		tab := b.Open()
+		held = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
 		b.Release("go")
-		after = b.Open().Screen(web.ScreenDone)
+		after = tab.Screen(web.ScreenDone)
 	}}
 
 	// Act
@@ -404,11 +405,12 @@ func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
 	`
 	var running, done web.Snapshot
 	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		running = b.Open().Until(func(s web.Snapshot) bool {
+		tab := b.Open()
+		running = tab.Until(func(s web.Snapshot) bool {
 			return s.Progress != nil && s.Progress.LastLine != ""
 		})
 		b.Release("go")
-		done = b.Open().Screen(web.ScreenDone)
+		done = tab.Screen(web.ScreenDone)
 	}}
 
 	// Act
@@ -438,9 +440,10 @@ func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
 			return s.Progress != nil && s.Progress.LastLine == "started"
 		})
 		time.Sleep(150 * time.Millisecond)
-		later = b.Open().Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		tab := b.Open()
+		later = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
 		b.Release("go")
-		b.Open().Screen(web.ScreenDone)
+		tab.Screen(web.ScreenDone)
 	}}
 
 	// Act

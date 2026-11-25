@@ -212,9 +212,20 @@ function stopped() {
 }
 
 const events = new EventSource('/events?token=' + encodeURIComponent(token));
-events.onmessage = (event) => { snap = JSON.parse(event.data); received = Date.now(); render(); };
+events.onmessage = (event) => {
+  snap = JSON.parse(event.data);
+  received = Date.now();
+  if (snap.screen === 'another-tab') {
+    events.close();
+    clearInterval(clock);
+    app.replaceChildren(el('div', { class: 'solo' }, 'hobnob is open in another tab.'));
+    return;
+  }
+  render();
+};
 events.onerror = () => {
   events.close();
+  if (snap && snap.screen === 'another-tab') return;
   if (!snap || (snap.screen !== 'done' && snap.screen !== 'failed')) stopped();
 };
 </script>
