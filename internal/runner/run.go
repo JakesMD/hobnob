@@ -17,36 +17,43 @@ import (
 )
 
 // skippedRunText is the command a skipped run: step would have run, for the
-// skip line; "skipped" when it can't be rendered.
+// skip line; the command as written when it can't be rendered.
 func skippedRunText(step config.Step, scope *scope.Scope) string {
-	if !step.Argv.IsZero() {
-		if argv, err := step.Argv.Resolve(scope.Vars()); err == nil && len(argv) > 0 {
-			return scope.Mask(displayArgv(argv))
-		}
-	} else if cmd, err := step.Command.Text(scope.Vars()); err == nil {
-		return scope.Mask(cmd)
+	if _, display, err := renderRun(step, scope); err == nil {
+		return display
 	}
-	return "skipped"
+	if !step.Argv.IsZero() {
+		return scope.Mask(displayArgv(step.Argv.Raw()))
+	}
+	return scope.Mask(step.Command.String())
 }
 
-func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
-	var shellCmd *osExec.Cmd
-	var displayCmd string
+// renderRun renders a run: step into the argv to execute and the masked
+// command to show.
+func renderRun(step config.Step, scope *scope.Scope) (argv []string, display string, err error) {
 	if !step.Argv.IsZero() {
 		argv, err := step.Argv.Resolve(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("run argv: %w", err)
+			return nil, "", fmt.Errorf("run argv: %w", err)
 		}
-		shellCmd = osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
-		displayCmd = displayArgv(argv)
-	} else {
-		cmd, err := step.Command.Text(scope.Vars())
-		if err != nil {
-			return fmt.Errorf("run template: %w", err)
+		if len(argv) == 0 {
+			return nil, "", fmt.Errorf("run argv: no command")
 		}
-		shellCmd = osExec.CommandContext(execState.ctx, "sh", "-c", cmd)
-		displayCmd = cmd
+		return argv, scope.Mask(displayArgv(argv)), nil
 	}
+	cmd, err := step.Command.Text(scope.Vars())
+	if err != nil {
+		return nil, "", fmt.Errorf("run template: %w", err)
+	}
+	return []string{"sh", "-c", cmd}, scope.Mask(cmd), nil
+}
+
+func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
+	argv, displayCmd, err := renderRun(step, scope)
+	if err != nil {
+		return err
+	}
+	shellCmd := osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
 
 	runDir := execState.dir
 	displayDir := ""
@@ -59,7 +66,6 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		displayDir = displayDirPath(runDir, scope.InvocationDir())
 	}
 
-	displayCmd = scope.Mask(displayCmd)
 	var notes []string
 	if displayDir != "" {
 		notes = append(notes, "in "+strings.TrimSuffix(displayDir, "/")+"/")

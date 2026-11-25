@@ -132,3 +132,20 @@ func TestRunLogEndLines(t *testing.T) {
 		})
 	}
 }
+
+func TestRunLog_RunWithTrailingNewlineEndsWithoutAnEmptyContinuationLine(t *testing.T) {
+	// given a block-scalar command ending in a newline, when logged, then no
+	// empty continuation line follows it (why: a run: | command would
+	// otherwise print a blank indented line)
+	// Arrange
+	var out bytes.Buffer
+	log := NewRunLog(&out, &out)
+
+	// Act
+	log.Run("t", "echo one\necho two\n")
+
+	// Assert
+	if got := out.String(); strings.HasSuffix(got, "\n\n") || strings.Count(got, "\n") != 2 {
+		t.Errorf("got %q, want two lines", got)
+	}
+}

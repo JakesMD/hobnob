@@ -516,3 +516,24 @@ func TestE2E_RunInto_JoinFilterTurnsCapturedListIntoSeparatedText(t *testing.T) 
 	res.OK(t)
 	res.Lines(t, `["history","science"]`, "categories=history,science")
 }
+
+func TestE2E_Run_SkippedStepWhoseCommandCannotRenderPrintsItAsWritten(t *testing.T) {
+	// given a run: step with a false if: whose command template can't render,
+	// when executed, then its skip line shows the command as written (why: a
+	// skipped step names what it skips)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo {{ upper .MISSING }}
+		        if: 'false'
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t ⊘ echo {{ upper .MISSING }}\n")
+}

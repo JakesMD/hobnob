@@ -26,7 +26,7 @@ func NewRunLog(stdout, stderr io.Writer) *RunLog {
 // each as a grey "# …"; continuation lines of a multi-line command sit under
 // it, indented to the command's start.
 func (l *RunLog) Run(task, cmd string, notes ...string) {
-	lines := strings.Split(cmd, "\n")
+	lines := strings.Split(strings.TrimSuffix(cmd, "\n"), "\n")
 	first := lead(task, taskMark(task, "$")) + lines[0]
 	for _, note := range notes {
 		first += " " + SInfo.Render("# "+note)

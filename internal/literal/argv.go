@@ -34,6 +34,11 @@ func (a Argv) IsZero() bool {
 	return len(a.elems) == 0
 }
 
+// Raw returns the elements as written.
+func (a Argv) Raw() []string {
+	return a.elems
+}
+
 // Resolve evaluates each element, typed, and assembles the argv. A list
 // splices into one argument per item (an empty list into none); anything
 // else is exactly one argument. An empty element stays one empty argument,

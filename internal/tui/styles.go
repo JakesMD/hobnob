@@ -47,10 +47,6 @@ func TaskStyle(task string) lipgloss.Style {
 	return lipgloss.NewStyle().Foreground(TaskPalette[checksum%len(TaskPalette)])
 }
 
-func TaskPrefix(task string) string {
-	return "[" + TaskStyle(task).Render(task) + "] "
-}
-
 // lead is the start of every log line: the task in its colour, then the
 // mark that says what the line is, then a space. mark is rendered by the
 // caller, so a line that carries its own colour (a grey │, a green ✓) keeps it.

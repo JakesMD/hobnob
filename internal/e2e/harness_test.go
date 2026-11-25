@@ -106,6 +106,7 @@
 // 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
+// 88a. print an unrenderable skipped run: step as "skipped" in runner.skippedRunText -> run_into_test.go (SkippedStepWhoseCommandCannotRenderPrintsItAsWritten)
 // 89. leave the source note off a variable line in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom)
 // 90. print a skipped optional get: as an empty value, not ⊘ NAME -> log_lines_test.go (SkippedOptionalPromptPrintsAMarkedName, SkippedOptionalWithPromptsOffPrintsAMarkedName)
 // 90a. log any empty get: value as ⊘ NAME, not only an optional one's in runner.logVar -> log_lines_test.go (EmptyValueForARequiredVariablePrintsAVariableLine)
