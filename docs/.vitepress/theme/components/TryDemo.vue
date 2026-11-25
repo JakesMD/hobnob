@@ -931,7 +931,7 @@ async function start() {
             @mouseenter="r.row !== undefined && hoverRow(r.row)"
             @click.stop="r.row !== undefined && clickRow(r.row)"
           >
-            <span v-for="(seg, j) in r.pre" :key="'a' + j" :class="[seg.c, { 'hint-key': seg.click }]" @click.stop="seg.click?.()">{{ seg.t }}</span>
+            <span v-for="(seg, j) in r.pre" :key="'a' + j" :class="[seg.c, { 'hint-key': seg.click }]" @click="seg.click && ($event.stopPropagation(), seg.click())">{{ seg.t }}</span>
             <input
               v-if="r.input && prompt?.kind === 'text'"
               :ref="setInput"
