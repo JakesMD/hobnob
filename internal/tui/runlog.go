@@ -81,12 +81,12 @@ func (l *RunLog) StepDone(task string, elapsed time.Duration) {
 // StepFailed logs the end of a step that failed, with the command as written
 // and why it failed.
 func (l *RunLog) StepFailed(task string, elapsed time.Duration, cmd, reason string) {
-	fmt.Fprintln(l.stderr, lead(task, SError.Render("✗"))+SInfo.Render(formatElapsed(elapsed))+" "+SError.Render(cmd+": "+reason))
+	fmt.Fprintln(l.stderr, lead(task, SError.Render("✗"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 
 // StepSoftFailed logs the end of a soft: step that failed; the task carries on.
 func (l *RunLog) StepSoftFailed(task string, elapsed time.Duration, cmd, reason string) {
-	fmt.Fprintln(l.stdout, lead(task, SStep.Render("!"))+SInfo.Render(formatElapsed(elapsed))+" "+SStep.Render(cmd+": "+reason))
+	fmt.Fprintln(l.stdout, lead(task, SStep.Render("!"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 
 // StepError logs a step that failed with a message but no run to time, soft

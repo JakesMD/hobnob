@@ -23,8 +23,8 @@ import (
 var ErrInterrupted = errors.New("interrupted")
 
 // reportedError marks an error whose failure has already been written to the
-// log, as a step's ✗ line and its tasks' end lines, so the caller prints
-// nothing more for it.
+// log, so the caller prints nothing more for it: as a step's ✗ line, or, for
+// an interrupt between steps, as the tasks' end lines alone.
 type reportedError struct{ err error }
 
 func (e reportedError) Error() string { return e.err.Error() }
@@ -163,12 +163,13 @@ func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileS
 // an already-established execCtx, carrying its memo forward, so a once:
 // task's memoized results survive the sandbox swap at a call: boundary.
 func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, scope *scope.Scope) error {
-	if _, _, err := resolveTask(taskName, execState.cfg); err != nil {
+	task, execCfg, err := resolveTask(taskName, execState.cfg)
+	if err != nil {
 		return err
 	}
 	began := time.Now()
 	softs := 0
-	skipped, err := runTask(execState, taskName, callDirTmpl, scope, &softs)
+	skipped, err := runTask(execState, task, execCfg, taskName, callDirTmpl, scope, &softs)
 	switch {
 	case err == nil && !skipped:
 		execState.log.TaskDone(taskName, time.Since(began), softs)
@@ -184,8 +185,7 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 
 // runTask does everything executeTask does except end the task in the log;
 // skipped is true when the task's own if: was false.
-func runTask(execState execCtx, taskName string, callDirTmpl literal.Expr, scope *scope.Scope, softs *int) (skipped bool, err error) {
-	task, execCfg, _ := resolveTask(taskName, execState.cfg)
+func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, taskName string, callDirTmpl literal.Expr, scope *scope.Scope, softs *int) (skipped bool, err error) {
 	if task.Cfg != nil {
 		execState.fileScopes.Apply(scope, task.Cfg)
 	}

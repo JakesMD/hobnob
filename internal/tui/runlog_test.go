@@ -5,6 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 func TestRunLogWritesEachKindOfLineToItsStream(t *testing.T) {
@@ -147,5 +150,27 @@ func TestRunLog_RunWithTrailingNewlineEndsWithoutAnEmptyContinuationLine(t *test
 	// Assert
 	if got := out.String(); strings.HasSuffix(got, "\n\n") || strings.Count(got, "\n") != 2 {
 		t.Errorf("got %q, want two lines", got)
+	}
+}
+
+func TestRunLog_FailureLinesColourOnlyTheMark(t *testing.T) {
+	// given colour on, when a hard and a soft failure are logged, then the
+	// command and reason follow the time as plain text (why: only the mark
+	// is red or yellow)
+	// Arrange
+	lipgloss.SetColorProfile(termenv.ANSI)
+	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
+	var stdout, stderr bytes.Buffer
+	log := NewRunLog(&stdout, &stderr)
+
+	// Act
+	log.StepFailed("t", time.Second, "go vet", "exit status 1")
+	log.StepSoftFailed("t", time.Second, "go vet", "exit status 1")
+
+	// Assert
+	for name, got := range map[string]string{"failed": stderr.String(), "soft failed": stdout.String()} {
+		if !strings.HasSuffix(got, " go vet: exit status 1\n") {
+			t.Errorf("%s: got %q, want the command and reason uncoloured", name, got)
+		}
 	}
 }
