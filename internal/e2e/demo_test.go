@@ -105,7 +105,7 @@ func TestE2E_Demo_BareInvocationStillShowsUsage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "Usage:")
+	res.Out(t, "Usage")
 	res.NotOut(t, "ask-trivia")
 	assertNoDemoNotice(t, res)
 }

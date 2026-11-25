@@ -422,7 +422,8 @@ Re-applying on a nested call is idempotent.
 
 ### `internal/cli`: presentation
 
-`--list`/`--help` rendering, task-selector data, links to the docs site,
+`--list`/`--help` rendering (tasks grouped by the part of the name before the
+first `:`, ungrouped last), task-selector data, links to the docs site,
 and the bash/zsh/fish completions embedded from
 `internal/cli/completions/`.
 
