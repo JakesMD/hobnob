@@ -7,7 +7,7 @@ hobnob ask-trivia
 ```
 
 You can run it from anywhere in your project. hobnob looks for `hobnob.yml`
-in the current directory, then in each parent directory in turn, and uses the
+in the current directory, then in each folder above it in turn, and uses the
 first one it finds.
 
 ## Picking a task

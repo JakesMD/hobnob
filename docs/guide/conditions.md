@@ -27,7 +27,8 @@ run: [lab-check] echo "let's go"
 ```
 
 A step that `if:` skips prints one grey `⊘` line naming the command it
-skips, such as `lab-check ⊘ echo "lab coats on"`, without the condition.
+skips, such as `lab-check ⊘ echo "lab coats on"`, without the condition. A
+skipped `call:` names the called task: `quiz ⊘ explain-answer`.
 
 ## How a condition works
 

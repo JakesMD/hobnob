@@ -104,7 +104,7 @@ func TestE2E_LogErrors_BeforeARunHobnobTakesTheTasksPlace(t *testing.T) {
 	}{
 		{"unparsable taskfile", Case{Yml: "tasks: [\n", Args: []string{"x"}}, `^hobnob ✗ hobnob\.yml line 1: did not find expected node content\n$`},
 		{"no such task", Case{Yml: "tasks: {}\n", Args: []string{"nope"}}, `^hobnob ✗ no task "nope"\n$`},
-		{"no taskfile", Case{Files: Files{}, Args: []string{"x"}, Discover: true}, `^hobnob ✗ no hobnob\.yml or hobnob\.yaml found in \S+ or any parent directory\n$`},
+		{"no taskfile", Case{Files: Files{}, Args: []string{"x"}, Discover: true}, `^hobnob ✗ no hobnob\.yml or hobnob\.yaml in \S+ or any folder above it\n$`},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

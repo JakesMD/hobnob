@@ -21,7 +21,7 @@ func findTaskfile(startDir string) (string, error) {
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
-			return "", fmt.Errorf("no hobnob.yml or hobnob.yaml found in %s or any parent directory", startDir)
+			return "", fmt.Errorf("no hobnob.yml or hobnob.yaml in %s or any folder above it", startDir)
 		}
 		dir = parent
 	}
