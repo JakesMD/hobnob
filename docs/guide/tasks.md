@@ -22,8 +22,10 @@ run: [ask-trivia] echo "Mercury"
 ✓ [ask-trivia] done
 ```
 
-hobnob prints each command before running it, then what the command prints,
-then `✓` once the task is done.
+hobnob prints each command on a `task $` line before running it, then what
+the command prints on `task │` lines, then `✓` once the task is done. A command
+of several lines continues under its first, and a `dir:` or `quiet:` shows as a
+grey `# …` note after the command.
 
 ## Describing a task
 

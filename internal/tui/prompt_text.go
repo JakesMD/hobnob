@@ -13,7 +13,10 @@ import (
 // expression's own text) purely for display, so tui never needs to know how
 // a check is evaluated or what a var's type is.
 func PromptText(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
-	model := newTextModel(info, varName, validate, checkDesc, defaultVal, task, secret, optional)
+	model := newTextModel(
+		card{task: task, varName: varName, optional: optional, info: info},
+		textOptions{validate: validate, checkDesc: checkDesc, defaultVal: defaultVal, secret: secret},
+	)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
@@ -27,46 +30,50 @@ func PromptText(ctx context.Context, info, varName string, validate func(string)
 	if secret {
 		displayVal = SecretMask
 	}
-	printGetLine(task, final.varName, displayVal)
+	printGetLine(task, varName, displayVal)
 	return final.value, nil
 }
 
-type textModel struct {
-	info       string
+type textOptions struct {
 	validate   func(string) (bool, error)
 	checkDesc  string
-	varName    string
-	task       string
 	defaultVal string
-	textInput  textinput.Model
-	errMsg     string
-	value      string
-	quit       bool
 	secret     bool
-	optional   bool
-	done       bool
-	termWidth  int
 }
 
-func newTextModel(info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) textModel {
+const secretDefaultMask = "••••"
+
+type textModel struct {
+	frame      card
+	validate   func(string) (bool, error)
+	checkDesc  string
+	defaultVal string
+	textInput  textinput.Model
+	// maskedDefault is set for a secret default, which shows as a fixed
+	// mask until edited so its length isn't revealed.
+	maskedDefault bool
+	value         string
+	quit          bool
+	done          bool
+}
+
+func newTextModel(frame card, opts textOptions) textModel {
 	textInput := textinput.New()
 	textInput.Prompt = SArrow.Render("› ")
-	if secret {
+	if opts.secret {
 		textInput.EchoMode = textinput.EchoPassword
 		textInput.EchoCharacter = '•'
 	}
-	textInput.SetValue(defaultVal)
+	textInput.SetValue(opts.defaultVal)
 	textInput.Focus()
 	return textModel{
-		info:       info,
-		validate:   validate,
-		checkDesc:  checkDesc,
-		varName:    varName,
-		task:       task,
-		defaultVal: defaultVal,
+		frame:      frame,
+		validate:   opts.validate,
+		checkDesc:  opts.checkDesc,
+		defaultVal: opts.defaultVal,
 		textInput:  textInput,
-		secret:     secret,
-		optional:   optional,
+
+		maskedDefault: opts.secret && opts.defaultVal != "",
 	}
 }
 
@@ -74,7 +81,7 @@ func (model textModel) Init() tea.Cmd { return textinput.Blink }
 
 func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if size, ok := msg.(tea.WindowSizeMsg); ok {
-		model.termWidth = size.Width
+		model.frame.termWidth = size.Width
 		return model, nil
 	}
 	keyMsg, ok := msg.(tea.KeyMsg)
@@ -88,14 +95,14 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model.quit = true
 		return model, tea.Quit
 	case tea.KeyEsc:
-		if model.optional {
+		if model.frame.optional {
 			model.done = true
 			return model, tea.Quit
 		}
 		return model, nil
 	case tea.KeyEnter:
 		val := model.textInput.Value()
-		if model.optional && val == "" {
+		if model.frame.optional && val == "" {
 			model.done = true
 			return model, tea.Quit
 		}
@@ -105,7 +112,7 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if model.validate != nil {
 			ok, err := model.validate(val)
 			if err != nil || !ok {
-				model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
+				model.frame.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 				return model, nil
 			}
 		}
@@ -123,17 +130,14 @@ func (model textModel) View() string {
 		return ""
 	}
 	hints := []hint{{"enter", "confirm"}}
-	if model.optional {
+	if model.frame.optional {
 		hints = append(hints, hint{"esc", "skip"})
 	}
-	return card{
-		task:      model.task,
-		varName:   model.varName,
-		optional:  model.optional,
-		info:      model.info,
-		body:      model.textInput.View(),
-		errMsg:    model.errMsg,
-		hints:     hints,
-		termWidth: model.termWidth,
-	}.render()
+	frame := model.frame
+	frame.body = model.textInput.View()
+	if model.maskedDefault && model.textInput.Value() == model.defaultVal {
+		frame.body = model.textInput.Prompt + secretDefaultMask
+	}
+	frame.hints = hints
+	return frame.render()
 }

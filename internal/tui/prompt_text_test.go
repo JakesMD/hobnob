@@ -28,7 +28,7 @@ func TestTextModel_View_Card(t *testing.T) {
 	}{
 		{
 			name:  "given a required prompt with info, when rendered, then title, info and enter hint show",
-			model: newTextModel("How many replicas?", "REPLICAS", nil, "", "", "deploy", false, false),
+			model: newTextModel(card{task: "deploy", varName: "REPLICAS", info: "How many replicas?"}, textOptions{}),
 			wantHas: []string{
 				"╭─ deploy » REPLICAS ─", "│  How many replicas?", "› ", "╰─", "\n enter confirm",
 			},
@@ -36,19 +36,19 @@ func TestTextModel_View_Card(t *testing.T) {
 		},
 		{
 			name:    "given an optional prompt, when rendered, then the title and hints say it can be skipped",
-			model:   newTextModel("", "NOTES", nil, "", "", "deploy", false, true),
+			model:   newTextModel(card{task: "deploy", varName: "NOTES", optional: true}, textOptions{}),
 			wantHas: []string{"deploy » NOTES (optional) ─", "enter confirm • esc skip"},
 		},
 		{
 			name:    "given a default, when rendered, then the field is prefilled with it",
-			model:   newTextModel("", "ENV", nil, "", "staging", "deploy", false, false),
+			model:   newTextModel(card{task: "deploy", varName: "ENV"}, textOptions{defaultVal: "staging"}),
 			wantHas: []string{"› staging"},
 		},
 		{
 			name:     "given a secret default, when rendered, then the field shows bullets, never the value",
-			model:    newTextModel("", "TOKEN", nil, "", "hunter2", "deploy", true, false),
-			wantHas:  []string{"••••"},
-			wantLack: []string{"hunter2"},
+			model:    newTextModel(card{task: "deploy", varName: "TOKEN"}, textOptions{defaultVal: "hunter2", secret: true}),
+			wantHas:  []string{"› ••••"},
+			wantLack: []string{"hunter2", "•••••"},
 		},
 	}
 
@@ -91,7 +91,7 @@ func TestTextModel_View_WidthFollowsTerminalCappedAt76(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Arrange
-			model := newTextModel("An info line that is long enough to wrap in a narrow terminal window.", "X", nil, "", "", "t", false, false)
+			model := newTextModel(card{task: "t", varName: "X", info: "An info line that is long enough to wrap in a narrow terminal window."}, textOptions{})
 			next, _ := model.Update(tea.WindowSizeMsg{Width: test.termWidth})
 
 			// Act
@@ -107,8 +107,8 @@ func TestTextModel_View_WidthFollowsTerminalCappedAt76(t *testing.T) {
 
 func TestTextModel_Update_Answers(t *testing.T) {
 	// given a text prompt, when keys are pressed, then it answers, skips or
-	// shows its error line (why: the card must behave like the old prompt
-	// plus the new skip keys)
+	// shows its error line (why: a text prompt must answer, skip or reject
+	// on exactly these keys)
 	failing := func(string) (bool, error) { return false, nil }
 	enter := tea.KeyMsg{Type: tea.KeyEnter}
 	esc := tea.KeyMsg{Type: tea.KeyEsc}
@@ -124,43 +124,43 @@ func TestTextModel_Update_Answers(t *testing.T) {
 	}{
 		{
 			name:      "given a default, when enter is pressed, then the default is the answer",
-			model:     newTextModel("", "ENV", nil, "", "staging", "t", false, false),
+			model:     newTextModel(card{task: "t", varName: "ENV"}, textOptions{defaultVal: "staging"}),
 			keys:      []tea.KeyMsg{enter},
 			wantValue: "staging", wantDone: true,
 		},
 		{
 			name:      "given a typed value, when enter is pressed, then it is the answer",
-			model:     newTextModel("", "ENV", nil, "", "", "t", false, false),
+			model:     newTextModel(card{task: "t", varName: "ENV"}, textOptions{}),
 			typed:     "prod",
 			keys:      []tea.KeyMsg{enter},
 			wantValue: "prod", wantDone: true,
 		},
 		{
 			name:     "given an optional prompt, when enter is pressed on an empty field, then it is skipped",
-			model:    newTextModel("", "N", nil, "", "", "t", false, true),
+			model:    newTextModel(card{task: "t", varName: "N", optional: true}, textOptions{}),
 			keys:     []tea.KeyMsg{enter},
 			wantDone: true,
 		},
 		{
 			name:     "given an optional prompt with a default, when esc is pressed, then it is skipped with no answer",
-			model:    newTextModel("", "N", nil, "", "keep", "t", false, true),
+			model:    newTextModel(card{task: "t", varName: "N", optional: true}, textOptions{defaultVal: "keep"}),
 			keys:     []tea.KeyMsg{esc},
 			wantDone: true,
 		},
 		{
 			name:  "given a required prompt, when esc is pressed, then nothing happens",
-			model: newTextModel("", "N", nil, "", "", "t", false, false),
+			model: newTextModel(card{task: "t", varName: "N"}, textOptions{}),
 			keys:  []tea.KeyMsg{esc},
 		},
 		{
 			name:     "given any prompt, when ctrl+c is pressed, then it aborts",
-			model:    newTextModel("", "N", nil, "", "", "t", false, true),
+			model:    newTextModel(card{task: "t", varName: "N", optional: true}, textOptions{}),
 			keys:     []tea.KeyMsg{{Type: tea.KeyCtrlC}},
 			wantQuit: true,
 		},
 		{
 			name:       "given a failing check, when enter is pressed, then a red-bordered error line shows and the prompt stays open",
-			model:      newTextModel("", "N", failing, "N >= 1", "", "t", false, false),
+			model:      newTextModel(card{task: "t", varName: "N"}, textOptions{validate: failing, checkDesc: "N >= 1"}),
 			typed:      "0",
 			keys:       []tea.KeyMsg{enter},
 			wantInView: "✗ validation failed: N >= 1",

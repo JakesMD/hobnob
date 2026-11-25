@@ -717,9 +717,9 @@ func TestE2E_Call_IntoDynamicKeyReadsCallerScope(t *testing.T) {
 	res.Lines(t, "out=from-caller-key")
 }
 
-func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) {
+func TestE2E_Call_ChildSecretPulledByAccessorIsMasked(t *testing.T) {
 	// given a once: task that pulls a child-only secret through an accessor
-	// leaf, when a second call hits the cache, then the cache-hit summary
+	// leaf, when the parent's command uses it, then the command line
 	// masks that var (why: the var is flagged secret because its value holds
 	// one, whatever the leaf's shape, not only for a bare key)
 	// Arrange
@@ -728,7 +728,9 @@ func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) 
 		  parent:
 		    steps:
 		      - call: _session
-		      - call: _session
+		        into:
+		          - T
+		      - run: test -n "{{.T}}"
 		  _session:
 		    once: true
 		    steps:
@@ -750,7 +752,6 @@ func TestE2E_Call_ChildSecretPulledByAccessorMaskedInCacheHitLine(t *testing.T) 
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "cached")
 	res.Masked(t, "hunter2")
 }
 

@@ -440,34 +440,3 @@ func TestE2E_Once_SelfCycleErrors(t *testing.T) {
 	res.Fails(t)
 	res.Err(t, "cycle")
 }
-
-func TestE2E_Once_CacheHitIsLoggedWithProducedVars(t *testing.T) {
-	// given a once: task called: twice, when the second call: hits the
-	// cache, then the run announces it, naming the vars the first run
-	// produced (why: otherwise a memoized call: is silent — no prompt, no
-	// command output — and there'd be no way to tell it happened short of a
-	// debugger)
-	// Arrange
-	c := Case{
-		Yml: `
-			tasks:
-			  t:
-			    steps:
-			      - call: setup
-			      - call: setup
-			  setup:
-			    once: true
-			    steps:
-			      - set:
-			          - ACCOUNT: "123456789"
-		`,
-		Args: []string{"t"},
-	}
-
-	// Act
-	res := Run(t, c)
-
-	// Assert
-	res.OK(t)
-	res.Out(t, "cached", "ACCOUNT=123456789")
-}

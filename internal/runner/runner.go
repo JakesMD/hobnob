@@ -194,7 +194,7 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			}
 			if !ok {
 				if step.Kind == config.KindRun {
-					execState.log.RunSkipped(execState.task)
+					execState.log.RunSkipped(execState.task, skippedRunText(step, scope))
 				}
 				continue
 			}

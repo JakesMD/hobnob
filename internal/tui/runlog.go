@@ -3,6 +3,9 @@ package tui
 import (
 	"fmt"
 	"io"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // RunLog is the one writer for the lines the runner and app print during a
@@ -19,32 +22,40 @@ func NewRunLog(stdout, stderr io.Writer) *RunLog {
 	return &RunLog{stdout: stdout, stderr: stderr}
 }
 
-// Run logs a run: step's command with its dir: when it has one. It does not
-// mask: the caller passes cmd already masked.
-func (l *RunLog) Run(task, cmd, dir string) {
-	for _, line := range RunDisplayLines(cmd, task, dir) {
-		fmt.Fprintln(l.stdout, line)
+// Run logs a run: step's command, which the caller passes already masked. The first line carries the notes,
+// each as a grey "# …"; continuation lines of a multi-line command sit under
+// it, indented to the command's start.
+func (l *RunLog) Run(task, cmd string, notes ...string) {
+	lines := strings.Split(cmd, "\n")
+	first := lead(task, taskMark(task, "$")) + lines[0]
+	for _, note := range notes {
+		first += " " + SInfo.Render("# "+note)
+	}
+	fmt.Fprintln(l.stdout, first)
+	indent := strings.Repeat(" ", lipgloss.Width(lead(task, "$")))
+	for _, line := range lines[1:] {
+		fmt.Fprintln(l.stdout, indent+line)
 	}
 }
 
-// CallCached logs a call: step that reused a once: task's cached result.
-func (l *RunLog) CallCached(task, calledTask, summary string) {
-	fmt.Fprintln(l.stdout, CallCacheHitLine(task, calledTask, summary))
+// Call logs a call: step, the called task in its own colour.
+func (l *RunLog) Call(task, calledTask string) {
+	fmt.Fprintln(l.stdout, lead(task, taskMark(task, "→"))+TaskStyle(calledTask).Render(calledTask))
+}
+
+// DoneEarlier logs the end of a once: task a call: found already run.
+func (l *RunLog) DoneEarlier(task string) {
+	fmt.Fprintln(l.stdout, lead(task, SChecked.Render("✓"))+SChecked.Render("done")+" "+SInfo.Render("earlier"))
 }
 
 // TaskSkipped logs a task whose if: was false.
 func (l *RunLog) TaskSkipped(task string) {
-	fmt.Fprintln(l.stdout, SkipLine(task))
+	l.RunSkipped(task, "skipped")
 }
 
-// RunSkipped logs a run: step whose if: was false.
-func (l *RunLog) RunSkipped(task string) {
-	fmt.Fprintln(l.stdout, RunSkipLine(task))
-}
-
-// Note logs the stand-in line for a quiet: run: step's hidden output.
-func (l *RunLog) Note(task, msg string) {
-	fmt.Fprintln(l.stdout, RunQuietLine(task, msg))
+// RunSkipped logs a skipped step, naming what it would have run.
+func (l *RunLog) RunSkipped(task, what string) {
+	fmt.Fprintln(l.stdout, lead(task, SInfo.Render("⊘"))+SInfo.Render(what))
 }
 
 // TaskDone logs the end of a task that succeeded.
@@ -58,8 +69,8 @@ func (l *RunLog) TaskFailed(task, message string) {
 }
 
 // Output returns the writers for a command's stdout and stderr, each line
-// prefixed with the task's name.
+// prefixed "task │".
 func (l *RunLog) Output(task string) (stdout, stderr *LineWriter) {
-	prefix := TaskPrefix(task)
+	prefix := lead(task, SInfo.Render("│"))
 	return NewLineWriter(l.stdout, prefix), NewLineWriter(l.stderr, prefix)
 }

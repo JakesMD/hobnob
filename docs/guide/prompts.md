@@ -202,7 +202,7 @@ tells you which variable to pass.
   it. The card is as wide as the terminal, up to 76 columns. A failing
   `check:` shows `✗` and its message inside the card, which turns the border
   red, and the prompt stays open.
-- **ctrl+c is the only key that aborts the run.** In a menu, `q` is just a
+- **CTRL+C is the only key that aborts the run.** In a menu, `q` is just a
   letter to filter by.
 - **A menu's filter line appears once you type.** A space as the first
   character doesn't start a filter; after that it's an ordinary character.

@@ -4,19 +4,20 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
-	cardMaxWidth     = 76
-	cardDefaultWidth = 80
-	cardPadding      = 2
+	cardMaxWidth = 76
+	cardPadding  = 2
+	// sideBorders is the left and right border column of the box.
+	sideBorders = 2
+	// topEdgeFrame is the top edge's fixed characters around the title and
+	// fill: "╭─ ", the space after the title, and "╮".
+	topEdgeFrame = 5
 )
 
-var (
-	sBorder  = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	sBorderE = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	sKey     = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Bold(true)
-)
+var sKey = lipgloss.NewStyle().Foreground(lipgloss.Color("7")).Bold(true)
 
 // hint is one entry of the line under a card. An empty key makes it plain
 // dim text, such as "type to filter".
@@ -45,13 +46,13 @@ func (c card) title() string {
 func (c card) outerWidth() int {
 	width := c.termWidth
 	if width <= 0 {
-		width = cardDefaultWidth
+		width = cardMaxWidth
 	}
 	return min(width, cardMaxWidth)
 }
 
 func (c card) innerWidth() int {
-	return c.outerWidth() - 2 - 2*cardPadding
+	return c.outerWidth() - sideBorders - 2*cardPadding
 }
 
 func (c card) render() string {
@@ -68,17 +69,18 @@ func (c card) render() string {
 		content = append(content, "", SError.Render("✗ "+c.errMsg))
 	}
 
-	border, borderStyle := lipgloss.Color("8"), sBorder
+	border := colorBorder
 	if c.errMsg != "" {
-		border, borderStyle = lipgloss.Color("9"), sBorderE
+		border = colorBorderError
 	}
+	borderStyle := lipgloss.NewStyle().Foreground(border)
 	box := lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(border).
-		Padding(1, cardPadding).Width(outer - 2).Render(strings.Join(content, "\n"))
+		Padding(1, cardPadding).Width(outer - sideBorders).Render(strings.Join(content, "\n"))
 
 	lines := strings.Split(box, "\n")
-	title := c.title()
-	fill := outer - lipgloss.Width(title) - 5
-	lines[0] = borderStyle.Render("╭─ ") + title + " " + borderStyle.Render(strings.Repeat("─", max(fill, 1))+"╮")
+	title := ansi.Truncate(c.title(), outer-topEdgeFrame-1, "…")
+	fill := outer - lipgloss.Width(title) - topEdgeFrame
+	lines[0] = borderStyle.Render("╭─ ") + title + " " + borderStyle.Render(strings.Repeat("─", fill)+"╮")
 	return strings.Join(lines, "\n") + "\n " + renderHints(c.hints)
 }
 
