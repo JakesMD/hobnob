@@ -755,7 +755,7 @@ failed step's task and reason, except that a soft-failed step is forgiven). Term
 (`snapshot.go`): the screen (progress, done or failed), the task, the rail
 (answers and setup entries), progress (the innermost running task's `info:` or
 name, the last line, empty for a held step) and the result (outcome, label,
-last line, duration and the masked log). Every SSE event on `GET /events` is
+last line, duration and the masked log). The page keeps the masked log it receives with the result, which is what Copy details copies; the clock runs on the page from `progress.elapsedMs`. Every SSE event on `GET /events` is
 a whole snapshot; a stream that is behind gets only the latest. To add a
 screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `page.html`.

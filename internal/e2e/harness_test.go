@@ -189,6 +189,12 @@
 // 164. drop the runner.CheckTask call from app.execWebTask               -> web_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
 // 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> web_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
 // 166. drop the Flush calls after the copiers finish in runner.execRun    -> web_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
+// 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> web_test.go (LastLineHasNoColourCodes)
+// 168. leave elapsed time out of web.state.snapshot -> web_test.go (ProgressSnapshotsCarryElapsedTime)
+// 169. never mark a rail entry done in web.state.TaskLeft -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 170. drop the r.Host check in web.Server.guard                         -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 171. drop the Origin check in web.Server.guard                          -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 172. accept --web on Windows in app.checkWebFlag                        -> internal/app/args_test.go (WebFlagFailsOnWindows)
 package e2e
 
 import (

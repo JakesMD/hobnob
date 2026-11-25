@@ -24,7 +24,8 @@ address. The page is a setup assistant:
   task and for each task it [calls](./calling-tasks.md), added when it starts,
   ticked when it finishes, and crossed when it fails;
 - the **main area** shows the label of the task now running, an activity bar,
-  the last line of output and a clock. The label is the task's `info:`, or its
+  the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
+  of the time since the run began. The label is the task's `info:`, or its
   name when it has none;
 - a **bottom bar** holds the buttons for the screen.
 
@@ -59,6 +60,13 @@ reports: 0 on success, 1 on failure.
 ## Security
 
 The page is served on `127.0.0.1` only, on a random free port. Its address
-carries a random token, and every request must carry it, or hobnob refuses the
-request. Anyone who can read your terminal can open the page, so treat the
-address like a password for the length of the run.
+carries a random token, and hobnob refuses every request that:
+
+- lacks the token, or has a wrong one;
+- has a `Host` other than that address and port, which stops a web page on
+  another site reaching hobnob through a rebinding of its own name;
+- has an `Origin` that isn't that address and port. A request with no
+  `Origin` is fine.
+
+Anyone who can read your terminal can open the page, so treat the address like
+a password for the length of the run.

@@ -94,6 +94,31 @@ func (b *Browser) Get(path, token string) (int, string) {
 	return b.do(http.MethodGet, path, token, nil)
 }
 
+// GetWith requests path with the right token and the given headers; a "Host"
+// entry sets the request's Host.
+func (b *Browser) GetWith(path string, headers map[string]string) int {
+	b.t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), browserTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.base+path+"?token="+url.QueryEscape(b.token), nil)
+	if err != nil {
+		b.fail("GET %s: %v", path, err)
+	}
+	for name, value := range headers {
+		if name == "Host" {
+			req.Host = value
+			continue
+		}
+		req.Header.Set(name, value)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		b.fail("GET %s: %v", path, err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
 // Post sends the named action with body as JSON, with the right token.
 func (b *Browser) Post(action string, body any) int {
 	b.t.Helper()
