@@ -111,9 +111,9 @@ A step that ignores the request keeps running until the second press, which acts
 as a second CTRL+C and kills it. A run that ends after **Cancel** is Cancelled,
 not Failed, and exits like an interrupted run: 1.
 
-CTRL+C in the terminal works as it always does. The page then shows Cancelled,
-and if hobnob exits before it can say how the run ended, "hobnob has stopped".
-A page already on Done or Failed keeps that screen.
+CTRL+C in the terminal works as it always does. The page then loses its
+connection and shows "hobnob has stopped", unless it was already on Done, Failed
+or Cancelled, which it keeps.
 
 With a task, hobnob exits once the page has been sent how the run ended. The
 page keeps that screen after hobnob has gone. Without a task, hobnob stays until

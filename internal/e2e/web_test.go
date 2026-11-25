@@ -606,11 +606,11 @@ func TestE2E_Web_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully
 	}
 }
 
-func TestE2E_Web_TerminalInterruptStillDeliversCancelledToAnOpenPage(t *testing.T) {
+func TestE2E_Web_TerminalInterruptExitsPromptlyWithAPageOpen(t *testing.T) {
 	// given an open page and a running step, when CTRL+C reaches the
-	// terminal, then the page is still sent Cancelled before hobnob exits
-	// (why: the page must not show "hobnob has stopped" for a run it could
-	// have reported)
+	// terminal, then hobnob exits as an interrupted run at once, without
+	// waiting for the page (why: terminal CTRL+C behaves as it always does;
+	// the page shows "hobnob has stopped")
 	// Arrange
 	yml := `
 		tasks:
@@ -618,21 +618,22 @@ func TestE2E_Web_TerminalInterruptStillDeliversCancelledToAnOpenPage(t *testing.
 		    steps:
 		      - run: touch started; while :; do :; done
 	`
-	var result web.Snapshot
+	var interruptedAt time.Time
 	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		tab := b.Open()
+		b.Open()
 		b.Wait("started")
+		interruptedAt = time.Now()
 		b.Interrupt()
-		result = tab.Screen(web.ScreenFailed)
 	}}
 
 	// Act
 	res := Run(t, c)
+	exited := time.Since(interruptedAt)
 
 	// Assert
 	res.Fails(t)
-	if result.Result.Outcome != web.OutcomeCancelled {
-		t.Errorf("result = %+v", result.Result)
+	if exited > 1500*time.Millisecond {
+		t.Errorf("exited %v after CTRL+C, want at once", exited)
 	}
 }
 

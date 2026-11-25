@@ -6,10 +6,6 @@ import (
 	"time"
 )
 
-// interruptGrace is how long a run cut short by CTRL+C in the terminal waits
-// for an open page to take the Cancelled snapshot before hobnob exits.
-const interruptGrace = 2 * time.Second
-
 // SetInterrupt tells the server how to stop the run that starts now: stop is
 // a first CTRL+C, the graceful stop, and kill is a second one, which
 // force-stops a step that ignores it. Cancel acts only between SetInterrupt

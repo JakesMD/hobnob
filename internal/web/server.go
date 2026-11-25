@@ -126,12 +126,6 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 	select {
 	case <-s.delivered:
 	case <-ctx.Done():
-		if s.hasStreams() {
-			select {
-			case <-s.delivered:
-			case <-time.After(interruptGrace):
-			}
-		}
 	case <-s.abandoned:
 	}
 }

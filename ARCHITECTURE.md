@@ -805,8 +805,8 @@ folder and the next snapshot lists it; the picks live in the page.
 `POST /actions/{name}` routes through `Server.actions` (`answer`, `skip`,
 `open`, `choose`, `home`). After a task-launched run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or the grace timer giving up), so Done and Failed
-outlive hobnob; if the terminal's CTRL+C ended the run, it still waits up to
-`interruptGrace` when a page is open, so Cancelled reaches it. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
+outlive hobnob. A terminal CTRL+C ends that wait at once, as it ends
+`AwaitHome`: the page loses its connection and shows "hobnob has stopped". The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
 
 **Tabs and the grace timer.** A tab is one open `GET /events` connection.
 The newest wins: a new connection closes the previous one's `replaced`
