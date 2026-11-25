@@ -648,12 +648,18 @@ CTRL+C writes ETX to its input; the second (`KillRunningStep`) terminates the
 process and closes the console. `conPTYFilter` drops the mode switches it
 writes for its own terminal. There is no SIGWINCH, so `tui.onResize` polls.
 
-Every command inherits hobnob's stdin. When stdin is a terminal hobnob owns
-the foreground of, `foregroundTerminal` makes the step's process group the
-terminal's foreground group (otherwise SIGTTIN stops a `read`), and hands the
-terminal back once the shell has exited. CTRL+C then reaches only the
-command, so a command killed by SIGINT makes hobnob SIGINT itself
-(`interruptSelf`), which main treats as a first CTRL+C.
+Every command inherits hobnob's stdin. When stdin is a terminal hobnob has the
+foreground of (`stdin_term.go`, Linux and macOS), `attachStdin` instead gives
+the command a PTY as stdin and controlling terminal (`Setsid`, so its group
+is that PTY's foreground and `read` is never stopped by SIGTTIN; the step's
+stdout PTY is reused when there is one), puts the real terminal in a mode that
+passes every key (output processing stays on) and forwards the keys to the
+PTY. A CTRL+C byte is not forwarded: it becomes a SIGINT to hobnob itself, so
+`main.go`'s first and second CTRL+C work for every command, even one that
+traps SIGINT. The forwarder polls, so it never holds a read that would
+swallow the next prompt's keys. The terminal is restored when the shell exits
+(`stop`, deferred in `execRun` too) and by `RestoreTerminal`, which `main.go`
+calls before the forced exit.
 
 **Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
 copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block

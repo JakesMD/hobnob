@@ -38,6 +38,7 @@ func main() {
 		// restore the terminal before the process exits instead of racing an
 		// unconditional os.Exit against its (async) teardown.
 		if runner.KillRunningStep() {
+			runner.RestoreTerminal()
 			os.Exit(1)
 		}
 	}()
