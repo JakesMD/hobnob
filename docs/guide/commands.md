@@ -186,6 +186,12 @@ yourself.
   on one line.
 - **Lines a tool redraws by moving the cursor, such as `docker pull`'s
   layers, show without a prefix.**
+- **On Windows the terminal is a ConPTY**, and it works the same, with two
+  gaps. It needs Windows 11 (22H2) or newer; on older Windows a command gets
+  pipes, as if the output were piped. And the terminal follows a resize within
+  a fifth of a second, not at once.
+- **On Windows CTRL+C reaches the command as a terminal would send it.** The
+  first one asks it to stop; the second kills it.
 
 ### Hidden output
 

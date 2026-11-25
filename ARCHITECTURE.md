@@ -634,8 +634,19 @@ always a pipe. `RunLog.OnResize` (SIGWINCH, `screen_unix.go`) resizes the PTY
 while the step runs. Both `LineWriter`s are `Watch`ed too: they write text as
 it arrives (a prompt with no newline), wrap long lines under their own text,
 and, once a chunk holds a cursor-movement sequence, pass everything after it
-through unprefixed for the rest of the step. Windows has no PTY yet
-(`stepio_other.go`), so steps get pipes there.
+through unprefixed for the rest of the step.
+
+On Windows, `stepio_windows.go`'s `newPTYPipe` makes a ConPTY in passthrough
+mode (older Windows rejects the flag, and the step gets pipes). os/exec can't
+create a process on a pseudo console, so `startOnPTY` calls `CreateProcess`
+itself with the pseudo console and a handle list (hobnob's stdin, the stderr
+pipe) and hands the process to the `exec.Cmd` for `Wait`. The pseudo console's
+input pipe is the step's `master`, which keys `conPTYs`, so the shared
+`setPTYSize` seam holds. ConPTY ends its output only when closed, so `handoff`
+closes it (`closePTY`) and waits for the copy to drain (`waitPTY`). A first
+CTRL+C writes ETX to its input; the second (`KillRunningStep`) terminates the
+process and closes the console. `conPTYFilter` drops the mode switches it
+writes for its own terminal. There is no SIGWINCH, so `tui.onResize` polls.
 
 Every command inherits hobnob's stdin. When stdin is a terminal hobnob has the
 foreground of (`stdin_term.go`, Linux and macOS), `attachStdin` instead gives

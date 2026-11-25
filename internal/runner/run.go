@@ -157,7 +157,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		})
 		defer stopResizing()
 	}
-	if err := shellCmd.Start(); err != nil {
+	if err := pipes.start(execState.ctx, shellCmd); err != nil {
 		// The process never ran — no exit status exists, so there's nothing
 		// for into: exit to capture.
 		pipes.abandon()

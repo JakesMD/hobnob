@@ -3,8 +3,9 @@
 package runner
 
 import (
-	"os"
 	osExec "os/exec"
+
+	"golang.org/x/sys/windows"
 )
 
 // setProcAttr is a no-op on windows: there's no process-group concept to opt
@@ -32,8 +33,13 @@ func KillRunningStep() bool {
 	if pid == 0 {
 		return false
 	}
-	if p, err := os.FindProcess(pid); err == nil {
-		_ = p.Kill()
+	conPTYs.Range(func(_, value any) bool {
+		value.(*conPTY).terminate()
+		return true
+	})
+	if h, err := windows.OpenProcess(windows.PROCESS_TERMINATE, false, uint32(pid)); err == nil {
+		_ = windows.TerminateProcess(h, 1)
+		windows.CloseHandle(h)
 	}
 	return true
 }

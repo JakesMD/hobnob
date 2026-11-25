@@ -148,6 +148,9 @@
 // 124. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
 // 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
 // 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 127. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
+// 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
+// 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
 package e2e
 
 import (

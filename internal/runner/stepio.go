@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"io"
 	"os"
 	osExec "os/exec"
@@ -56,6 +57,10 @@ type stepPipes struct {
 	abandoned bool // set once the run stops copying; later output is dropped
 }
 
+// ptyDrainWait is how long handoff waits for a pseudo console to deliver what
+// the step wrote once it is closed.
+const ptyDrainWait = time.Second
+
 // ptySize is the size of the PTY a step's stdout goes to.
 type ptySize struct{ cols, rows int }
 
@@ -83,6 +88,12 @@ func attachPipes(cmd *osExec.Cmd, size *ptySize) (*stepPipes, error) {
 	cmd.Stdout = stdout.w
 	cmd.Stderr = stderr.w
 	return &stepPipes{stdout: stdout, stderr: stderr, master: master}, nil
+}
+
+// start starts cmd. Where the step's PTY needs the process created attached to
+// it (ConPTY), that is done here, and ctx cancelling interrupts the process.
+func (p *stepPipes) start(ctx context.Context, cmd *osExec.Cmd) error {
+	return p.startOnPTY(ctx, cmd)
 }
 
 // resize sets the PTY's size; it does nothing when stdout is a pipe.
@@ -114,6 +125,7 @@ func (p *stepPipes) startCopying(stdoutDest, stderrDest io.Writer) {
 
 // abandon closes everything after a failed Start.
 func (p *stepPipes) abandon() {
+	p.closePTY()
 	p.stdout.close()
 	p.stderr.close()
 }
@@ -122,6 +134,8 @@ func (p *stepPipes) abandon() {
 // wrote is delivered to its writers, and from then on the pipes, which a
 // backgrounded job may still hold, feed lateStdout and lateStderr instead.
 func (p *stepPipes) handoff(lateStdout, lateStderr io.Writer) {
+	p.closePTY()
+	p.waitPTY(ptyDrainWait)
 	if !canDrainNow {
 		p.waitClosed(killDrain)
 	}
