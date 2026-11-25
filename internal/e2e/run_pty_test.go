@@ -73,27 +73,25 @@ func TestE2E_RunPTY_CommandInheritsStdin(t *testing.T) {
 	// given hobnob's stdin holds a line, when a command reads it, then it
 	// gets the line, piped or watched (why: read, sudo and [y/N] prompts must
 	// work, and a command used to get no stdin)
-	for _, watched := range []bool{false, true} {
-		name := "piped"
-		c := Case{Args: []string{"t"}, Stdin: "bob\n", Yml: `
-			tasks:
-			  t:
-			    steps:
-			      - run: read n && echo "hi $n"
-		`}
-		if watched {
-			name = "watched"
-			c.Screen, _ = screenOf(80, 24)
-		}
-		t.Run(name, func(t *testing.T) {
-			// Arrange / Act
-			res := Run(t, c)
 
-			// Assert
-			res.OK(t)
-			res.Lines(t, "hi bob")
-		})
-	}
+	// Arrange
+	watched, _ := screenOf(80, 24)
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: read n && echo "hi $n"
+	`
+
+	// Act
+	piped := Run(t, Case{Yml: yml, Args: []string{"t"}, Stdin: "bob\n"})
+	onTerminal := Run(t, Case{Yml: yml, Args: []string{"t"}, Stdin: "bob\n", Screen: watched})
+
+	// Assert
+	piped.OK(t)
+	piped.Lines(t, "hi bob")
+	onTerminal.OK(t)
+	onTerminal.Lines(t, "hi bob")
 }
 
 func TestE2E_RunPTY_PartialLineShowsBeforeInput(t *testing.T) {

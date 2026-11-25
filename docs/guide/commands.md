@@ -172,6 +172,21 @@ yourself.
 - **[`if:`](./conditions.md) always runs in the task's directory**, even on a
   step with its own `dir:`.
 
+### Terminal and input
+
+- **When hobnob's output is a terminal, a command's stdout is a terminal
+  too**, so it keeps its colour, progress bars and line-by-line output. Its
+  stderr is not one. Piped, redirected to a file or in CI, a command gets
+  pipes for both, so logs hold no escape codes.
+- **A command reads hobnob's own input**, so `read`, `sudo` and `[y/N]`
+  prompts work. A prompt with no newline shows before you answer.
+- **The command's terminal is as wide as yours, less the prefix**, and
+  follows when you resize.
+- **Long lines wrap under their own text on a terminal.** Piped, they stay
+  on one line.
+- **Lines a tool redraws by moving the cursor, such as `docker pull`'s
+  layers, show without a prefix.**
+
 ### Hidden output
 
 - **`into:` captures output whether or not it's hidden.**

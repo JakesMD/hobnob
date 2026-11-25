@@ -116,6 +116,14 @@
 // 96. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 // 97. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
 // 98. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
+//
+// 99. drop `shellCmd.Stdin = os.Stdin` in runner.execRun             -> run_pty_test.go (CommandInheritsStdin)
+// 100. pass no ptySize to attachPipes in runner.execRun              -> run_pty_test.go (WatchedCommandSeesATTYOnStdoutOnly)
+// 101. drop the prefix width from tui.RunLog.PTYSize                 -> run_pty_test.go (WidthIsTheTerminalsLessThePrefix)
+// 102. drop the pipes.resize call from the OnResize callback         -> run_pty_test.go (ResizeReachesTheRunningCommand)
+// 103. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
+// 104. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
+// 105. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
 package e2e
 
 import (
