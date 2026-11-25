@@ -61,7 +61,6 @@ class Cancelled extends Error {}
 // A step that failed, already logged, on its way up to the task ends.
 class StepFailed extends Error {}
 
-// ── the log, after internal/tui/runlog.go and styles.go ─────────────────────
 
 const GREY = 'a8'
 const GREEN = 'a10'
@@ -105,16 +104,16 @@ const doneEarlierLine = (task: string) =>
   print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ' earlier', c: GREY })
 const skipLine = (task: string, what: string) => print(...lead(task, { t: '⊘', c: GREY }), { t: what, c: GREY })
 
+// The terminal's width: output wraps, and cards stop, at the same column.
+const TERM_COLS = 60
+
 // Command output passes through a line at a time, wrapped under its own text
-// past the prefix. maxRows keeps a long JSON body from filling the screen.
-const WRAP_COLS = 64
-function outLine(task: string, text: string, maxRows = Infinity) {
-  const room = Math.max(20, WRAP_COLS - task.length - 3)
+// past the prefix.
+function outLine(task: string, text: string) {
+  const room = Math.max(20, TERM_COLS - task.length - 3)
   const chunks: string[] = []
   for (let i = 0; i < Math.max(text.length, 1); i += room) chunks.push(text.slice(i, i + room))
-  const shown = chunks.slice(0, maxRows)
-  if (chunks.length > maxRows) shown[maxRows - 1] = shown[maxRows - 1].slice(0, -1) + '…'
-  for (const chunk of shown) print(...lead(task, { t: '│', c: GREY }), { t: chunk })
+  for (const chunk of chunks) print(...lead(task, { t: '│', c: GREY }), { t: chunk })
 }
 
 // A \r-redrawn line (dd status=progress): replace the last line in place.
@@ -184,7 +183,6 @@ function scrollScreen() {
   })
 }
 
-// ── the status line, after internal/tui/live.go ─────────────────────────────
 
 const runStart = ref<number | null>(null)
 const stepStart = ref<number | null>(null)
@@ -211,7 +209,6 @@ function stopClock() {
 
 onBeforeUnmount(stopClock)
 
-// ── YAML step highlight ─────────────────────────────────────────────────────
 
 // A step is the line containing `anchor` plus every line after it indented
 // deeper than that line's "- ", up to the first blank line. `within` names
@@ -240,9 +237,8 @@ function highlight(anchor: string | null, within?: string) {
   if (pre) pre.scrollTo({ top: rows[start].offsetTop - pre.clientHeight / 3, behavior: 'smooth' })
 }
 
-// ── the card, after internal/tui/frame.go ───────────────────────────────────
 
-const CARD_W = 60
+const CARD_W = TERM_COLS
 const CARD_INNER = CARD_W - 2 - 4
 const MENU_HEIGHT = 10
 const PATH_HEIGHT = 12
@@ -369,7 +365,6 @@ function windowBody(total: number, offset: number, height: number, row: (i: numb
   return out
 }
 
-// ── prompts, after prompt_select.go and prompt_text.go ──────────────────────
 
 function ask(p: Omit<Prompt, 'resolve'>): Promise<string | string[]> {
   const id = runId
@@ -490,7 +485,6 @@ function onMenuKey(p: Extract<Prompt, { kind: 'select' }>, e: KeyboardEvent): bo
   return true
 }
 
-// ── the file picker, after prompt_path.go ───────────────────────────────────
 
 const HOME = '/home/you'
 const PROJECT = `${HOME}/os-images`
@@ -623,7 +617,6 @@ const cardRows = computed<CardRow[]>(() => {
 
 watch(() => cardRows.value.length, scrollScreen)
 
-// ── the runs ────────────────────────────────────────────────────────────────
 
 const TRIVIA_API = 'https://the-trivia-api.com/v2'
 const DEMO_NOTICE = 'Running the built-in demo. Write your own: https://jakesmd.github.io/hobnob/docs/guide/'
@@ -631,10 +624,13 @@ const DEMO_NOTICE = 'Running the built-in demo. Write your own: https://jakesmd.
 async function curl(task: string, url: string, display: string): Promise<string> {
   let body = ''
   await step(task, display, async () => {
+    const id = runId
     const res = await fetch(url)
+    if (id !== runId) throw new Cancelled()
     if (!res.ok) throw new Error('exit status 22')
     body = (await res.text()).trim()
-    outLine(task, body, 2)
+    if (id !== runId) throw new Cancelled()
+    outLine(task, body)
   })
   return body
 }
@@ -708,7 +704,7 @@ async function deploy() {
     highlight('gh api')
     await step(task, 'gh api repos/acme/platform/contents/services', async () => {
       await sleep(500)
-      outLine(task, JSON.stringify(services.map((name) => ({ name, path: `services/${name}`, type: 'dir' }))), 2)
+      outLine(task, JSON.stringify(services.map((name) => ({ name, path: `services/${name}`, type: 'dir' }))))
     })
     await sleep(400)
 
@@ -771,7 +767,6 @@ async function flash() {
       highlight('lsblk -dno')
       await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', disks, 120))
       await sleep(300)
-      // `| lines` trims each line but keeps the spacing inside it.
       highlight('- DISK:')
       const line = await select('_pick-disk', 'DISK', 'Which disk?', disks)
       varLine('_pick-disk', 'DISK', line)
@@ -780,7 +775,6 @@ async function flash() {
       varLine('_pick-disk', 'SURE', sure)
       await sleep(250)
 
-      // The guard: `[ "no" = yes ]` exits 1, and the failed call stops the run.
       highlight('= yes ]')
       await step('_pick-disk', `[ "${sure}" = yes ]`, async () => {
         await sleep(400)
@@ -792,7 +786,6 @@ async function flash() {
 
     await at('call: build', 'build-and-flash:')
     await call(task, 'build', async () => {
-      // once: replays the first answer, so nothing is asked twice.
       highlight('call: _pick-image', 'build:')
       callDoneEarlier('build', '_pick-image')
       await sleep(400)
@@ -1150,7 +1143,7 @@ async function start() {
 }
 .text-input {
   flex: none;
-  width: 54ch;
+  width: 52ch;
   padding: 0;
   border: none;
   outline: none;
@@ -1163,6 +1156,8 @@ async function start() {
 @media (pointer: coarse) {
   .text-input {
     font-size: 16px;
+    /* 52ch at the screen's 13px, so the row still ends at the border. */
+    width: calc(52ch * 13 / 16);
   }
 }
 .text-input::placeholder {
