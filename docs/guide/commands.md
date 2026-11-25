@@ -184,27 +184,8 @@ yourself.
   pipes for both, so logs hold no escape codes.
 - **A command reads hobnob's own input**, so `read`, `sudo` and `[y/N]`
   prompts work. A prompt with no newline shows before you answer.
-- **The command's terminal is as wide as yours, less the prefix, and two
-  rows shorter**, and follows when you resize.
-- **On a terminal the bottom row is a grey rule holding the clock**, with a
-  blank line above it: `step 1.2s · total 3.4s`, and just `total 3.4s`
-  between steps. It stays for the whole run, stays under a command's prompt
-  while it waits for your answer (its clock stops there), and is hidden only
-  while a tool redraws several lines, until it stops. A card prompt clears it while open.
-  While a CTRL+C is shutting the run down, the rule's left says
-  `stopping, ctrl+c again to force`. Piped, redirected to a file or in CI, the
-  rule is never written.
-- **Long lines wrap under their own text on a terminal.** Piped, they stay
-  on one line.
-- **Lines a tool redraws by moving the cursor, such as `docker pull`'s
-  layers, show without a prefix**, until the tool has stopped moving the
-  cursor for a moment; plain lines before and after them keep theirs.
-- **On Windows the terminal is a ConPTY**, and it works the same, with two
-  gaps. It needs Windows 11 (22H2) or newer; on older Windows a command gets
-  pipes, as if the output were piped. And the terminal follows a resize within
-  a fifth of a second, not at once.
-- **On Windows CTRL+C reaches the command as a terminal would send it.** The
-  first one asks it to stop; the second kills it.
+- **On Windows a terminal needs Windows 11 (22H2) or newer.** On older
+  Windows a command gets pipes, as if the output were piped.
 
 ### Hidden output
 

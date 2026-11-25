@@ -77,11 +77,7 @@ tasks:
  type to filter • ↑↓ move • tab toggle • enter confirm
 ```
 
-Type to filter a menu: the best fuzzy match comes first, with the matched
-letters highlighted. Esc clears what you typed. A menu taller than about ten
-rows scrolls, with `↑ n more` and `↓ n more` showing what's out of view. In a
-`multi:` menu, tab toggles the highlighted item and enter confirms; picks stay
-when the filter changes.
+Type to filter a menu, and tab toggles an item in a `multi:` menu.
 
 ## Menus from live data
 
@@ -102,8 +98,6 @@ tasks:
               options: .CATEGORIES
 ```
 
-The menu only offers categories the API really has.
-
 ## Checking an answer
 
 `check:` is a shell condition the answer must pass. If it fails, the prompt
@@ -120,7 +114,7 @@ tasks:
               check: "[ {{.COUNT}} -le 10 ]"
 ```
 
-Typing `99` and pressing enter keeps the card open, with the error inside it:
+Typing `99` keeps the prompt open with the error shown:
 
 ```
 ╭─ quiz » COUNT ───────────────────────────────────────────────────────────╮
@@ -165,14 +159,11 @@ tasks:
  type to filter • ↑↓ move • ← up • → open • tab complete • enter pick
 ```
 
-The line at the top of the picker holds a full path, and that text alone decides
-which directory is listed: everything up to its last `/` is the directory, and
-only what you type after it narrows the list. Longer than 40 characters, the
-line shows only the end, after a `…`; what you type still edits the whole path.
-Type to narrow the list, → to open the highlighted directory, ← to go back up
-and enter to pick. Enter never opens anything: on a directory in a `type: file`
-picker it says "that's a directory: → opens it". A path you pass yourself works
-too, and is turned into a full path the same way:
+The line at the top of the picker holds a full path: everything up to its last
+`/` is the directory listed, and what you type after it narrows the list. → opens
+the highlighted directory, ← goes back up and enter picks. Enter never opens a
+directory, so on one in a `type: file` picker it does nothing. A path you pass
+yourself works too, and is turned into a full path the same way:
 
 ```bash
 hobnob count-questions QUESTIONS=questions/history.json
@@ -263,23 +254,13 @@ tells you which variable to pass.
   `options:`.
 - **`check:` never filters.** It only judges the final answer, and with
   `multi:` it sees the whole list. `match:` is what narrows the menu.
-- **Every prompt is a card** with the `info:` inside it, word-wrapped, and the
-  keys to press listed under it. The card is as wide as the terminal, up to 76
-  columns. A failing `check:` shows `✗` and its message inside the card, and
-  the prompt stays open.
 - **CTRL+C is the only key that aborts the run.** In a menu, `q` is just a
   letter to filter by.
-- **A menu's filter line appears once you type.** A space as the first
-  character doesn't start a filter; after that it's an ordinary character.
-  With `optional: true`, esc clears the filter text first, then skips.
-- **A choice that fails `check:` stays in the menu**, with `validation failed:`
-  and the check on the error line, like a text answer.
-- **A `check:` that errors**, because its command can't run or its template
-  fails, shows `✗ check failed:` and the error on the error line, in every kind
-  of prompt, instead of the check itself.
-- **A text prompt starts filled in with its `default:`**, so enter keeps it
-  (a `secret:` default shows as `••••`). With `optional: true`, enter on an
-  empty field skips the prompt, and so does esc.
+- **A choice that fails `check:` stays in the menu**, like a text answer.
+- **With `optional: true`, esc skips the prompt**, after clearing any filter
+  text first.
+- **A text prompt starts filled in with its `default:`**, so enter keeps it.
+  With `optional: true`, enter on an empty field skips the prompt.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
@@ -321,19 +302,9 @@ tells you which variable to pass.
 - **With `optional: true` and no answer**, esc in the picker gives no answer,
   and the variable is set empty. An empty value never becomes the working
   directory.
-- **A failing `check:` opens the picker again.** If the check errored, the
-  picker opens with `✗ check failed:` and the error on its error line.
-- **The path line is plain text.** It always holds an absolute path, never a
-  `~` form, and the picker starts with the start directory written out in full.
-  Typing `/` or backspace only edits it; backspace can't delete the leading
-  `/`. If the text names no directory, the list says `no directory "…"`. ←
-  drops the last directory from the text and → adds the highlighted directory
-  and a `/`.
-- **The picker lists hidden files** like any other. Only operating-system
-  clutter is never listed, whatever `match:` says: `.DS_Store`, `._*`,
-  `.Spotlight-V100`, `.Trashes`, `.fseventsd`, `.TemporaryItems`, `Icon\r`,
-  `Thumbs.db`, `desktop.ini`, `$RECYCLE.BIN` and `System Volume Information`.
-  Names are compared ignoring case.
+- **A failing `check:` opens the picker again.**
+- **The picker lists hidden files** like any other, but never operating-system
+  clutter such as `.DS_Store` or `Thumbs.db`, whatever `match:` says.
 
 ### Patterns in `match:`
 

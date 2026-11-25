@@ -41,14 +41,11 @@ hobnob ask-trivia --no-input
 
 ## `--quiet`, `-q`
 
-Quiet run, for agents and logs: it prints only each `run:` command's `$` line
-and every task's end line, called tasks included. Variables, calls, skips,
-`✓` step lines, `#` notes and command output are left out, except that a step
-that fails or soft-fails prints its output before its `✗` or `!` line, and a
-prompt a command prints with no newline shows as it arrives. Failure
-ends, the soft-failure count and the ctrl+c lines print as in a normal run.
-`HOBNOB_QUIET=1` does the same. Nothing else turns it on: not a pipe, not CI,
-not a detected agent.
+Quiet run, for agents and logs: it hides command output, variables, calls,
+skips and notes, and prints only each `run:` command and every task's end. A
+failing step still shows its output, and a prompt a command prints with no
+newline (`read`, `sudo`, `[y/N]`) shows as it arrives. `HOBNOB_QUIET=1` does the
+same. Nothing else turns it on: not a pipe, not CI, not a detected agent.
 
 ```bash
 hobnob deploy -q
@@ -106,39 +103,7 @@ CI, or with `--no-input`, it prints the task list instead.
 
 ## `--help`
 
-Prints usage, the flags, the docs links, and the grouped task list under
-Tasks.
-
-```
-$ hobnob --help
-hobnob v1.5.0
-
-Usage
-  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
-  hobnob [--file <path>] --list | --select | --help
-  hobnob --demo | --version | --upgrade
-
-Flags
-  --file <path>   Hobnob file to use instead of auto-discovery
-  --demo          Run the built-in demo taskfile instead of one of yours
-  --list          List all available tasks
-  --select        Interactively select a task to run
-  --help          Show this help
-  --no-input      Skip interactive prompts; fail if a required variable is missing
-  --quiet, -q     Print only each command and each task's end (or set HOBNOB_QUIET=1)
-  --version       Print version and exit
-  --upgrade       Upgrade hobnob to the latest release
-
-Docs
-  Guide      https://jakesmd.github.io/hobnob/docs/guide/
-  Reference  https://jakesmd.github.io/hobnob/docs/reference/
-
-Tasks
-  trivia
-    trivia:random  Fetch a random question.
-
-  standup
-```
+Prints usage, the flags, the docs links, and the grouped task list.
 
 ## `--version`
 
