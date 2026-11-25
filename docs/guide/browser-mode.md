@@ -67,8 +67,30 @@ by the entry's `info:` (its variable name without one). A secret shows masked.
 A prompt skipped, or settled by a `KEY=VALUE` preset, has no entry; presets
 skip their prompts as in the terminal.
 
-There are no admin prompts in browser mode, and menus and pickers aren't
-supported on the page yet.
+A [menu](./prompts.md) (`options:`) shows its options as cards you click: radio
+cards for one choice, checkbox cards under `multi:`. With more than six options a
+search box filters the cards. The `default:` starts chosen; under `multi:` it is
+a JSON list, or one option, and those options start ticked, with a running count
+in the bottom bar. A required menu needs a choice (at least one under `multi:`),
+and `check:` judges the choice, or the whole list under `multi:`, as in the
+terminal; a refusal shows under the cards. Continue on an untouched menu takes
+its default. **Skip**, or Continue with nothing ticked on an optional `multi:`
+menu, gives no answer.
+
+A [picker](./prompts.md#picking-a-file-or-directory) (`type: file` or `dir`) is
+a column view like the Finder's: one column per folder, from your home folder
+(or the filesystem root when the start isn't under it) down to the open folder.
+It starts in the entry's `default:` folder, as in the terminal. Click a folder to
+open it; click a file to pick it. In a `type: dir` picker the open folder is the
+answer, so a `default:` folder starts out picked and Continue takes it at once.
+Under `multi:` a click ticks or unticks an entry (the `›` beside a folder opens
+it) and the bottom bar counts the picks. Entries `match:` excludes are hidden,
+not greyed out, as in the terminal; a folder that only fails the plain patterns
+of a `type: dir` picker can be opened but not picked. The bottom bar says what is
+picked. Continue sends the picks through the same rules as the terminal: they
+must exist, be the right kind and match.
+
+There are no admin prompts in browser mode.
 
 ## How a run ends
 

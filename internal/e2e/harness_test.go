@@ -212,6 +212,17 @@
 // 187. drop the isOpen re-check once web.state.answer holds the prompt's busy lock -> web_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
 // 188. treat an untouched secret default as a skip in web.state.PromptText -> web_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
 // 189. drop the required-answer refusal in web.state.PromptText            -> web_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
+// 190. drop the check: judgement from web.state.PromptSelect's judge   -> web_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
+// 191. take every option a multi menu is answered with, offered or not, in web.menuPicks -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 192. drop the multi menu's ticked defaults from web.state.PromptSelect -> web_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
+// 193. let a required multi menu go through with nothing ticked in web.state.PromptSelect -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 194. show what match: excludes in web.pickerRules.list (drop the Excluded check) -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 195. list files that match: doesn't include in web.pickerRules.list -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 196. open a file's folder instead of the default folder in web.pickerRules.start -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 197. leave a folder picker's default unselected in web.pickerRules.start -> web_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 198. open a path that is not a folder in web.state.askPicker -> web_picker_test.go (OpeningAFolderByPostChangesTheListing)
+// 199. accept a path match: excludes in web.pickerRules.pick -> web_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
+// 200. let a required picker go through with no pick in web.state.PromptPath -> web_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
 package e2e
 
 import (

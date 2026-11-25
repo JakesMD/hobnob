@@ -101,7 +101,9 @@ func TestE2E_Web_OpeningAFolderByPostChangesTheListing(t *testing.T) {
 		if status := b.Post("open", map[string]any{"id": id, "path": filepath.Join(b.dir, "sub")}); status != http.StatusNoContent {
 			b.Fail("open status = %d", status)
 		}
-		after = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Picker.Open == filepath.Join(b.dir, "sub") })
+		after = tab.Until(func(s web.Snapshot) bool {
+			return s.Prompt != nil && s.Prompt.Picker.Open == filepath.Join(b.dir, "sub")
+		})
 		b.Post("answer", map[string]any{"id": id, "value": filepath.Join(b.dir, "sub", "f.txt")})
 		tab.Screen(web.ScreenDone)
 	}}

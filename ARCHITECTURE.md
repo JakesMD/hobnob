@@ -61,7 +61,8 @@ Every change must preserve these. Each is explained in the section named.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
-  imports only the stdlib, never `value`, `tui`, `eval`, `runner` or `config`;
+  imports `value`, and `tui` only for the `PathPrompt` shape, never `eval`,
+  `runner` or `config`;
   it observes a run through `RunLog` and never changes
   what the runner does. ([web](#internalweb-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
@@ -135,8 +136,9 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `web` imports only the stdlib; it implements `tui.RunListener`
-  structurally, so it needs no `tui` import for it. `app` imports it.
+- `web` imports `value`, and `tui` only for `PathPrompt` (the picker's shape,
+  with its `Included`/`Excluded` predicates); it implements `tui.RunListener`
+  structurally, so it needs no `tui` import for that. `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -780,13 +782,25 @@ as in the terminal); a refusal is stored in the open prompt and comes back in
 the next snapshot, an accepted answer adds a rail answer (masked for
 `secret:`) and releases the caller. A secret's default never reaches the page
 (`hasDefault` says there is one). Context cancellation returns `ctx.Err()`,
-which `tui.IsInterrupted` counts as an interrupt. Menus and pickers add a
-`Kind`, fields and a `judge`; they are not in the page yet and `browserPrompts`
-refuses them.
+which `tui.IsInterrupted` counts as an interrupt. A menu
+(`prompt_menu.go`, `PromptSelect`) is the same `ask` with `KindMenu`, its
+`Options`, `Multi` and `Defaults`, and a `judge` that reads a string (one
+choice) or a list (`multi:`), refuses anything not offered, and runs the
+runner's `check:` closure on the chosen value or list. A picker
+(`picker.go`, `PromptPath`) is the same `ask` with `KindPath` and a `Picker`
+field: the column view from the home folder (the filesystem root when the open
+folder isn't under it) down to the open folder, listed through the
+`tui.PathPrompt`'s `Included`/`Excluded` predicates, so what `match:` excludes
+is hidden as in the terminal. Its `judge` takes a path (a list under `multi:`)
+and refuses one that is relative, missing, the wrong kind or not allowed by the
+predicates, since the runner treats a bad path as fatal rather than asking
+again; a `check:` failure reopens the picker with `PathPrompt.Error` as the
+refusal. `POST /actions/open` (the ID and a folder) changes a picker's open
+folder and the next snapshot lists it; the picks live in the page.
 
 **Requests.** Every request must carry the token (constant-time compare).
 `POST /actions/{name}` routes through `Server.actions` (`answer`, `skip`,
-`choose`, `home`). After a task-launched run ends `app` waits in `AwaitDelivery` for
+`open`, `choose`, `home`). After a task-launched run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
 outlive hobnob; if the terminal's CTRL+C ended the run, it still waits up to
 `interruptGrace` when a page is open, so Cancelled reaches it. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
