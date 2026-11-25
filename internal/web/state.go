@@ -21,10 +21,13 @@ type state struct {
 	result   *Result
 	logLines []string
 
-	picking bool
-	tasks   []Task
-	home    bool
-	homed   bool
+	picking    bool
+	tasks      []Task
+	home       bool
+	homed      bool
+	prompt     *openPrompt
+	nextPrompt int
+	answers    []RailEntry
 }
 
 type setupEntry struct {
@@ -142,6 +145,7 @@ func (s *state) startPick(tasks []Task, offerHome bool) {
 	s.update(func() {
 		s.task, s.setup, s.running, s.step = Task{}, nil, nil, stepState{}
 		s.started, s.result, s.logLines = time.Time{}, nil, nil
+		s.prompt, s.answers = nil, nil
 		s.picking, s.tasks, s.home, s.homed = true, tasks, offerHome, false
 	})
 }
@@ -182,6 +186,7 @@ func (s *state) snapshot() (Snapshot, int) {
 		return Snapshot{Screen: ScreenTasks, Tasks: s.tasks, Rail: Rail{Answers: []RailEntry{}, Setup: []RailEntry{}}}, s.version
 	}
 	snap := Snapshot{Screen: ScreenProgress, Task: s.task, Rail: Rail{Answers: []RailEntry{}, Setup: []RailEntry{}}}
+	snap.Rail.Answers = append(snap.Rail.Answers, s.answers...)
 	for _, entry := range s.setup {
 		snap.Rail.Setup = append(snap.Rail.Setup, RailEntry{Label: entry.label, State: entry.state})
 	}
@@ -193,6 +198,12 @@ func (s *state) snapshot() (Snapshot, int) {
 		res := *s.result
 		res.Home = s.home
 		snap.Result = &res
+		return snap, s.version
+	}
+	if s.prompt != nil {
+		snap.Screen = ScreenPrompt
+		prompt := s.prompt.Prompt
+		snap.Prompt = &prompt
 		return snap, s.version
 	}
 	progress := &Progress{}

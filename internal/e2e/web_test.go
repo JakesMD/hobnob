@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"hobnob/internal/web"
 )
@@ -387,6 +388,100 @@ func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testin
 	res.Fails(t)
 	if failed.Result.LastLine != "no newline at end" || !strings.Contains(failed.Result.Log, "t │ no newline at end") {
 		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
+
+func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
+	// given a step printing coloured output, when it runs, then the page's
+	// last line and the log hold the text without escape sequences (why: the
+	// page shows text, not terminal codes)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf '\033[31mred alert\033[0m\n'; ` + waitForGo + `
+	`
+	var running, done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		running = b.Open().Until(func(s web.Snapshot) bool {
+			return s.Progress != nil && s.Progress.LastLine != ""
+		})
+		b.Release("go")
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if running.Progress.LastLine != "red alert" || strings.Contains(done.Result.Log, "\x1b") {
+		t.Errorf("last line = %q, log = %q", running.Progress.LastLine, done.Result.Log)
+	}
+}
+
+func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
+	// given a running step, when a page connects some time into the run, then
+	// its snapshot carries the time elapsed since the run began (why: the
+	// page's clock starts from it, also after a reconnect)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo started; ` + waitForGo + `
+	`
+	var later web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		b.Open().Until(func(s web.Snapshot) bool {
+			return s.Progress != nil && s.Progress.LastLine == "started"
+		})
+		time.Sleep(150 * time.Millisecond)
+		later = b.Open().Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		b.Release("go")
+		b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if later.Progress.ElapsedMS < 150 {
+		t.Errorf("elapsed = %dms", later.Progress.ElapsedMS)
+	}
+}
+
+func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
+	// given an open page and the right token, when a request has another
+	// Host or another Origin, then it is refused, and with the page's own
+	// Host and Origin, or no Origin, it is served (why: a web page on
+	// another site must not reach the run, by rebinding or cross-site)
+	// Arrange
+	statuses := map[string]int{}
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		own := "http://" + b.Address()
+		statuses["no origin"] = b.GetWith("/", nil)
+		statuses["own origin"] = b.GetWith("/", map[string]string{"Origin": own})
+		statuses["wrong host"] = b.GetWith("/", map[string]string{"Host": "example.com"})
+		statuses["wrong port"] = b.GetWith("/", map[string]string{"Host": "127.0.0.1:1"})
+		statuses["wrong origin"] = b.GetWith("/", map[string]string{"Origin": "http://example.com"})
+		statuses["null origin"] = b.GetWith("/", map[string]string{"Origin": "null"})
+		tab := b.Open()
+		b.Release("go")
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	Run(t, c)
+
+	// Assert
+	want := map[string]int{"no origin": 200, "own origin": 200, "wrong host": 403, "wrong port": 403, "wrong origin": 403, "null origin": 403}
+	for name, status := range want {
+		if statuses[name] != status {
+			t.Errorf("%s: status %d, want %d", name, statuses[name], status)
+		}
 	}
 }
 

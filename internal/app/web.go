@@ -11,8 +11,26 @@ import (
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
+	"hobnob/internal/value"
 	"hobnob/internal/web"
 )
+
+// browserPrompts is what a --web run asks its answers through. Menus and
+// pickers aren't in the page yet.
+func browserPrompts(server *web.Server) runner.Prompts {
+	return runner.Prompts{
+		Text: server.PromptText,
+		Select: func(context.Context, string, string, []string, bool, string, string, bool, bool,
+			func(value.Value) (bool, error), string) (value.Value, error) {
+			return value.Value{}, errNotInBrowser
+		},
+		Path: func(context.Context, tui.PathPrompt, string, bool) (value.Value, bool, error) {
+			return value.Value{}, false, errNotInBrowser
+		},
+	}
+}
+
+var errNotInBrowser = errors.New("this prompt isn't supported in browser mode yet")
 
 // openBrowser opens url with the platform's opener.
 func openBrowser(url string) error {
@@ -87,7 +105,7 @@ func (a *App) openPage() (*web.Server, error) {
 func (a *App) runOnPage(ctx context.Context, server *web.Server, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
 	log := a.newRunLog()
 	log.Listen(server)
-	runErr := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, false, dir, log, runner.TerminalPrompts())
+	runErr := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, false, dir, log, browserPrompts(server))
 	switch {
 	case runErr == nil:
 		log.RunSucceeded()

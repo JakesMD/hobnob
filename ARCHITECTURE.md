@@ -56,7 +56,8 @@ Every change must preserve these. Each is explained in the section named.
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
-  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`.
+  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
+  or the page's prompts (`browserPrompts`) under `--web`.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
@@ -745,7 +746,8 @@ until ctx ends or no page has been open for `deliveryGrace`. The exit code is
 the last run's. `web.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
-the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says.
+the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says,
+asked through the page's prompts (`browserPrompts` in `app/web.go`), even in tests.
 
 **The run listener.** `tui.RunListener` is how a front end observes a run. A
 `RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
@@ -762,14 +764,29 @@ failed step's task and reason, except that a soft-failed step is forgiven). Term
 (`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
 (answers and setup entries), progress (the innermost running task's `info:` or
 name, the last line, empty for a held step) and the result (outcome, label,
-last line, duration and the masked log). Every SSE event on `GET /events` is
+last line, duration and the masked log). The page keeps the masked log it receives with the result, which is what Copy details copies; the clock runs on the page from `progress.elapsedMs`. Every SSE event on `GET /events` is
 a whole snapshot; a stream that is behind gets only the latest. To add a
 screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `page.html`.
 
+**Prompts.** `web.state.ask` (`prompt.go`) shows a `Prompt` (kind, info,
+default, `secret:`, `optional:`, the refusal of the last answer) as the
+`prompt` screen and blocks until it is answered, skipped or its context ends.
+Each asking has an ID; `POST /actions/answer` and `POST /actions/skip` carry
+the ID and are refused when it isn't the open prompt's. An answer goes
+through the `judge` closure the prompt kind passes to `ask`, which wraps the
+validator closure the runner handed over (so `check:` and `match:` run exactly
+as in the terminal); a refusal is stored in the open prompt and comes back in
+the next snapshot, an accepted answer adds a rail answer (masked for
+`secret:`) and releases the caller. A secret's default never reaches the page
+(`hasDefault` says there is one). Context cancellation returns `ctx.Err()`,
+which `tui.IsInterrupted` counts as an interrupt. Menus and pickers add a
+`Kind`, fields and a `judge`; they are not in the page yet and `browserPrompts`
+refuses them.
+
 **Requests.** Every request must carry the token (constant-time compare).
-`POST /actions/{name}` routes through `Server.actions` (`choose` and `home` so
-far). After a task-launched run ends `app` waits in `AwaitDelivery` for
+`POST /actions/{name}` routes through `Server.actions` (`answer`, `skip`,
+`choose`, `home`). After a task-launched run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
 outlive hobnob. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
 

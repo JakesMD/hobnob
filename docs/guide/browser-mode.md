@@ -24,7 +24,8 @@ address. The page is a setup assistant:
   task and for each task it [calls](./calling-tasks.md), added when it starts,
   ticked when it finishes, and crossed when it fails;
 - the **main area** shows the label of the task now running, an activity bar,
-  the last line of output and a clock. The label is the task's `info:`, or its
+  the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
+  of the time since the run began. The label is the task's `info:`, or its
   name when it has none;
 - a **bottom bar** holds the buttons for the screen.
 
@@ -50,6 +51,23 @@ name it: `hobnob default --web`.
 When hobnob was started without a task, Done and Failed also offer **Home**,
 which returns to the picker for another run. Each run starts with a fresh rail
 and log. A task named on the command line ends at Done with no Home.
+## Prompts
+
+A [`get:`](./prompts.md) text prompt gets its own page: the entry's `info:` as
+a large heading, a text box filled with its `default:` (a password field for
+`secret:`) and **Continue** in the bottom bar, plus **Skip** for an
+`optional:` prompt. An answer goes through the same rules as in the terminal:
+a required prompt needs an answer, then `match:` and `check:` run, and a
+`check:` that runs a shell condition behaves exactly as it does there. A refused
+answer keeps you on the page with the reason under the field.
+
+The rail's **Your answers** section gets one entry per answered prompt, labelled
+by the entry's `info:` (its variable name without one). A secret shows masked.
+A prompt skipped, or settled by a `KEY=VALUE` preset, has no entry; presets
+skip their prompts as in the terminal.
+
+There are no admin prompts in browser mode, and menus and pickers aren't
+supported on the page yet.
 
 ## How a run ends
 
@@ -81,6 +99,13 @@ failure, and 0 when no run happened.
 ## Security
 
 The page is served on `127.0.0.1` only, on a random free port. Its address
-carries a random token, and every request must carry it, or hobnob refuses the
-request. Anyone who can read your terminal can open the page, so treat the
-address like a password for the length of the run.
+carries a random token, and hobnob refuses every request that:
+
+- lacks the token, or has a wrong one;
+- has a `Host` other than that address and port, which stops a web page on
+  another site reaching hobnob through a rebinding of its own name;
+- has an `Origin` that isn't that address and port. A request with no
+  `Origin` is fine.
+
+Anyone who can read your terminal can open the page, so treat the address like
+a password for the length of the run.
