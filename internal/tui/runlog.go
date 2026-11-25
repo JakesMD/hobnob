@@ -126,9 +126,11 @@ func (l *RunLog) Call(task, calledTask string) {
 // Var logs a get: value used, display already masked when it is a secret.
 // note says where a value nobody typed came from.
 func (l *RunLog) Var(task, name, display, note string) {
+	l.mu.Lock()
 	if l.listener != nil {
 		l.listener.Var(task, name, display)
 	}
+	l.mu.Unlock()
 	if l.quiet {
 		return
 	}
@@ -182,6 +184,7 @@ func (l *RunLog) StepFailed(task string, elapsed time.Duration, cmd, reason stri
 // StepSoftFailed logs the end of a soft: step that failed; the task carries on.
 func (l *RunLog) StepSoftFailed(task string, elapsed time.Duration, cmd, reason string) {
 	l.endStep()
+	l.forgiveFailure()
 	fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 

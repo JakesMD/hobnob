@@ -187,6 +187,8 @@
 // 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
 // 163. call app.checkWebFlag before --quiet is stripped, in app.run       -> web_test.go (FlagsThatCannotCombine, quiet cases)
 // 164. drop the runner.CheckTask call from app.execWebTask               -> web_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
+// 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> web_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
+// 166. drop the Flush calls after the copiers finish in runner.execRun    -> web_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
 package e2e
 
 import (

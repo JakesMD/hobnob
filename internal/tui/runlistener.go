@@ -81,6 +81,12 @@ func (l *RunLog) RunCancelled() {
 }
 
 // recordFailure keeps the first, innermost failed step for RunFailed.
+func (l *RunLog) forgiveFailure() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.failed = nil
+}
+
 func (l *RunLog) recordFailure(task, reason string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -100,40 +106,53 @@ func (l *RunLog) markFailed() {
 
 // Tap returns a writer that passes everything to dest and reports each
 // finished line of it to the listener, masked with mask. With no listener it
-// is dest itself.
-func (l *RunLog) Tap(task string, dest io.Writer, mask func(string) string) io.Writer {
+// only passes through.
+func (l *RunLog) Tap(task string, dest io.Writer, mask func(string) string) *TapWriter {
 	l.mu.Lock()
 	listener := l.listener
 	l.mu.Unlock()
-	if listener == nil {
-		return dest
+	tap := &TapWriter{dest: dest}
+	if listener != nil {
+		tap.emit = func(line string) {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			listener.OutputLine(task, mask(line))
+		}
 	}
-	return &lineTap{dest: dest, emit: func(line string) {
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		listener.OutputLine(task, mask(line))
-	}}
+	return tap
 }
 
-// lineTap splits what it is written into lines, ended by \n or \r so a
+// TapWriter splits what it is written into lines, ended by \n or \r so a
 // progress bar redrawing itself reports each state.
-type lineTap struct {
+type TapWriter struct {
 	dest    io.Writer
 	emit    func(string)
 	pending strings.Builder
 }
 
-func (t *lineTap) Write(p []byte) (int, error) {
+func (t *TapWriter) Write(p []byte) (int, error) {
 	n, err := t.dest.Write(p)
+	if t.emit == nil {
+		return n, err
+	}
 	for _, b := range p {
-		if b != '\n' && b != '\r' {
-			t.pending.WriteByte(b)
+		if b == '\n' || b == '\r' {
+			t.Flush()
 			continue
 		}
-		if line := strings.TrimSpace(ansi.Strip(t.pending.String())); line != "" {
-			t.emit(line)
-		}
-		t.pending.Reset()
+		t.pending.WriteByte(b)
 	}
 	return n, err
+}
+
+// Flush reports a line still open, so output that ends without a newline
+// isn't lost. The caller must not Write meanwhile.
+func (t *TapWriter) Flush() {
+	if t.emit == nil {
+		return
+	}
+	if line := strings.TrimSpace(ansi.Strip(t.pending.String())); line != "" {
+		t.emit(line)
+	}
+	t.pending.Reset()
 }

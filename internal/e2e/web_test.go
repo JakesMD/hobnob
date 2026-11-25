@@ -303,3 +303,62 @@ func TestE2E_Web_UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage(t *testin
 		t.Errorf("opened %s", res.URL)
 	}
 }
+
+func TestE2E_Web_FailedNamesTheFailureThatEndedTheRunNotAForgivenOne(t *testing.T) {
+	// given a soft call: that fails and a later step that fails hard, when it
+	// runs, then Failed names the task of the later step and its last line
+	// (why: a forgiven failure did not end the run)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    info: Outer
+		    steps:
+		      - call: inner
+		        soft: true
+		      - run: echo "the real one"; exit 1
+		  inner:
+		    info: Inner
+		    steps:
+		      - run: echo "forgiven"; exit 2
+	`
+	var failed web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if failed.Result.Label != "Outer" || failed.Result.LastLine != "the real one" {
+		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
+
+func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testing.T) {
+	// given a step whose final output has no trailing newline, when it fails,
+	// then that text is the last line on the page and in the log (why: the
+	// last thing a tool said is the clue, newline or not)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: printf "no newline at end"; exit 4
+	`
+	var failed web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if failed.Result.LastLine != "no newline at end" || !strings.Contains(failed.Result.Log, "t │ no newline at end") {
+		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
