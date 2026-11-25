@@ -47,8 +47,8 @@ func TestTextModel_View_Card(t *testing.T) {
 		{
 			name:     "given a secret default, when rendered, then the field shows bullets, never the value",
 			model:    newTextModel(card{task: "deploy", varName: "TOKEN"}, textOptions{defaultVal: "hunter2", secret: true}),
-			wantHas:  []string{"••••"},
-			wantLack: []string{"hunter2"},
+			wantHas:  []string{"› ••••"},
+			wantLack: []string{"hunter2", "•••••"},
 		},
 	}
 

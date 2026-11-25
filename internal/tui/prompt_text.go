@@ -41,15 +41,20 @@ type textOptions struct {
 	secret     bool
 }
 
+const secretDefaultMask = "••••"
+
 type textModel struct {
 	frame      card
 	validate   func(string) (bool, error)
 	checkDesc  string
 	defaultVal string
 	textInput  textinput.Model
-	value      string
-	quit       bool
-	done       bool
+	// maskedDefault is set for a secret default, which shows as a fixed
+	// mask until edited so its length isn't revealed.
+	maskedDefault bool
+	value         string
+	quit          bool
+	done          bool
 }
 
 func newTextModel(frame card, opts textOptions) textModel {
@@ -67,6 +72,8 @@ func newTextModel(frame card, opts textOptions) textModel {
 		checkDesc:  opts.checkDesc,
 		defaultVal: opts.defaultVal,
 		textInput:  textInput,
+
+		maskedDefault: opts.secret && opts.defaultVal != "",
 	}
 }
 
@@ -128,6 +135,9 @@ func (model textModel) View() string {
 	}
 	frame := model.frame
 	frame.body = model.textInput.View()
+	if model.maskedDefault && model.textInput.Value() == model.defaultVal {
+		frame.body = model.textInput.Prompt + secretDefaultMask
+	}
 	frame.hints = hints
 	return frame.render()
 }
