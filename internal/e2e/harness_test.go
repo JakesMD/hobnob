@@ -209,6 +209,9 @@
 // 184. keep the last run's log in web.state.startPick                     -> web_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
 // 185. offer Home on every finished run in web.state.snapshot             -> web_test.go (HomeIsOnlyOfferedWhenHobnobHadNoTask)
 // 186. accept any task name in web.state.choose                           -> web_test.go (PickerRefusesATaskItDidNotOffer)
+// 187. drop the isOpen re-check once web.state.answer holds the prompt's busy lock -> web_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
+// 188. treat an untouched secret default as a skip in web.state.PromptText -> web_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
+// 189. drop the required-answer refusal in web.state.PromptText            -> web_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
 package e2e
 
 import (

@@ -3,7 +3,9 @@ package e2e
 import (
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"hobnob/internal/web"
 )
@@ -235,5 +237,185 @@ func TestE2E_Web_PresetSkipsItsPrompt(t *testing.T) {
 	res.Out(t, "t │ name=preset")
 	if prompted || len(done.Rail.Answers) != 0 {
 		t.Errorf("prompted = %v, answers = %+v", prompted, done.Rail.Answers)
+	}
+}
+
+const slowCheck = `check: 'touch started; while [ ! -e go ]; do :; done; echo run >> checks; true'`
+
+func TestE2E_Web_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *testing.T) {
+	// given a prompt whose check: is slow, when the page sends two answers
+	// for it at once, then the second is refused as stale without running
+	// the check and the run keeps the first answer (why: a double click must
+	// not judge a closed prompt)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - A:
+		              ` + slowCheck + `
+		      - run: echo got={{.A}} checks=$(wc -l < checks | tr -d ' ')
+	`
+	var first, second int
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked := tab.Screen(web.ScreenPrompt)
+		var posts sync.WaitGroup
+		posts.Add(1)
+		go func() {
+			defer posts.Done()
+			first = b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "one"})
+		}()
+		b.Wait("started")
+		posts.Add(1)
+		go func() {
+			defer posts.Done()
+			second = b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "two"})
+		}()
+		time.Sleep(100 * time.Millisecond)
+		b.Release("go")
+		posts.Wait()
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t │ got=one checks=1")
+	if first != http.StatusNoContent || second != http.StatusBadRequest {
+		t.Errorf("statuses = %d, %d", first, second)
+	}
+}
+
+func TestE2E_Web_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
+	// given an optional prompt whose check: is slow, when the page answers
+	// and then skips it while the check runs, then the answer settles it and
+	// the skip is refused (why: a prompt settles exactly once)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - A:
+		              optional: true
+		              ` + slowCheck + `
+		      - run: echo got={{.A}}
+	`
+	var answered, skipped int
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked := tab.Screen(web.ScreenPrompt)
+		var posts sync.WaitGroup
+		posts.Add(1)
+		go func() {
+			defer posts.Done()
+			answered = b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "one"})
+		}()
+		b.Wait("started")
+		posts.Add(1)
+		go func() {
+			defer posts.Done()
+			skipped = b.Post("skip", map[string]any{"id": asked.Prompt.ID})
+		}()
+		time.Sleep(100 * time.Millisecond)
+		b.Release("go")
+		posts.Wait()
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t │ got=one")
+	if answered != http.StatusNoContent || skipped != http.StatusBadRequest {
+		t.Errorf("statuses = %d, %d", answered, skipped)
+	}
+}
+
+func TestE2E_Web_ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone(t *testing.T) {
+	// given an optional secret: get: with a default:, when the page answers
+	// with the field left as the masked default, then the default is the
+	// answer and never appears in a snapshot, and skipping gives no value
+	// (why: the terminal's Enter takes the default too)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - TOKEN:
+		              secret: true
+		              optional: true
+		              default: abcdefault
+		      - run: if [ -n "{{.TOKEN}}" ]; then echo token=set; else echo token=none; fi
+	`
+	var used, skippedRun web.Snapshot
+	var usedRes, skippedRes *Result
+	run := func(act func(b *Browser, asked web.Snapshot)) (*Result, web.Snapshot) {
+		var done web.Snapshot
+		res := Run(t, Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+			tab := b.Open()
+			act(b, tab.Screen(web.ScreenPrompt))
+			done = tab.Screen(web.ScreenDone)
+		}})
+		return res, done
+	}
+
+	// Act
+	usedRes, used = run(func(b *Browser, asked web.Snapshot) {
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": nil})
+	})
+	skippedRes, skippedRun = run(func(b *Browser, asked web.Snapshot) {
+		b.Post("skip", map[string]any{"id": asked.Prompt.ID})
+	})
+
+	// Assert
+	usedRes.OK(t)
+	usedRes.Out(t, "token=set")
+	skippedRes.OK(t)
+	skippedRes.Out(t, "token=none")
+	if len(used.Rail.Answers) != 1 || len(skippedRun.Rail.Answers) != 0 || strings.Contains(used.Result.Log, "abcdefault") {
+		t.Errorf("used = %+v, skipped = %+v", used.Rail, skippedRun.Rail)
+	}
+}
+
+func TestE2E_Web_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
+	// given a required get: without a default:, when the page sends an empty
+	// answer, then the next snapshot is the same prompt saying an answer is
+	// required, and a later answer goes through (why: the person must answer
+	// a required prompt)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - A: {}
+		      - run: echo got={{.A}}
+	`
+	var refused web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked := tab.Screen(web.ScreenPrompt)
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": ""})
+		refused = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "ok"})
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t │ got=ok")
+	if refused.Prompt.Refusal != "an answer is required" {
+		t.Errorf("refusal = %q", refused.Prompt.Refusal)
 	}
 }

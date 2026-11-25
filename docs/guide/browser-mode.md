@@ -56,7 +56,7 @@ and log. A task named on the command line ends at Done with no Home.
 
 A [`get:`](./prompts.md) text prompt gets its own page: the entry's `info:` as
 a large heading, a text box filled with its `default:` (a password field for
-`secret:`) and **Continue** in the bottom bar, plus **Skip** for an
+`secret:`; the page never receives a secret's default, and Continue on the untouched field takes it) and **Continue** in the bottom bar, plus **Skip** for an
 `optional:` prompt. An answer goes through the same rules as in the terminal:
 a required prompt needs an answer, then `match:` and `check:` run, and a
 `check:` that runs a shell condition behaves exactly as it does there. A refused
