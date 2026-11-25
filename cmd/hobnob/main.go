@@ -10,7 +10,6 @@ import (
 
 	"hobnob/internal/app"
 	"hobnob/internal/runner"
-	"hobnob/internal/tui"
 )
 
 var version string // injected at build time via -ldflags="-X main.version=vX.Y.Z"
@@ -30,7 +29,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-sigCh
-		fmt.Fprintln(os.Stderr, tui.SStep.Render("!")+" shutting down, press CTRL+C again to force")
 		cancel()
 		<-sigCh
 		// ctx cancellation already asked the running step to terminate

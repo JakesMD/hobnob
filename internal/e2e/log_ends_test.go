@@ -108,3 +108,30 @@ func TestE2E_Log_StepErrorWithoutARunEndsTheStepWithTheMessage(t *testing.T) {
 	res.Fails(t)
 	res.streamMatches(t, "stderr", res.Stderr, `^deploy ✗ .*nope.*\ndeploy ✗ failed after `+secs+`\n$`)
 }
+
+func TestE2E_Log_InterruptedRunSaysStoppingOnceThenEndsEveryTaskStopped(t *testing.T) {
+	// given a called task that is interrupted at a prompt, when the run ends,
+	// then the stopping line names the innermost task and every task in the
+	// chain ends "stopped", innermost first (why: the log must say the run
+	// was stopped, not that it failed)
+	// Arrange
+	yml := `
+		tasks:
+		  top:
+		    steps:
+		      - call: leaf
+		  leaf:
+		    steps:
+		      - get:
+		          - NAME:
+		              info: Your name
+	`
+
+	// Act
+	res := Run(t, Case{Yml: yml, Args: []string{"top"}, TTY: true, Interrupt: "NAME"})
+
+	// Assert
+	res.Fails(t)
+	res.streamMatches(t, "stdout", res.Stdout, `(?m)^top → leaf\nleaf ! stopping, ctrl\+c again to force\n$`)
+	res.streamMatches(t, "stderr", res.Stderr, `(?m)^leaf ✗ stopped after `+secs+`\ntop ✗ stopped after `+secs+`\n$`)
+}

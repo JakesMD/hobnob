@@ -203,6 +203,7 @@ func endRunStep(execState execCtx, step config.Step, cmd string, began time.Time
 	reason := strings.ReplaceAll(err.Error(), "\n", "; ")
 	switch {
 	case errors.Is(err, ErrInterrupted):
+		execState.log.Stopping()
 		execState.log.StepFailed(execState.task, elapsed, firstLine, "stopped")
 	case step.Soft:
 		execState.log.StepSoftFailed(execState.task, elapsed, firstLine, reason)

@@ -174,3 +174,24 @@ func TestRunLog_FailureLinesColourOnlyTheMark(t *testing.T) {
 		}
 	}
 }
+
+func TestRunLog_Stopping_NamesTheInnermostTaskAndPrintsOnce(t *testing.T) {
+	// given a log inside a called task, when stopping is logged twice, then
+	// one yellow line names the innermost task (why: the first CTRL+C is
+	// reported once, on the task that was running)
+	// Arrange
+	var out, errOut bytes.Buffer
+	log := NewRunLog(&out, &errOut)
+	defer log.Enter("deploy")()
+	defer log.Enter("test")()
+
+	// Act
+	log.Stopping()
+	log.Stopping()
+
+	// Assert
+	want := "test ! stopping, ctrl+c again to force\n"
+	if out.String() != want || errOut.String() != "" {
+		t.Errorf("got out %q err %q, want out %q", out.String(), errOut.String(), want)
+	}
+}

@@ -77,7 +77,8 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	}
 	cmd := reExecSelf(t)
 	cmd.Env = append(os.Environ(), "hobnob_SUBPROCESS=1", "HOBNOB_TEST_DIR="+dir)
-	var stderr strings.Builder
+	var stdout, stderr strings.Builder
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("start: %v", err)
@@ -111,8 +112,8 @@ func TestSigint_GracefulShutdown_WaitsForStepToExit(t *testing.T) {
 	if elapsed < 600*time.Millisecond {
 		t.Errorf("expected hobnob to wait out the step's ~0.8s cleanup before exiting, only took %v", elapsed)
 	}
-	if !strings.Contains(stderr.String(), "shutting down") {
-		t.Errorf("expected stderr to contain shutdown notice, got: %s", stderr.String())
+	if !strings.Contains(stdout.String(), "t ! stopping, ctrl+c again to force") {
+		t.Errorf("expected stdout to contain the stopping line, got: %s", stdout.String())
 	}
 	if !strings.Contains(stderr.String(), childStartedSentinel) {
 		t.Fatalf("subprocess never started (missing %s) — -test.run likely matched zero tests; stderr: %s", childStartedSentinel, stderr.String())
