@@ -151,6 +151,7 @@ import (
 
 	"hobnob/internal/app"
 	"hobnob/internal/runner"
+	"hobnob/internal/termsim"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
@@ -183,6 +184,11 @@ type Case struct {
 	Discover  bool        // omit --file, exercise findTaskfile's upward walk
 	Screen    *tui.Screen // the terminal the run is watched on (default nil: stdout is piped)
 	Stdin     string      // what hobnob's stdin holds, which a run: command inherits (default: nothing)
+
+	// WhileRunning, with a Screen, runs alongside the run and gets a func
+	// returning the rows of the terminal as they are right now. It must end
+	// by letting the run finish (a command waiting for a file, say).
+	WhileRunning func(rows func() []string)
 }
 
 // screenOf is a Screen of fixed size, resized by calling the returned func
@@ -236,9 +242,14 @@ type PromptCall struct {
 // Result is what the user would have seen.
 type Result struct {
 	Stdout, Stderr, Combined string
-	ExitCode                 int
-	Prompts                  []PromptCall
-	Dir                      string
+
+	// Raw is what was written to stdout, escape codes and all. With a Screen,
+	// Stdout is what the terminal shows instead: the rows after every erase
+	// and redraw of the status line.
+	Raw      string
+	ExitCode int
+	Prompts  []PromptCall
+	Dir      string
 
 	// runErr is unexported so it can't be compared directly (app.ErrSilent's
 	// empty message makes that a footgun) — go through .OK/.Fails/.Err.
@@ -369,9 +380,22 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	res := &Result{Dir: dir}
-	stdout, stderr, combined := captureOutput(t, func() {
+	stdout, stderr, combined := captureOutput(t, func(stdoutNow func() string) {
+		var watcher sync.WaitGroup
+		if c.WhileRunning != nil {
+			watcher.Add(1)
+			go func() {
+				defer watcher.Done()
+				c.WhileRunning(func() []string { return termsim.Render(ansiRe.ReplaceAllString(stdoutNow(), "")) })
+			}()
+		}
 		res.runErr = a.Run(t.Context(), args)
+		watcher.Wait()
 	})
+	res.Raw = stdout
+	if c.Screen != nil {
+		stdout = strings.Join(termsim.Render(ansiRe.ReplaceAllString(stdout, "")), "\n")
+	}
 	res.Stdout = ansiRe.ReplaceAllString(stdout, "")
 	res.Stderr = ansiRe.ReplaceAllString(stderr, "")
 	res.Combined = ansiRe.ReplaceAllString(combined, "")
@@ -444,7 +468,7 @@ func feedStdin(t *testing.T, text string) (restore func()) {
 
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining
 // both concurrently so output past the ~64KB pipe buffer can't deadlock.
-func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
+func captureOutput(t *testing.T, f func(stdoutNow func() string)) (stdout, stderr, combined string) {
 	t.Helper()
 	rOut, wOut, err := os.Pipe()
 	if err != nil {
@@ -480,7 +504,11 @@ func captureOutput(t *testing.T, f func()) (stdout, stderr, combined string) {
 	go drain(rOut, &outBuf)
 	go drain(rErr, &errBuf)
 
-	f()
+	f(func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return outBuf.String()
+	})
 
 	os.Stdout, os.Stderr = origOut, origErr
 	wOut.Close()

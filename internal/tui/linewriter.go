@@ -151,6 +151,10 @@ func (writer *LineWriter) newline() {
 	writer.open, writer.col = false, 0
 }
 
+// Restart tells the writer its open line was ended behind its back: wrapping
+// starts again from the line's first column.
+func (writer *LineWriter) Restart() { writer.col = 0 }
+
 // Flush ends a partial line. Errors from out are discarded: a failing
 // terminal stream leaves nothing useful to do about it.
 func (writer *LineWriter) Flush() {

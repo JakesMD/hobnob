@@ -188,7 +188,9 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		prompt.Excluded = func(abs string, _ bool) bool { return checker.matcher.Excluded(abs, checker.workDir, checker.home) }
 	}
 	for {
+		resume := execState.log.Pause()
 		picked, answered, err := promptPathFn(execState.ctx, prompt, execState.task, getEntry.Secret)
+		resume()
 		if err != nil {
 			return wrapPromptErr(name, err)
 		}

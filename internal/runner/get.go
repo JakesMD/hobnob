@@ -139,14 +139,18 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 			}
 			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
 		}
+		resume := execState.log.Pause()
 		val, err = promptSelectFn(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret,
 			getEntry.Optional, selectValidator(execState.ctx, getEntry, scope.Vars()), getEntry.Check)
+		resume()
 		if err != nil {
 			return wrapPromptErr(getEntry.VarName, err)
 		}
 	} else {
 		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
+		resume := execState.log.Pause()
 		text, err := promptTextFn(execState.ctx, info, getEntry.VarName, checkValidate, validatorDesc(getEntry, matcher, patterns), defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
+		resume()
 		if err != nil {
 			return wrapPromptErr(getEntry.VarName, err)
 		}

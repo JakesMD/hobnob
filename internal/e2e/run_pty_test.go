@@ -188,7 +188,9 @@ func TestE2E_RunPTY_CursorMovingOutputHasNoPrefix(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "\x1b[1Ab")
+	if !strings.Contains(res.Raw, "\x1b[1Ab") {
+		t.Errorf("raw stdout lost the cursor move: %q", res.Raw)
+	}
 	res.NotOut(t, "│ b", "│ c")
 }
 
