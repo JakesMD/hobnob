@@ -146,7 +146,7 @@ hobnob has exited.
   `KEY=VALUE` and `--quiet`.
 - `--quiet` changes only the terminal. The page still shows each task's
   output line.
-- `--web` is an error with `--no-input`, `--list`, `--select` and `--help`,
+- `--web` is an error with `--no-input`, `--list`, `--select` and `--help`.
   It is not yet supported on Windows.
 - Prompts are on whatever the terminal is: the browser is the person. A command
   can't read from the terminal in browser mode, so don't write `run:` commands

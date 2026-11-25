@@ -36,8 +36,6 @@ type Server struct {
 	listener net.Listener
 	http     *http.Server
 	actions  map[string]action
-	stop     func()
-	kill     func()
 
 	choice chan string
 	home   chan struct{}

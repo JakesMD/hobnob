@@ -97,6 +97,7 @@ func (a *App) runOnPage(ctx context.Context, server *web.Server, taskName string
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	server.SetInterrupt(stop, func() { runner.KillRunningStep() })
+	defer server.ClearInterrupt()
 
 	log := a.newRunLog()
 	log.Listen(server)

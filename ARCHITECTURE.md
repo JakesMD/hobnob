@@ -820,12 +820,12 @@ connect or disconnect, and never runs while steps run. When it fires,
 `EventSource` on `another-tab`, since it would otherwise reconnect and take
 the page back.
 
-**Cancel.** `execWebTask` runs the task under a context of its own and hands
-the server `SetInterrupt(stop, kill)`: `stop` cancels that context (a first
+**Cancel.** `runOnPage` runs each task, in both flows, under a context of its own and hands
+the server `SetInterrupt(stop, kill)` (and `ClearInterrupt` when the run ends): `stop` cancels that context (a first
 CTRL+C) and `kill` is `runner.KillRunningStep` (a second). `Server.Cancel`, also
 behind `POST /actions/cancel`, calls `stop` once and sets
-`Progress.Cancelling`, then `kill` on every later call; it does nothing after the
-run has ended. A run that ends with `runner.ErrInterrupted` is `RunCancelled`.
+`Progress.Cancelling`, then `kill` on every later call; it does nothing unless a run is
+live: not at the task picker, not between runs, not after the run has ended. A run that ends with `runner.ErrInterrupted` is `RunCancelled`.
 
 ### `internal/app`: the CLI body
 

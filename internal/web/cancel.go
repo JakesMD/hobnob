@@ -10,40 +10,55 @@ import (
 // for an open page to take the Cancelled snapshot before hobnob exits.
 const interruptGrace = 2 * time.Second
 
-// SetInterrupt tells the server how to stop the run: stop is a first CTRL+C,
-// the graceful stop, and kill is a second one, which force-stops a step that
-// ignores it. Call it before Serve.
+// SetInterrupt tells the server how to stop the run that starts now: stop is
+// a first CTRL+C, the graceful stop, and kill is a second one, which
+// force-stops a step that ignores it. Cancel acts only between SetInterrupt
+// and ClearInterrupt.
 func (s *Server) SetInterrupt(stop, kill func()) {
+	s.mu.Lock()
 	s.stop, s.kill = stop, kill
+	s.mu.Unlock()
+}
+
+// ClearInterrupt ends the run SetInterrupt began, so a Cancel that arrives
+// later has nothing to stop.
+func (s *Server) ClearInterrupt() {
+	s.mu.Lock()
+	s.stop, s.kill = nil, nil
+	s.mu.Unlock()
 }
 
 // Cancel presses Cancel as the page does: the first call stops the run
 // gracefully and marks it as stopping, every later call force-stops. It does
-// nothing once the run has ended.
-func (s *Server) Cancel() {
-	first, live := false, false
-	s.update(func() {
-		live = s.result == nil
-		first = live && !s.cancelling
-		if live {
-			s.cancelling = true
-		}
-	})
+// nothing, and says false, unless a run is live.
+func (s *Server) Cancel() bool {
+	s.mu.Lock()
+	stop, kill := s.stop, s.kill
+	live := stop != nil && s.result == nil
+	first := live && !s.cancelling
+	if first {
+		s.cancelling = true
+		s.version++
+	}
+	s.mu.Unlock()
 	switch {
 	case !live:
 	case first:
-		s.stop()
+		if s.changed != nil {
+			s.changed()
+		}
+		stop()
 	default:
-		s.kill()
+		kill()
 	}
+	return live
 }
 
 func (s *Server) initCancel() {
 	s.actions["cancel"] = func(json.RawMessage) error {
-		if s.stop == nil || s.kill == nil {
+		if !s.Cancel() {
 			return errors.New("nothing to cancel")
 		}
-		s.Cancel()
 		return nil
 	}
 }
@@ -93,7 +108,7 @@ func (s *Server) giveUp(run int) {
 	s.mu.Lock()
 	atPrompt := s.prompt != nil
 	s.mu.Unlock()
-	if atPrompt && s.stop != nil {
+	if atPrompt {
 		s.Cancel()
 	}
 	s.abandonOnce.Do(func() { close(s.abandoned) })

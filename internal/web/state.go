@@ -30,6 +30,8 @@ type state struct {
 	answers    []RailEntry
 
 	cancelling bool
+	// stop and kill act on the live run; both are nil between runs.
+	stop, kill func()
 }
 
 type setupEntry struct {

@@ -555,6 +555,57 @@ func TestE2E_Web_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
 	}
 }
 
+func TestE2E_Web_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully(t *testing.T) {
+	// given a finished run and Home, when the page POSTs cancel at the task
+	// picker and then runs a second task, then the POST is refused, the
+	// second run does not start on "Stopping..." and its first cancel is a
+	// graceful stop (why: Cancel acts only on a live run, so a spent run's
+	// stop is never called)
+	// Arrange
+	yml := `
+		tasks:
+		  quick:
+		    steps:
+		      - run: "true"
+		  slow:
+		    steps:
+		      - run: trap 'touch cleaned; exit 1' TERM; touch started; while :; do :; done
+	`
+	var atPicker int
+	var before, result web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		tab.Screen(web.ScreenTasks)
+		b.Post("choose", map[string]string{"task": "quick"})
+		tab.Screen(web.ScreenDone)
+		b.Post("home", nil)
+		tab.Screen(web.ScreenTasks)
+		atPicker = b.Post("cancel", struct{}{})
+		b.Post("choose", map[string]string{"task": "slow"})
+		b.Wait("started")
+		before = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		b.Post("cancel", struct{}{})
+		result = tab.Screen(web.ScreenFailed)
+		b.Wait("cleaned")
+		b.Interrupt()
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if atPicker < 400 {
+		t.Errorf("cancel at the picker: status %d, want a refusal", atPicker)
+	}
+	if before.Progress.Cancelling {
+		t.Error("the second run started on Stopping")
+	}
+	if result.Result.Outcome != web.OutcomeCancelled {
+		t.Errorf("result = %+v", result.Result)
+	}
+}
+
 func TestE2E_Web_TerminalInterruptStillDeliversCancelledToAnOpenPage(t *testing.T) {
 	// given an open page and a running step, when CTRL+C reaches the
 	// terminal, then the page is still sent Cancelled before hobnob exits

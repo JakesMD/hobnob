@@ -231,6 +231,7 @@
 // 206. drop the abandoned case from web.Server.AwaitHome -> web_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
 // 207. drop the watchGrace call when a tab closes in web.Server.serveEvents -> web_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
 // 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
+// 211. let web.Server.Cancel act without a live run (drop the stop != nil check) -> web_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
 // 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
 // 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 package e2e
