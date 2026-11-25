@@ -58,14 +58,6 @@ func PromptSelect(ctx context.Context, varName, info string, items []string, mul
 		return value.Str(""), nil
 	}
 
-	display := final.value
-	if final.multi {
-		display = strings.Join(final.values, ", ")
-	}
-	if secret {
-		display = SecretMask
-	}
-	printGetLine(task, final.varName, display)
 	return final.answer(), nil
 }
 

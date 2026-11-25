@@ -2,7 +2,6 @@ package tui
 
 import (
 	"errors"
-	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -62,8 +61,4 @@ func lead(task, mark string) string {
 // taskMark renders a mark bold in the task's colour.
 func taskMark(task, mark string) string {
 	return TaskStyle(task).Bold(true).Render(mark)
-}
-
-func printGetLine(task, varName, displayVal string) {
-	fmt.Println(SStep.Render("get:") + " " + TaskPrefix(task) + SStep.Render(varName+": "+displayVal))
 }

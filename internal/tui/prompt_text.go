@@ -26,11 +26,6 @@ func PromptText(ctx context.Context, info, varName string, validate func(string)
 	if final.quit {
 		return "", fmt.Errorf("aborted")
 	}
-	displayVal := final.value
-	if secret {
-		displayVal = SecretMask
-	}
-	printGetLine(task, varName, displayVal)
 	return final.value, nil
 }
 
