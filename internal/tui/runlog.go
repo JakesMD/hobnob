@@ -19,6 +19,8 @@ type RunLog struct {
 	mu       sync.Mutex
 	running  []string
 	stopping bool
+
+	screen *Screen
 }
 
 // NewRunLog returns a RunLog writing to stdout, with failures and command
@@ -160,9 +162,42 @@ func formatElapsed(d time.Duration) string {
 	return fmt.Sprintf("%.1fs", d.Seconds())
 }
 
+// Watch tells the log a person watches on screen: command output is then
+// written as it arrives and wrapped to the screen, and PTYSize applies.
+func (l *RunLog) Watch(screen *Screen) { l.screen = screen }
+
+// PTYSize is the size of the PTY for a command of task: the screen's width
+// less the output prefix, and its height less the two rows the status line
+// takes. ok is false when nobody watches, so commands get pipes.
+func (l *RunLog) PTYSize(task string) (cols, rows int, ok bool) {
+	if l.screen == nil {
+		return 0, 0, false
+	}
+	cols, rows = l.screen.Size()
+	cols -= lipgloss.Width(l.outputPrefix(task))
+	return max(cols, 1), max(rows-2, 1), true
+}
+
+// OnResize calls fn whenever the watched screen is resized, until stop. It
+// does nothing when nobody watches.
+func (l *RunLog) OnResize(fn func()) (stop func()) {
+	if l.screen == nil {
+		return func() {}
+	}
+	return l.screen.OnResize(fn)
+}
+
+func (l *RunLog) outputPrefix(task string) string { return lead(task, SInfo.Render("│")) }
+
 // Output returns the writers for a command's stdout and stderr, each line
 // prefixed "task │".
 func (l *RunLog) Output(task string) (stdout, stderr *LineWriter) {
-	prefix := lead(task, SInfo.Render("│"))
-	return NewLineWriter(l.stdout, prefix), NewLineWriter(l.stderr, prefix)
+	prefix := l.outputPrefix(task)
+	stdout, stderr = NewLineWriter(l.stdout, prefix), NewLineWriter(l.stderr, prefix)
+	if l.screen != nil {
+		width := func() int { cols, _ := l.screen.Size(); return cols }
+		stdout.Watch(width)
+		stderr.Watch(width)
+	}
+	return stdout, stderr
 }

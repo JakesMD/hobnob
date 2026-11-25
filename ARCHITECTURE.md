@@ -474,9 +474,13 @@ flowchart TD
     out -- "quiet:" --> quiet["buffers only<br/>quiet note on the run line"]
     out -- "into:" --> tee["LineWriter tee'd into buffers"]
     out -- neither --> live["LineWriter only"]
-    quiet --> startp["Start"]
-    tee --> startp
-    live --> startp
+    quiet --> pty{"RunLog.PTYSize:<br/>watched?"}
+    tee --> pty
+    live --> pty
+    pty -- yes --> ptyout["stdout on a PTY, stderr a pipe,<br/>stdin inherited, terminal handed over"]
+    pty -- no --> pipeout["stdout and stderr pipes,<br/>stdin inherited"]
+    ptyout --> startp["Start"]
+    pipeout --> startp
     startp -- fails --> nocap["error, no capture<br/>(no process ran)"]
     startp -- ok --> wait["Wait for the process"]
     wait --> handoff["handoff: drain the pipes,<br/>later output to LineWriters only"]
@@ -617,6 +621,28 @@ also SIGKILLs every leftover group. A mutex guards the running PID, and on
 Linux and macOS it is cleared before the process is reaped, so a racing
 second CTRL+C never hits a reused PID.
 
+**Watched or piped (`stepio.go`, `run.go`).** `RunLog.Watch(screen)` says a
+person watches: `app` gives it `App.Screen()`, which is `tui.StdoutScreen`
+(nil unless stdout is a terminal). `RunLog.PTYSize` then gives a step's PTY
+the screen's width less the output prefix and its height less the two rows
+the status line (#61) will take; piped, it reports no size and `execRun` asks
+`attachPipes` for pipes alone. `stepio_unix.go`'s `newPTYPipe` makes a PTY
+whose slave is stdout's write end and whose master, non-blocking like a pipe's
+read end, goes through the same copy, `handoff` and leftover code. stderr is
+always a pipe. `RunLog.OnResize` (SIGWINCH, `screen_unix.go`) resizes the PTY
+while the step runs. Both `LineWriter`s are `Watch`ed too: they write text as
+it arrives (a prompt with no newline), wrap long lines under their own text,
+and, once a chunk holds a cursor-movement sequence, pass everything after it
+through unprefixed for the rest of the step. Windows has no PTY yet
+(`stepio_other.go`), so steps get pipes there.
+
+Every command inherits hobnob's stdin. When stdin is a terminal hobnob owns
+the foreground of, `foregroundTerminal` makes the step's process group the
+terminal's foreground group (otherwise SIGTTIN stops a `read`), and hands the
+terminal back once the shell has exited. CTRL+C then reaches only the
+command, so a command killed by SIGINT makes hobnob SIGINT itself
+(`interruptSelf`), which main treats as a first CTRL+C.
+
 **Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
 copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block
 until EOF, which never comes while a backgrounded job holds them.
@@ -648,7 +674,7 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
@@ -663,11 +689,12 @@ log line is built from, and `SecretMask`). The runner calls `PromptText`,
 type App struct {
     Version    string
     IsTerminal func() bool
+    Screen     func() *tui.Screen
     SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
 }
 ```
 
-`IsTerminal` and `SelectTask` are fields, not package vars, so `internal/e2e`
+`IsTerminal`, `Screen` and `SelectTask` are fields, not package vars, so `internal/e2e`
 can fake the terminal and picker per test without global state. `App.Run`
 never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 
@@ -740,5 +767,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly four test seams: `runner.SetPrompts` (text, select and path prompts together),
-`runner.SetLeftoverGrace`, `App.IsTerminal` and `App.SelectTask`.
+Production code exposes exactly five test seams: `runner.SetPrompts` (text, select and path prompts together),
+`runner.SetLeftoverGrace`, `App.IsTerminal`, `App.Screen` and `App.SelectTask`.

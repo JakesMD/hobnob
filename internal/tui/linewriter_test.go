@@ -156,3 +156,73 @@ func TestLineWriter_Flush(t *testing.T) {
 		})
 	}
 }
+
+func TestLineWriter_Watched_Write(t *testing.T) {
+	// given a writer watched on a 24-column terminal and a 4-column prefix, when output arrives, then partial lines show at once, long lines wrap under their text and cursor-moving output passes through unprefixed (why: prompts, long lines and multi-row redraws all need different handling on a terminal)
+	tests := []struct {
+		name   string
+		writes []string
+		want   string
+	}{
+		{
+			name:   "given a prompt with no newline, when written, then it shows at once (why: a read prompt must be visible before the user types)",
+			writes: []string{"name? "},
+			want:   "[t] name? ",
+		},
+		{
+			name:   "given a partial line completed by a later write, when both are written, then the prefix appears once (why: the line is one line)",
+			writes: []string{"name? ", "bob\n"},
+			want:   "[t] name? bob\n",
+		},
+		{
+			name:   "given a line longer than the text column, when written, then it wraps under its own text (why: a wrapped line must not run back under the prefix)",
+			writes: []string{"aaaaaaaaaaaaaaaaaaaaaaaa\n"},
+			want:   "[t] aaaaaaaaaaaaaaaaaaaa\n    aaaa\n",
+		},
+		{
+			name:   "given colour codes inside a long line, when written, then they take no width (why: escape sequences are invisible)",
+			writes: []string{"\x1b[31m" + "aaaaaaaaaaaaaaaaaaaa" + "\x1b[0m" + "b\n"},
+			want:   "[t] \x1b[31maaaaaaaaaaaaaaaaaaaa\x1b[0m\n    b\n",
+		},
+		{
+			name:   "given a cursor-up sequence, when written, then it and what follows pass through without a prefix (why: a tool redrawing rows can't be prefixed per line)",
+			writes: []string{"one\n", "\x1b[1Atwo\n", "three\n"},
+			want:   "[t] one\n\x1b[1Atwo\nthree\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			var buf bytes.Buffer
+			lineWriter := NewLineWriter(&buf, "[t] ")
+			lineWriter.Watch(func() int { return 24 })
+
+			// Act
+			for _, w := range test.writes {
+				lineWriter.Write([]byte(w))
+			}
+
+			// Assert
+			if got := buf.String(); got != test.want {
+				t.Errorf("got %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestLineWriter_Piped_Write_LongLineIsNotWrapped(t *testing.T) {
+	// given a writer that isn't watched, when a long line is written, then it passes whole (why: logs and files must keep one line per output line)
+	// Arrange
+	var buf bytes.Buffer
+	lineWriter := NewLineWriter(&buf, "[t] ")
+	long := strings.Repeat("a", 200)
+
+	// Act
+	lineWriter.Write([]byte(long + "\n"))
+
+	// Assert
+	if want := "[t] " + long + "\n"; buf.String() != want {
+		t.Errorf("got %q, want %q", buf.String(), want)
+	}
+}

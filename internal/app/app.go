@@ -32,6 +32,9 @@ var ErrSilent = errors.New("")
 type App struct {
 	Version    string
 	IsTerminal func() bool
+	// Screen returns the terminal a run is watched on, or nil when stdout is
+	// piped. A nil func means piped.
+	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
 }
 
@@ -43,6 +46,7 @@ func New(version string) *App {
 		IsTerminal: func() bool {
 			return cterm.IsTerminal(os.Stdin.Fd())
 		},
+		Screen:     tui.StdoutScreen,
 		SelectTask: tui.PromptTaskSelect,
 	}
 }
@@ -85,6 +89,9 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
+	if a.Screen != nil {
+		log.Watch(a.Screen())
+	}
 	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
 		if !runner.Reported(err) {
 			tui.HobnobError(os.Stderr, err.Error())

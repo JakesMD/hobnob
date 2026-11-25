@@ -8,6 +8,7 @@ import (
 	"os"
 	osExec "os/exec"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -137,9 +138,27 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	}
 	shellCmd.Env = envWithScopeOverrides(scope.Vars())
 
-	pipes, err := attachPipes(shellCmd)
+	var size *ptySize
+	if cols, rows, watched := execState.log.PTYSize(execState.task); watched {
+		size = &ptySize{cols, rows}
+	}
+	pipes, err := attachPipes(shellCmd, size)
 	if err != nil {
 		return end(err)
+	}
+	// The command shares hobnob's stdin, so read, sudo and [y/N] prompts work.
+	shellCmd.Stdin = os.Stdin
+	releaseTerminal, terminalHeld := foregroundTerminal(shellCmd)
+	var released sync.Once
+	giveTerminalBack := func() { released.Do(releaseTerminal) }
+	defer giveTerminalBack()
+	if size != nil {
+		stopResizing := execState.log.OnResize(func() {
+			if cols, rows, ok := execState.log.PTYSize(execState.task); ok {
+				pipes.resize(ptySize{cols, rows})
+			}
+		})
+		defer stopResizing()
 	}
 	if err := shellCmd.Start(); err != nil {
 		// The process never ran — no exit status exists, so there's nothing
@@ -184,6 +203,16 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		waitErr = shellCmd.Wait()
 		clearRunningPID()
 		pipes.handoff(lateStdout, lateStderr)
+	}
+	giveTerminalBack()
+	if terminalHeld && diedOfInterrupt(waitErr) && execState.ctx.Err() == nil {
+		// CTRL+C reached only the command, not hobnob. Make it a first
+		// CTRL+C, and wait for it to cancel the run.
+		interruptSelf()
+		select {
+		case <-execState.ctx.Done():
+		case <-time.After(time.Second):
+		}
 	}
 	if kept.group == 0 && !pipes.closed() {
 		keepLeftover(kept)

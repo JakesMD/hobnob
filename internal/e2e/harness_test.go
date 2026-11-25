@@ -127,6 +127,13 @@
 // 105. print the missing env file warning with the old warning: word in scope.loadEnvFiles -> log_errors_test.go (MissingEnvFileWarnsAsHobnobAndTheRunCarriesOn)
 // 106. print the demo notice without hobnob » in app.announceDemo     -> log_errors_test.go (DemoNoticeIsAHobnobNote)
 // 107. write the installer's output without the hobnob │ prefix in app.runInstaller -> internal/app/upgrade_test.go (TestUpgradeWritesInTheLogsStyle)
+// 108. drop `shellCmd.Stdin = os.Stdin` in runner.execRun             -> run_pty_test.go (CommandInheritsStdin)
+// 109. pass no ptySize to attachPipes in runner.execRun              -> run_pty_test.go (WatchedCommandSeesATTYOnStdoutOnly)
+// 110. drop the prefix width from tui.RunLog.PTYSize                 -> run_pty_test.go (WidthIsTheTerminalsLessThePrefix)
+// 111. drop the pipes.resize call from the OnResize callback         -> run_pty_test.go (ResizeReachesTheRunningCommand)
+// 112. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
+// 113. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
+// 114. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
 package e2e
 
 import (
@@ -170,10 +177,42 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Interrupt string   // var name whose text prompt ends as if CTRL+C had torn it down
-	Probe     []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
-	Cwd       string   // subdir of the temp root to chdir into (default: the root itself)
-	Discover  bool     // omit --file, exercise findTaskfile's upward walk
+	Interrupt string      // var name whose text prompt ends as if CTRL+C had torn it down
+	Probe     []string    // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd       string      // subdir of the temp root to chdir into (default: the root itself)
+	Discover  bool        // omit --file, exercise findTaskfile's upward walk
+	Screen    *tui.Screen // the terminal the run is watched on (default nil: stdout is piped)
+	Stdin     string      // what hobnob's stdin holds, which a run: command inherits (default: nothing)
+}
+
+// screenOf is a Screen of fixed size, resized by calling the returned func
+// with the new size.
+func screenOf(cols, rows int) (screen *tui.Screen, resize func(cols, rows int)) {
+	var mu sync.Mutex
+	var watchers []func()
+	screen = &tui.Screen{
+		Size: func() (int, int) {
+			mu.Lock()
+			defer mu.Unlock()
+			return cols, rows
+		},
+		OnResize: func(fn func()) func() {
+			mu.Lock()
+			defer mu.Unlock()
+			watchers = append(watchers, fn)
+			return func() {}
+		},
+	}
+	resize = func(c, r int) {
+		mu.Lock()
+		cols, rows = c, r
+		fns := append([]func(){}, watchers...)
+		mu.Unlock()
+		for _, fn := range fns {
+			fn()
+		}
+	}
+	return screen, resize
 }
 
 // PromptCall records one prompt the run actually made.
@@ -318,6 +357,9 @@ func Run(t *testing.T, c Case) *Result {
 
 	a := app.New("v0.0.0-test")
 	a.IsTerminal = func() bool { return c.TTY }
+	a.Screen = func() *tui.Screen { return c.Screen }
+	restoreStdin := feedStdin(t, c.Stdin)
+	defer restoreStdin()
 	a.SelectTask = func(ctx context.Context, tasks []tui.TaskItem) (string, error) {
 		if c.TaskPick == "" {
 			t.Fatalf("unexpected task-select prompt (%d tasks offered) — Case.TaskPick not set", len(tasks))
@@ -381,6 +423,23 @@ func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 			}
 		}
 	}
+}
+
+// feedStdin swaps os.Stdin for a pipe holding text, closed at its end, and
+// returns a func restoring the original.
+func feedStdin(t *testing.T, text string) (restore func()) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if _, err := w.WriteString(text); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	return func() { os.Stdin = orig; r.Close() }
 }
 
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining

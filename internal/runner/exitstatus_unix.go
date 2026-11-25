@@ -35,3 +35,8 @@ func (e shellExitError) ExitCode() int {
 	}
 	return -1
 }
+
+// Interrupted reports whether the shell was killed by SIGINT.
+func (e shellExitError) Interrupted() bool {
+	return e.status.Signaled() && e.status.Signal() == syscall.SIGINT
+}

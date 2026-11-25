@@ -5,6 +5,7 @@ package runner
 import (
 	"errors"
 	"io"
+	"os"
 )
 
 // errStepAbandoned is what a late write gets once the run has given up on the
@@ -36,3 +37,10 @@ func (w pipeWriter) Write(b []byte) (int, error) {
 	}
 	return w.pipe.dest.Write(b)
 }
+
+// newPTYPipe: there is no PTY here yet, so steps get pipes.
+func newPTYPipe(size ptySize) (*outPipe, *os.File, error) {
+	return nil, nil, errors.New("no PTY on this platform")
+}
+
+func setPTYSize(master *os.File, size ptySize) {}
