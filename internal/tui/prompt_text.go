@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -14,25 +13,7 @@ import (
 // expression's own text) purely for display, so tui never needs to know how
 // a check is evaluated or what a var's type is.
 func PromptText(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
-	textInput := textinput.New()
-	textInput.Prompt = SArrow.Render("› ")
-	if secret {
-		textInput.EchoMode = textinput.EchoPassword
-	}
-	if defaultVal != "" {
-		textInput.SetValue(defaultVal)
-	}
-	textInput.Focus()
-	model := textModel{
-		info:       info,
-		validate:   validate,
-		checkDesc:  checkDesc,
-		varName:    varName,
-		defaultVal: defaultVal,
-		textInput:  textInput,
-		secret:     secret,
-		optional:   optional,
-	}
+	model := newTextModel(info, varName, validate, checkDesc, defaultVal, task, secret, optional)
 	program := tea.NewProgram(model, tea.WithContext(ctx))
 	result, err := program.Run()
 	if err != nil {
@@ -55,6 +36,7 @@ type textModel struct {
 	validate   func(string) (bool, error)
 	checkDesc  string
 	varName    string
+	task       string
 	defaultVal string
 	textInput  textinput.Model
 	errMsg     string
@@ -63,11 +45,38 @@ type textModel struct {
 	secret     bool
 	optional   bool
 	done       bool
+	termWidth  int
+}
+
+func newTextModel(info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) textModel {
+	textInput := textinput.New()
+	textInput.Prompt = SArrow.Render("› ")
+	if secret {
+		textInput.EchoMode = textinput.EchoPassword
+		textInput.EchoCharacter = '•'
+	}
+	textInput.SetValue(defaultVal)
+	textInput.Focus()
+	return textModel{
+		info:       info,
+		validate:   validate,
+		checkDesc:  checkDesc,
+		varName:    varName,
+		task:       task,
+		defaultVal: defaultVal,
+		textInput:  textInput,
+		secret:     secret,
+		optional:   optional,
+	}
 }
 
 func (model textModel) Init() tea.Cmd { return textinput.Blink }
 
 func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if size, ok := msg.(tea.WindowSizeMsg); ok {
+		model.termWidth = size.Width
+		return model, nil
+	}
 	keyMsg, ok := msg.(tea.KeyMsg)
 	if !ok {
 		var cmd tea.Cmd
@@ -78,6 +87,12 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyCtrlC:
 		model.quit = true
 		return model, tea.Quit
+	case tea.KeyEsc:
+		if model.optional {
+			model.done = true
+			return model, tea.Quit
+		}
+		return model, nil
 	case tea.KeyEnter:
 		val := model.textInput.Value()
 		if model.optional && val == "" {
@@ -107,19 +122,18 @@ func (model textModel) View() string {
 	if model.done {
 		return ""
 	}
-	header := "\nEnter a value for " + SLabel.Render(model.varName) + "."
+	hints := []hint{{"enter", "confirm"}}
 	if model.optional {
-		header += " " + SHint.Render("(optional, leave blank to skip)")
+		hints = append(hints, hint{"esc", "skip"})
 	}
-	if model.info != "" {
-		header += "\n" + SInfo.Render(model.info)
-	}
-	var builder strings.Builder
-	builder.WriteString(header + "\n")
-	builder.WriteString(model.textInput.View() + "\n")
-	if model.errMsg != "" {
-		builder.WriteString(SError.Render(model.errMsg) + "\n")
-	}
-	builder.WriteString(SHint.Render("enter ↵"))
-	return builder.String()
+	return card{
+		task:      model.task,
+		varName:   model.varName,
+		optional:  model.optional,
+		info:      model.info,
+		body:      model.textInput.View(),
+		errMsg:    model.errMsg,
+		hints:     hints,
+		termWidth: model.termWidth,
+	}.render()
 }

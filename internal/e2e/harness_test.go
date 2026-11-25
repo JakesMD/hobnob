@@ -99,6 +99,8 @@
 // 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
 // 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
+// 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
+// 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
 package e2e
 
 import (
