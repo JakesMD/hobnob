@@ -47,21 +47,15 @@ func PromptSelect(ctx context.Context, varName, info string, items []string, mul
 	}
 
 	var chosen value.Value
-	display := final.value
 	if final.multi {
 		arr := make([]any, len(final.values))
 		for i, val := range final.values {
 			arr[i] = val
 		}
 		chosen = value.Of(arr)
-		display = strings.Join(final.values, ", ")
 	} else {
 		chosen = value.Str(final.value)
 	}
-	if secret {
-		display = SecretMask
-	}
-	printGetLine(task, final.varName, display)
 	return chosen, nil
 }
 

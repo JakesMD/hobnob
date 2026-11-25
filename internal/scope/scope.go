@@ -231,6 +231,17 @@ func (scope *Scope) FromInvocation(key string) bool {
 	return scope.fromCLI[key] || scope.ambient[key]
 }
 
+// FromCLI reports whether key's value is a command-line argument nothing
+// has overwritten since.
+func (scope *Scope) FromCLI(key string) bool {
+	return scope.fromCLI[key]
+}
+
+// FromEnv reports whether key's value is still the OS environment's.
+func (scope *Scope) FromEnv(key string) bool {
+	return scope.ambient[key]
+}
+
 // InvocationDir returns the built-in HOBNOB_INVOCATION_DIR: the directory
 // hobnob was run from.
 func (scope *Scope) InvocationDir() string {
