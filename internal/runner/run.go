@@ -8,7 +8,6 @@ import (
 	"os"
 	osExec "os/exec"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -148,11 +147,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return end(err)
 	}
 	// The command shares hobnob's stdin, so read, sudo and [y/N] prompts work.
-	shellCmd.Stdin = os.Stdin
-	releaseTerminal, terminalHeld := foregroundTerminal(shellCmd)
-	var released sync.Once
-	giveTerminalBack := func() { released.Do(releaseTerminal) }
-	defer giveTerminalBack()
+	stopStdin := attachStdin(shellCmd, pipes)
+	defer stopStdin()
 	if size != nil {
 		stopResizing := execState.log.OnResize(func() {
 			if cols, rows, ok := execState.log.PTYSize(execState.task); ok {
@@ -205,16 +201,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		clearRunningPID()
 		pipes.handoff(lateStdout, lateStderr)
 	}
-	giveTerminalBack()
-	if terminalHeld && diedOfInterrupt(waitErr) && execState.ctx.Err() == nil {
-		// CTRL+C reached only the command, not hobnob. Make it a first
-		// CTRL+C, and wait for it to cancel the run.
-		interruptSelf()
-		select {
-		case <-execState.ctx.Done():
-		case <-time.After(time.Second):
-		}
-	}
+	stopStdin()
 	if kept.group == 0 && !pipes.closed() {
 		keepLeftover(kept)
 	}
