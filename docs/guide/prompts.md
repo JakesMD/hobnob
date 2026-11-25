@@ -214,6 +214,9 @@ tells you which variable to pass.
   With `optional: true`, esc clears the filter text first, then skips.
 - **A choice that fails `check:` stays in the menu**, with `validation failed:`
   and the check on the error line, like a text answer.
+- **A `check:` that errors**, because its command can't run or its template
+  fails, shows `✗ check failed:` and the error on the error line, in every kind
+  of prompt, instead of the check itself.
 - **A text prompt starts filled in with its `default:`**, so enter keeps it
   (a `secret:` default shows as `••••`). With `optional: true`, enter on an
   empty field skips the prompt, and so does esc.
@@ -222,11 +225,12 @@ tells you which variable to pass.
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
   stops the task. An empty value means no picks.
 - **Every `get:` value is logged** as `deploy » ENV=prod`. A value nobody
-  typed carries a grey note, `# from the command line` or `# from the
-  environment`, and a `secret:` shows `****`. An optional entry with no answer
+  typed carries a grey note, `# from the command line`, `# from the
+  environment` or, with `--no-input`, `# default`, and a `secret:` shows `****`. An optional entry with no answer
   logs `deploy ⊘ REPLICAS` instead, for every kind of prompt.
 - **With `optional: true` and no answer**, the variable is set but empty
-  (`[]` with `multi:`), and `match:` and `check:` are skipped.
+  (`[]` with `multi:`), and `match:` and `check:` are skipped. On an optional
+  `multi:` menu, enter with nothing toggled counts as no answer, like esc.
 - **A menu with nothing left after `match:`** stops the task, naming the
   variable and the patterns. With `optional: true` the variable is set empty
   instead, without asking.
@@ -261,7 +265,8 @@ tells you which variable to pass.
 - **With `optional: true` and no answer**, esc in the picker gives no answer,
   and the variable is set empty. An empty value never becomes the working
   directory.
-- **A failing `check:` opens the picker again.**
+- **A failing `check:` opens the picker again.** If the check errored, the
+  picker opens with `✗ check failed:` and the error on its error line.
 - **The path line is plain text.** It always holds an absolute path, never a
   `~` form, and the picker starts with the start directory written out in full.
   Typing `/` or backspace only edits it; backspace can't delete the leading

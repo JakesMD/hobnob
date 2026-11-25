@@ -274,13 +274,17 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			if err != nil {
 				err = fmt.Errorf("if %s: %w", step.IfExpr, err)
 			} else if !ok {
-				if step.Kind == config.KindRun {
+				switch step.Kind {
+				case config.KindRun:
 					execState.log.RunSkipped(execState.task, skippedRunText(step, scope))
+				case config.KindCall:
+					execState.log.RunSkipped(execState.task, step.CallTarget)
 				}
 				continue
 			}
 		}
 
+		began := time.Now()
 		if err == nil {
 			err = execStep(execState, step, scope)
 		}
@@ -288,6 +292,9 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			continue
 		}
 		soft := step.Soft && !errors.Is(err, ErrInterrupted)
+		if soft && step.Kind == config.KindCall && Reported(err) {
+			execState.log.StepSoftFailed(execState.task, time.Since(began), "→ "+step.CallTarget, "failed")
+		}
 		if !Reported(err) {
 			execState.log.StepError(execState.task, soft, stepMessage(step, err))
 			err = reportedError{err}

@@ -163,8 +163,8 @@ func TestLiveStatusLineIsClearedWhileACardPromptIsOpen(t *testing.T) {
 func TestLiveStatusLineStaysUnderAPromptWaitingForInputWithItsClockFrozen(t *testing.T) {
 	// given a command whose unfinished line has sat unchanged, when time
 	// passes, then the rule stays below the prompt showing the clock it had,
-	// and the answer's output starts a fresh prefixed line (why: hobnob
-	// can't see the user's Enter, so it can't redraw under the prompt)
+	// and the echoed answer continues the prompt's line (why: the cursor must
+	// stay at the prompt's end, so the rule can't be redrawn under it)
 
 	// Arrange
 	rig := newLiveRig(t, 50)
@@ -185,13 +185,13 @@ func TestLiveStatusLineStaysUnderAPromptWaitingForInputWithItsClockFrozen(t *tes
 	}
 
 	// Act
-	rig.out.WriteString("\n") // the terminal echoes the user's Enter
+	stdout.Write([]byte("bob\r\n")) // the PTY echoes the answer
 	stdout.Write([]byte("hi\n"))
 	rig.advance(time.Second)
 
 	// Assert
 	got = rig.screen()
-	if got[1] != "t │ name?" || got[2] != "t │ hi" {
+	if got[1] != "t │ name? bob" || got[2] != "t │ hi" {
 		t.Errorf("screen after the answer:\n%s", strings.Join(got, "\n"))
 	}
 }

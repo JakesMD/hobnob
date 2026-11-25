@@ -445,7 +445,8 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
 4. Every failure is logged once, where it happens. `execRun` ends its step with
    `StepDone`, `StepFailed` or `StepSoftFailed`; an error from anywhere else
    (a template, a missing task) is logged by `executeSteps` as a time-less
-   `StepError`. Either way the error is wrapped as `reportedError`, which
+   `StepError`; a soft `call:` whose callee failed gets a `StepSoftFailed`
+   `→ callee: failed` line there too. Either way the error is wrapped as `reportedError`, which
    `runner.Reported` detects, so `app` prints nothing more for it. A step that
    can't start reads `task ✗ <step as written>: <why>` (`stepMessage`); template
    noise is stripped where it arises (`eval.plainTemplateError`). Errors before
@@ -636,12 +637,18 @@ and, once a chunk holds a cursor-movement sequence, pass everything after it
 through unprefixed for the rest of the step. Windows has no PTY yet
 (`stepio_other.go`), so steps get pipes there.
 
-Every command inherits hobnob's stdin. When stdin is a terminal hobnob owns
-the foreground of, `foregroundTerminal` makes the step's process group the
-terminal's foreground group (otherwise SIGTTIN stops a `read`), and hands the
-terminal back once the shell has exited. CTRL+C then reaches only the
-command, so a command killed by SIGINT makes hobnob SIGINT itself
-(`interruptSelf`), which main treats as a first CTRL+C.
+Every command inherits hobnob's stdin. When stdin is a terminal hobnob has the
+foreground of (`stdin_term.go`, Linux and macOS), `attachStdin` instead gives
+the command a PTY as stdin and controlling terminal (`Setsid`, so its group
+is that PTY's foreground and `read` is never stopped by SIGTTIN; the step's
+stdout PTY is reused when there is one), puts the real terminal in a mode that
+passes every key (output processing stays on) and forwards the keys to the
+PTY. A CTRL+C byte is not forwarded: it becomes a SIGINT to hobnob itself, so
+`main.go`'s first and second CTRL+C work for every command, even one that
+traps SIGINT. The forwarder polls, so it never holds a read that would
+swallow the next prompt's keys. The terminal is restored when the shell exits
+(`stop`, deferred in `execRun` too) and by `RestoreTerminal`, which `main.go`
+calls before the forced exit.
 
 **Leftovers (`stepio.go`, `leftovers.go`).** A `run:` step gets real OS pipes,
 copied by hobnob's own goroutines. With os/exec's pipes, `Wait` would block
@@ -676,7 +683,7 @@ end of the run.
 
 `runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
-line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
+line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every

@@ -60,7 +60,11 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 		}
 		return fmt.Errorf("--no-input: %s requires input; its default is a directory and %s needs a file; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName, getEntry.VarName)
 	}
-	return acceptAnswer(execState, getEntry, scope, val, false)
+	if err := takeAnswer(execState, getEntry, scope, val, false); err != nil {
+		return err
+	}
+	logVar(execState, getEntry, scope, "default")
+	return nil
 }
 
 // acceptAnswer takes an answer nobody typed at a prompt (a value already in

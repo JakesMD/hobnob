@@ -37,6 +37,7 @@ type PathPrompt struct {
 	Optional bool     // esc clears the segment, then gives no answer
 	Included func(path string, isDir bool) bool
 	Excluded func(path string, isDir bool) bool
+	Error    string // shown on the error line until the first key: why the picker reopened
 }
 
 const pathListHeight = 12
@@ -72,16 +73,6 @@ type pathRow struct {
 	positions []int
 }
 
-func (r pathRow) label() string {
-	switch {
-	case r.here:
-		return "./ (this directory)"
-	case r.isDir:
-		return r.name + "/"
-	}
-	return r.name
-}
-
 type pathModel struct {
 	prompt    PathPrompt
 	task      string
@@ -100,7 +91,7 @@ type pathModel struct {
 
 func newPathModel(prompt PathPrompt) pathModel {
 	home, _ := os.UserHomeDir()
-	m := pathModel{prompt: prompt, home: home}
+	m := pathModel{prompt: prompt, home: home, errMsg: prompt.Error}
 	if m.prompt.WorkDir == "" {
 		m.prompt.WorkDir = prompt.Invoke
 	}
@@ -261,22 +252,13 @@ func (m pathModel) rows() []pathRow {
 		here := m.pickable(m.dir(), true)
 		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true, pickable: here}, here: true})
 	}
-	type scored struct {
-		row   pathRow
-		score int
+	entries := m.entries()
+	names := make([]string, len(entries))
+	for i, e := range entries {
+		names[i] = e.name
 	}
-	var hits []scored
-	for _, e := range m.entries() {
-		score, positions, ok := fuzzyMatch(seg, e.name)
-		if ok {
-			hits = append(hits, scored{pathRow{pathEntry: e, positions: positions}, score})
-		}
-	}
-	if seg != "" {
-		sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
-	}
-	for _, h := range hits {
-		out = append(out, h.row)
+	for _, hit := range matchRows(names, seg) {
+		out = append(out, pathRow{pathEntry: entries[hit.index], positions: hit.positions})
 	}
 	return out
 }
@@ -286,11 +268,7 @@ func (m pathModel) renderRow(rows []pathRow) func(i int) string {
 	return func(i int) string {
 		row := rows[i]
 		var b strings.Builder
-		if i == m.cursor {
-			b.WriteString(SArrow.Render("▶ "))
-		} else {
-			b.WriteString("  ")
-		}
+		b.WriteString(cursorPrefix(i == m.cursor))
 		if m.prompt.Multi {
 			switch {
 			case m.isPicked(m.rowPath(row)):

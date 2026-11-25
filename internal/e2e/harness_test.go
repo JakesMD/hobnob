@@ -134,6 +134,20 @@
 // 112. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
 // 113. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
 // 114. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
+// 115. skip the "!" line for a failed soft call: in runner.executeSteps -> log_ends_test.go (SoftCallThatFailsEndsTheCallingStepWithABang)
+// 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
+// 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
+// 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 120. drop the HOBNOB_QUIET=1 check in app.Run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
+// 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
+//
+// 122. forward a CTRL+C byte to the PTY instead of signalling hobnob    -> runner/run_stdin_test.go (CtrlCReachesHobnobNotTheCommand)
+// 123. drop the terminal restore in runner.attachStdin's stop           -> runner/run_stdin_test.go (ForwardsKeysToTheCommand)
+//
+// 124. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
+// 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
+// 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
 package e2e
 
 import (
@@ -232,6 +246,7 @@ type PromptCall struct {
 	Optional bool
 	Task     string
 	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
+	Error    string // what a picker reopened with on its error line
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -668,7 +683,7 @@ func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task stri
 	raw := answers[idx]
 	s.pathIdx[prompt.VarName] = idx + 1
 	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type}
+		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Error: prompt.Error}
 	for _, p := range s.probe {
 		full := filepath.Join(s.dir, p)
 		info, err := os.Stat(full)

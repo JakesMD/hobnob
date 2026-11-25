@@ -6,10 +6,7 @@ import (
 	"errors"
 	"os"
 	osExec "os/exec"
-	"os/signal"
 	"syscall"
-
-	"golang.org/x/sys/unix"
 )
 
 // setProcAttr puts sh in its own process group so cancelFunc and
@@ -65,46 +62,3 @@ func KillRunningStep() bool {
 	signalGroupKill(pid)
 	return true
 }
-
-// foregroundTerminal makes cmd's process group the foreground group of the
-// terminal on stdin, which cmd inherits: a command in a background group that
-// reads the terminal is stopped by SIGTTIN. It does nothing when stdin is no
-// terminal, or hobnob's group isn't its foreground group (hobnob is in the
-// background). ok reports whether it took effect; then release must run once
-// the command's process has exited, to hand the terminal back to hobnob.
-//
-// While the command holds the terminal, CTRL+C signals its group and not
-// hobnob: see interruptSelf.
-func foregroundTerminal(cmd *osExec.Cmd) (release func(), ok bool) {
-	foreground, err := unix.IoctlGetInt(int(os.Stdin.Fd()), unix.TIOCGPGRP)
-	if err != nil || foreground != syscall.Getpgrp() {
-		return func() {}, false
-	}
-	cmd.SysProcAttr.Foreground = true
-	cmd.SysProcAttr.Ctty = int(os.Stdin.Fd())
-	return func() {
-		// A background group setting the foreground group is stopped by
-		// SIGTTOU unless it ignores it.
-		signal.Ignore(syscall.SIGTTOU)
-		_ = unix.IoctlSetPointerInt(int(os.Stdin.Fd()), unix.TIOCSPGRP, syscall.Getpgrp())
-		signal.Reset(syscall.SIGTTOU)
-	}, true
-}
-
-// diedOfInterrupt reports whether err says the command was killed by SIGINT.
-func diedOfInterrupt(err error) bool {
-	var interrupted interface{ Interrupted() bool }
-	if errors.As(err, &interrupted) {
-		return interrupted.Interrupted()
-	}
-	var exitErr *osExec.ExitError
-	if errors.As(err, &exitErr) {
-		status, ok := exitErr.Sys().(syscall.WaitStatus)
-		return ok && status.Signaled() && status.Signal() == syscall.SIGINT
-	}
-	return false
-}
-
-// interruptSelf delivers the CTRL+C a command held the terminal for to
-// hobnob itself, as a shell does for a foreground job killed by SIGINT.
-func interruptSelf() { _ = syscall.Kill(os.Getpid(), syscall.SIGINT) }

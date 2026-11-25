@@ -60,8 +60,9 @@ type liveArea struct {
 	hiddenNL bool // the tool's last byte was a newline
 
 	// waiting: the command's unfinished line is a prompt. The status line is
-	// drawn once below it and left alone, its clock frozen, because the
-	// user's Enter never reaches hobnob.
+	// drawn once below it, its clock frozen, so the cursor can stay at the
+	// prompt's end. The keys the user types are echoed by the command's PTY
+	// as output, so the answer continues the prompt's line.
 	waiting bool
 	below   bool
 	atStart bool
@@ -150,7 +151,9 @@ func (a *liveArea) stepEnd() {
 	defer a.flush()
 	a.clear()
 	if a.waiting {
-		// The command is over, so the user answered it.
+		if !a.atStart {
+			a.frame.WriteString("\n")
+		}
 		a.waiting, a.atStart = false, true
 	}
 	if a.hidden {
@@ -234,9 +237,7 @@ func (a *liveArea) write(dst io.Writer, p []byte) {
 		dst.Write(p)
 		return
 	}
-	now := a.now()
-	idle := now.Sub(a.lastOut)
-	a.lastOut = now
+	a.lastOut = a.now()
 	if a.hidden {
 		a.hiddenNL = p[len(p)-1] == '\n'
 		a.emit(dst, p)
@@ -244,10 +245,6 @@ func (a *liveArea) write(dst io.Writer, p []byte) {
 	}
 	a.clear()
 	if a.waiting {
-		if !a.atStart && idle > promptIdle {
-			a.atStart = true
-			a.owePrefix = true
-		}
 		if !a.atStart {
 			i := bytes.IndexByte(p, '\n')
 			if i < 0 {
