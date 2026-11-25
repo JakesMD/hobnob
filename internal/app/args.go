@@ -51,6 +51,21 @@ func extractDemoFlag(args []string) (bool, []string) {
 	return false, args
 }
 
+// extractQuietFlag scans args for --quiet or -q, removes it, and reports
+// whether it was present.
+func extractQuietFlag(args []string) (bool, []string) {
+	found := false
+	remaining := make([]string, 0, len(args))
+	for _, arg := range args {
+		if arg == "--quiet" || arg == "-q" {
+			found = true
+			continue
+		}
+		remaining = append(remaining, arg)
+	}
+	return found, remaining
+}
+
 // extractFileFlag scans args for --file <value>, removes both tokens, and
 // returns the value alongside the remaining args. Returns ("", args, nil) if
 // the flag is absent.
