@@ -644,7 +644,7 @@ card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
-`Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
+`Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
 log line is built from, and `SecretMask`). The runner calls `PromptText`,
 `PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 

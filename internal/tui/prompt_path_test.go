@@ -179,47 +179,91 @@ func TestPathModel_FuzzyMatchesSegmentBestFirstAndHighlights(t *testing.T) {
 	}
 }
 
-func TestPathModel_View_ShowsHeaderInfoMarkersAndHint(t *testing.T) {
-	// given a file picker with info, when viewed, then it shows the menu-style header, the info, the cursor marker and the hint line
+func TestPathModel_View_ShowsCardWithTitleInfoFilterLineMarkersAndHints(t *testing.T) {
+	// given a file picker with info, when viewed, then it shows a card titled with the task and var, the info, the absolute path on the filter line, the cursor marker and the hints
 	// (why: the picker must look like the other prompts)
 
 	// Arrange
 	root := tree(t, "a.txt")
 	m := newPathModel(PathPrompt{Type: "file", VarName: "CFG", Info: "Which config?", Invoke: root})
+	m.task = "deploy"
 
 	// Act
 	view := m.View()
 
 	// Assert
-	for _, want := range []string{"Pick a file for", "CFG", "Which config?", "▶ ", "a.txt", "↑↓ move", "enter pick"} {
+	for _, want := range []string{"╭─ ", "deploy", "» ", "CFG", "Which config?", "› ", "▶ ", "a.txt", "↑↓", "enter"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view missing %q:\n%s", want, view)
 		}
 	}
-	if strings.Contains(strings.ToLower(view), "folder") {
-		t.Errorf("view says folder, want directory:\n%s", view)
+	if strings.Contains(view, "Pick a file") || strings.Contains(strings.ToLower(view), "folder") {
+		t.Errorf("view has the old header or says folder:\n%s", view)
 	}
 }
 
-func TestPathModel_View_DirHeaderSaysDirectory(t *testing.T) {
-	// given a dir picker, when viewed, then the header reads "Pick a directory for"
-	// (why: user-facing text says directory, never folder)
+func TestPathModel_View_FilterLineShowsAbsolutePathWithoutTilde(t *testing.T) {
+	// given a picker started in the home directory, when viewed, then the filter line shows the absolute path and no ~ form
+	// (why: a ~ form hid where the picker was)
 
 	// Arrange
-	m := newTestPath(tree(t), "dir")
+	home := tree(t, "docs/")
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	m := newPathModel(PathPrompt{Type: "dir", Invoke: home, Start: "~/docs"})
 
 	// Act
 	view := m.View()
 
 	// Assert
-	if !strings.Contains(view, "Pick a directory for") {
-		t.Errorf("view missing directory header:\n%s", view)
+	if m.text != filepath.ToSlash(filepath.Join(home, "docs"))+"/" || strings.Contains(view, "~") {
+		t.Errorf("filter line should hold the absolute path:\n%s", view)
 	}
 }
 
-func TestPathModel_SlashWithExactMatch_StepsIntoThatDirectory(t *testing.T) {
-	// given a segment naming a directory exactly, when / is typed, then the picker steps into it
-	// (why: an exact name wins over fuzzy ranking)
+func TestPathModel_View_FilterLineShowsOnlyTheLast40CharactersAfterAnEllipsis(t *testing.T) {
+	// given a path longer than 40 characters, when viewed, then the filter line shows its tail after "…" while the text stays whole
+	// (why: display only; typing still edits the full path)
+
+	// Arrange
+	root := tree(t, "aaaaaaaaaa/bbbbbbbbbb/cccccccccc/dddddddddd/eeeeeeeeee/")
+	m := newPathModel(PathPrompt{Type: "dir", Invoke: filepath.Join(root, "aaaaaaaaaa/bbbbbbbbbb/cccccccccc/dddddddddd/eeeeeeeeee")})
+	full := m.text
+
+	// Act
+	view := m.View()
+
+	// Assert
+	tail := "…" + full[len(full)-39:]
+	if !strings.Contains(view, tail) || strings.Contains(view, full) || m.text != full {
+		t.Errorf("want only %q on the filter line:\n%s", tail, view)
+	}
+}
+
+func TestPathModel_View_NonexistentDirectoryShowsNoDirectoryMessage(t *testing.T) {
+	// given text naming a directory that does not exist, when viewed, then the listing says no directory and names it
+	// (why: the text alone decides where the picker is, so a typo must be explained)
+
+	// Arrange
+	root := tree(t, "a.txt")
+	m := newTestPath(root, "file")
+	m.text = "/nope/"
+
+	// Act
+	view := m.View()
+
+	// Assert
+	if !strings.Contains(view, `no directory "/nope/"`) {
+		t.Errorf("view missing message:\n%s", view)
+	}
+	if got := names(m); len(got) != 0 {
+		t.Errorf("rows: got %v, want none", got)
+	}
+}
+
+func TestPathModel_TypingSlash_ListsTheDirectoryTheTextNames(t *testing.T) {
+	// given a typed name, when / is typed after it, then the directory the text names is listed and the segment is empty
+	// (why: / is plain text; the text alone decides the listing)
 
 	// Arrange
 	root := tree(t, "runner/inner.txt", "run/other.txt")
@@ -231,93 +275,47 @@ func TestPathModel_SlashWithExactMatch_StepsIntoThatDirectory(t *testing.T) {
 	if got := names(m); !equal(got, []string{"other.txt"}) {
 		t.Errorf("rows: got %v, want [other.txt]", got)
 	}
-	if m.dirText() != "run/" || m.seg != "" {
-		t.Errorf("input: got %q + %q, want %q + empty segment", m.dirText(), m.seg, "run/")
+	if m.seg() != "" || m.text != root+"/run/" {
+		t.Errorf("text: got %q, want %q", m.text, root+"/run/")
 	}
 }
 
-func TestPathModel_SlashWithHighlightedMatch_StepsIntoHighlightedDirectory(t *testing.T) {
-	// given a segment that fuzzy-matches a directory, when / is typed, then the highlighted directory opens
-	// (why: rnr/ is a shorthand for runner/)
+func TestPathModel_TypingFuzzyNameThenSlash_DoesNotOpenTheHighlightedMatch(t *testing.T) {
+	// given a segment that only fuzzy-matches a directory, when / is typed, then the text names a directory that does not exist
+	// (why: no exact-or-highlighted guessing; only the text decides)
 
 	// Arrange
-	root := tree(t, "runner/inner.txt", "other.txt")
+	root := tree(t, "runner/inner.txt")
 
 	// Act
 	m := typed(newTestPath(root, "file"), "rnr/")
 
 	// Assert
-	if m.dirText() != "runner/" || m.seg != "" {
-		t.Errorf("input: got %q + %q, want %q + empty segment", m.dirText(), m.seg, "runner/")
+	if m.dirExists() || m.text != root+"/rnr/" {
+		t.Errorf("text %q exists=%v, want the typed text and a missing directory", m.text, m.dirExists())
 	}
 }
 
-func TestPathModel_SlashWithNoMatch_ShowsErrorAndKeepsSegment(t *testing.T) {
-	// given a segment matching no directory, when / is typed, then "no directory matching" shows and the segment stays
-	// (why: the user must see why nothing happened and can fix the segment)
+func TestPathModel_TypedDotDotSegmentsListWhateverDirectoryTheyName(t *testing.T) {
+	// given a picker in a subdirectory, when ../ is typed, then the parent is listed
+	// (why: the text is the only source of where the picker is)
 
 	// Arrange
-	root := tree(t, "a.txt", "sub/")
-
-	// Act
-	m := typed(newTestPath(root, "file"), "zzz/")
-
-	// Assert
-	if !strings.Contains(m.View(), `no directory matching "zzz"`) {
-		t.Errorf("view missing error:\n%s", m.View())
-	}
-	if m.seg != "zzz" || m.dirText() != "" {
-		t.Errorf("input: got %q + %q, want %q + %q", m.dirText(), m.seg, "", "zzz")
-	}
-}
-
-func TestPathModel_SlashOnAFileMatch_DoesNotStepIn(t *testing.T) {
-	// given a segment naming a file with no directory matching, when / is typed, then it errors
-	// (why: only directories can be stepped into)
-
-	// Arrange
-	root := tree(t, "notes.txt")
-
-	// Act
-	m := typed(newTestPath(root, "file"), "notes.txt/")
-
-	// Assert
-	if m.seg != "notes.txt" || m.errMsg == "" {
-		t.Errorf("got seg %q err %q, want the segment kept with an error", m.seg, m.errMsg)
-	}
-}
-
-func TestPathModel_DotDotSlashAndTildeSlashAndLeadingSlashWorkAsInAShell(t *testing.T) {
-	// given a picker in a subdirectory, when ../, ~/ and a leading / are typed, then each lands where a shell would and keeps that form
-	// (why: the directory part keeps the form the user started in)
-
-	// Arrange
-	root := tree(t, "sub/")
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	root := tree(t, "sub/", "top.txt")
 	sub := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: filepath.Join(root, "sub")})
 
 	// Act
-	up := typed(sub, "../")
-	tilde := typed(sub, "~/")
-	abs := typed(sub, "/")
+	got := names(typed(sub, "../"))
 
 	// Assert
-	if up.cwd != root || up.dirText() != "../" {
-		t.Errorf("../: got %q (%q), want %q", up.cwd, up.dirText(), root)
-	}
-	if tilde.cwd != home || tilde.dirText() != "~/" {
-		t.Errorf("~/: got %q (%q), want %q", tilde.cwd, tilde.dirText(), home)
-	}
-	if abs.cwd != string(filepath.Separator) || abs.dirText() != "/" {
-		t.Errorf("/: got %q (%q), want root", abs.cwd, abs.dirText())
+	if want := []string{"sub/", "top.txt"}; !equal(got, want) {
+		t.Errorf("rows: got %v, want %v", got, want)
 	}
 }
 
-func TestPathModel_StartDirectoryKeepsItsWrittenForm(t *testing.T) {
-	// given starts written relative, ~-based and absolute, when the picker opens, then the input shows each as written
-	// (why: the directory part keeps the form the user started in)
+func TestPathModel_StartDirectoryIsWrittenAbsolute(t *testing.T) {
+	// given starts written relative, ~-based and absolute, when the picker opens, then the filter line holds each as an absolute path
+	// (why: the filter line always holds the full absolute path)
 
 	// Arrange
 	root := tree(t, "sub/deep/")
@@ -335,10 +333,12 @@ func TestPathModel_StartDirectoryKeepsItsWrittenForm(t *testing.T) {
 
 	// Assert
 	for _, c := range []struct{ got, want string }{
-		{rel.dirText(), "sub/deep/"}, {tilde.dirText(), "~/docs/"}, {abs.dirText(), filepath.ToSlash(filepath.Join(root, "sub")) + "/"},
+		{rel.text, filepath.ToSlash(filepath.Join(root, "sub", "deep")) + "/"},
+		{tilde.text, filepath.ToSlash(filepath.Join(home, "docs")) + "/"},
+		{abs.text, filepath.ToSlash(filepath.Join(root, "sub")) + "/"},
 	} {
 		if c.got != c.want {
-			t.Errorf("dirText: got %q, want %q", c.got, c.want)
+			t.Errorf("text: got %q, want %q", c.got, c.want)
 		}
 	}
 }
@@ -370,8 +370,8 @@ func TestPathModel_RightOpensTheHighlightedDirectory(t *testing.T) {
 	m = press(m, keyRight)
 
 	// Assert
-	if got := names(m); !equal(got, []string{"inner.txt"}) || m.dirText() != "sub/" {
-		t.Errorf("got %v in %q, want [inner.txt] in sub/", got, m.dirText())
+	if got := names(m); !equal(got, []string{"inner.txt"}) || !strings.HasSuffix(m.text, "/sub/") {
+		t.Errorf("got %v in %q, want [inner.txt] in .../sub/", got, m.text)
 	}
 }
 
@@ -380,14 +380,15 @@ func TestPathModel_RightOnAFile_DoesNothing(t *testing.T) {
 	// (why: only directories open)
 
 	// Arrange
-	m := newTestPath(tree(t, "a.txt"), "file")
+	root := tree(t, "a.txt")
+	m := newTestPath(root, "file")
 
 	// Act
 	m = press(m, keyRight)
 
 	// Assert
-	if m.dirText() != "" {
-		t.Errorf("dirText: got %q, want unchanged", m.dirText())
+	if m.text != root+"/" {
+		t.Errorf("text: got %q, want unchanged %q", m.text, root+"/")
 	}
 }
 
@@ -403,17 +404,17 @@ func TestPathModel_LeftGoesUpALevelAndHighlightsWhereItCameFrom(t *testing.T) {
 	m = press(m, keyLeft)
 
 	// Assert
-	if m.cwd != root || m.dirText() != "" {
-		t.Errorf("cwd: got %q (%q), want %q", m.cwd, m.dirText(), root)
+	if m.dir() != root || m.text != root+"/" {
+		t.Errorf("dir: got %q (%q), want %q", m.dir(), m.text, root)
 	}
 	if m.cursor != 1 {
 		t.Errorf("cursor: got %d, want 1 (sub/)", m.cursor)
 	}
 }
 
-func TestPathModel_BackspaceOnEmptySegmentGoesUp(t *testing.T) {
-	// given an empty segment inside a subdirectory, when backspace is pressed, then the picker goes up
-	// (why: backspace eats the path the way it would in a shell)
+func TestPathModel_BackspaceOnTrailingSlash_ListsTheDirectoryTheTextNowNames(t *testing.T) {
+	// given text ending in the slash of a subdirectory, when backspace is pressed, then the slash is gone and the parent is listed
+	// (why: backspace only edits text)
 
 	// Arrange
 	root := tree(t, "sub/inner.txt")
@@ -423,8 +424,25 @@ func TestPathModel_BackspaceOnEmptySegmentGoesUp(t *testing.T) {
 	m = press(m, keyBack)
 
 	// Assert
-	if m.cwd != root {
-		t.Errorf("cwd: got %q, want %q", m.cwd, root)
+	if m.text != root+"/sub" || m.dir() != root || !equal(names(m), []string{"sub/"}) {
+		t.Errorf("text %q dir %q rows %v, want the parent listing filtered by sub", m.text, m.dir(), names(m))
+	}
+}
+
+func TestPathModel_BackspaceCannotDeleteTheLeadingSlash(t *testing.T) {
+	// given text that is just "/", when backspace is pressed, then the text is unchanged
+	// (why: the filter line is never empty)
+
+	// Arrange
+	m := newTestPath(tree(t), "dir")
+	m.text = "/"
+
+	// Act
+	m = press(m, keyBack, keyBack)
+
+	// Assert
+	if m.text != "/" {
+		t.Errorf("text: got %q, want %q", m.text, "/")
 	}
 }
 
@@ -439,8 +457,8 @@ func TestPathModel_BackspaceWithSegment_DeletesALetter(t *testing.T) {
 	m = press(m, keyBack)
 
 	// Assert
-	if m.seg != "s" || m.cwd == filepath.Dir(m.prompt.Invoke) {
-		t.Errorf("seg: got %q, want %q", m.seg, "s")
+	if m.seg() != "s" || m.dir() == filepath.Dir(m.prompt.Invoke) {
+		t.Errorf("seg: got %q, want %q", m.seg(), "s")
 	}
 }
 
@@ -462,19 +480,20 @@ func TestPathModel_EnterOnAFile_PicksItsAbsolutePath(t *testing.T) {
 	}
 }
 
-func TestPathModel_EnterOnADirectoryInAFilePicker_OpensIt(t *testing.T) {
-	// given a highlighted directory in a file picker, when enter is pressed, then it opens instead of being picked
-	// (why: a file picker can only pick files)
+func TestPathModel_EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt(t *testing.T) {
+	// given a highlighted directory in a file picker, when enter is pressed, then nothing opens or is picked and "that's a directory: → opens it" shows
+	// (why: enter only picks)
 
 	// Arrange
-	m := newTestPath(tree(t, "sub/inner.txt"), "file")
+	root := tree(t, "sub/inner.txt")
+	m := newTestPath(root, "file")
 
 	// Act
 	m = press(m, keyEnter)
 
 	// Assert
-	if m.done || m.dirText() != "sub/" {
-		t.Errorf("done %v dirText %q, want an open sub/", m.done, m.dirText())
+	if m.done || m.text != root+"/" || !strings.Contains(m.View(), "that's a directory: → opens it") {
+		t.Errorf("done %v text %q, want nothing opened and the hint:\n%s", m.done, m.text, m.View())
 	}
 }
 
@@ -539,18 +558,9 @@ func TestPathModel_TabCompletesTheHighlightedName(t *testing.T) {
 	m = press(m, keyTab)
 
 	// Assert
-	if m.seg != "config.yml" || m.done {
-		t.Errorf("seg: got %q done %v, want config.yml not done", m.seg, m.done)
+	if m.seg() != "config.yml" || m.done {
+		t.Errorf("seg: got %q done %v, want config.yml not done", m.seg(), m.done)
 	}
-}
-
-func hasPrefixLabel(m pathModel, label string) bool {
-	for _, n := range names(m) {
-		if n == label {
-			return true
-		}
-	}
-	return false
 }
 
 func TestPathModel_Multi_TabTogglesPicksAndEnterConfirmsAll(t *testing.T) {
@@ -627,8 +637,8 @@ func TestPathModel_Optional_EscClearsSegmentThenGivesNoAnswer(t *testing.T) {
 	m = press(m, keyEsc)
 
 	// Assert
-	if afterFirst.seg != "" || afterFirst.done {
-		t.Errorf("first esc: seg=%q done=%v, want cleared and not done", afterFirst.seg, afterFirst.done)
+	if afterFirst.seg() != "" || afterFirst.done {
+		t.Errorf("first esc: seg=%q done=%v, want cleared and not done", afterFirst.seg(), afterFirst.done)
 	}
 	if !m.done || !m.skipped {
 		t.Errorf("second esc: done=%v skipped=%v, want both true", m.done, m.skipped)
@@ -673,29 +683,29 @@ func TestPathModel_FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes
 	}
 }
 
-func TestPathModel_DirPicker_NonMatchingDirCanBeOpenedButNotPicked(t *testing.T) {
-	// given a dir picker whose predicate matches only "ok", when enter is pressed on "other", then it opens; on "ok" it is picked
+func TestPathModel_DirPicker_NonMatchingDirCanBeOpenedByRightButNotPicked(t *testing.T) {
+	// given a dir picker whose predicate matches only "ok", when enter is pressed on "other", then it is refused and right opens it; on "ok" enter picks
 	// (why: you may need to walk through non-matching dirs to reach a matching one)
 
 	// Arrange
 	root := tree(t, "other/ok/", "ok/")
 	only := func(path string, isDir bool) bool { return filepath.Base(path) == "ok" }
-	m := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: only})
+	m := typed(newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: only}), "oth")
 
 	// Act
-	m = typed(m, "oth")
-	opened := press(m, keyEnter)
+	refused := press(m, keyEnter)
+	opened := press(m, keyRight)
 	picked := press(typed(newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Included: only}), "ok"), keyEnter)
 
 	// Assert
-	if opened.done || opened.cwd != filepath.Join(root, "other") {
-		t.Errorf("enter on non-matching dir: cwd=%s done=%v, want it opened", opened.cwd, opened.done)
+	if refused.done || refused.errMsg == "" {
+		t.Errorf("enter on non-matching dir: done=%v err=%q, want a refusal", refused.done, refused.errMsg)
+	}
+	if opened.done || opened.dir() != filepath.Join(root, "other") {
+		t.Errorf("right on non-matching dir: dir=%s done=%v, want it opened", opened.dir(), opened.done)
 	}
 	if !picked.done || picked.picked != filepath.Join(root, "ok") {
 		t.Errorf("enter on matching dir: picked=%q done=%v", picked.picked, picked.done)
-	}
-	if hasPrefixLabel(opened, "./ (this directory)") && opened.cwd == root {
-		t.Error("unexpected here row")
 	}
 }
 
@@ -729,8 +739,8 @@ func TestPathModel_Open_FileDefaultIsPreselectedInItsDirectory(t *testing.T) {
 
 	// Assert
 	row, ok := m.highlighted()
-	if m.cwd != filepath.Join(root, "sub") || !ok || row.name != "b.txt" {
-		t.Errorf("cwd=%s row=%v, want sub with b.txt highlighted", m.cwd, row.name)
+	if m.dir() != filepath.Join(root, "sub") || !ok || row.name != "b.txt" {
+		t.Errorf("cwd=%s row=%v, want sub with b.txt highlighted", m.dir(), row.name)
 	}
 }
 
@@ -746,8 +756,8 @@ func TestPathModel_Open_DirDefaultIsPreselectedInItsParent(t *testing.T) {
 
 	// Assert
 	row, ok := m.highlighted()
-	if m.cwd != root || !ok || row.name != "y" {
-		t.Errorf("cwd=%s row=%v, want root with y highlighted", m.cwd, row.name)
+	if m.dir() != root || !ok || row.name != "y" {
+		t.Errorf("cwd=%s row=%v, want root with y highlighted", m.dir(), row.name)
 	}
 }
 
@@ -762,8 +772,8 @@ func TestPathModel_Open_DirectoryDefaultInFilePickerIsWhereBrowsingStarts(t *tes
 	m := newPathModel(PathPrompt{Type: "file", VarName: "X", Invoke: root, Default: []string{"sub"}})
 
 	// Assert
-	if m.cwd != filepath.Join(root, "sub") || !equal(names(m), []string{"a.txt"}) {
-		t.Errorf("cwd=%s rows=%v", m.cwd, names(m))
+	if m.dir() != filepath.Join(root, "sub") || !equal(names(m), []string{"a.txt"}) {
+		t.Errorf("cwd=%s rows=%v", m.dir(), names(m))
 	}
 }
 
@@ -779,11 +789,11 @@ func TestPathModel_Open_MissingOrWrongKindDefaultOpensNearestExistingParent(t *t
 	wrong := newPathModel(PathPrompt{Type: "dir", VarName: "X", Invoke: root, Default: []string{"sub/a.txt"}})
 
 	// Assert
-	if missing.cwd != filepath.Join(root, "sub") || missing.cursor != 0 {
-		t.Errorf("missing: cwd=%s cursor=%d", missing.cwd, missing.cursor)
+	if missing.dir() != filepath.Join(root, "sub") || missing.cursor != 0 {
+		t.Errorf("missing: cwd=%s cursor=%d", missing.dir(), missing.cursor)
 	}
-	if wrong.cwd != filepath.Join(root, "sub") || wrong.cursor != 0 {
-		t.Errorf("wrong kind: cwd=%s cursor=%d", wrong.cwd, wrong.cursor)
+	if wrong.dir() != filepath.Join(root, "sub") || wrong.cursor != 0 {
+		t.Errorf("wrong kind: cwd=%s cursor=%d", wrong.dir(), wrong.cursor)
 	}
 }
 
@@ -798,8 +808,8 @@ func TestPathModel_Open_NoDefaultStartsInInvokeDirectory(t *testing.T) {
 	m := newTestPath(root, "file")
 
 	// Assert
-	if m.cwd != root {
-		t.Errorf("cwd=%s, want %s", m.cwd, root)
+	if m.dir() != root {
+		t.Errorf("cwd=%s, want %s", m.dir(), root)
 	}
 }
 
@@ -898,27 +908,6 @@ func TestPathModel_DirPicker_ThisDirectoryRowNotPickableInJunkDirectory(t *testi
 	}
 }
 
-func TestPathModel_SlashDoesNotStepIntoJunkOrExcludedNames(t *testing.T) {
-	// given a junk directory and an excluded directory, when their exact names are typed with a slash, then the picker stays put with an error
-	// (why: names that would not be listed can't be reached by typing)
-
-	// Arrange
-	root := tree(t, "Thumbs.db/", "skip/", "ok/")
-	excluded := func(p string, isDir bool) bool { return filepath.Base(p) == "skip" }
-	m := newPathModel(PathPrompt{Type: "dir", Invoke: root, Excluded: excluded})
-
-	// Act
-	junk := typed(m, "Thumbs.db/")
-	skip := typed(m, "skip/")
-
-	// Assert
-	for name, got := range map[string]pathModel{"junk": junk, "excluded": skip} {
-		if got.cwd != root || got.errMsg == "" {
-			t.Errorf("%s: cwd=%s err=%q, want cwd unchanged and an error", name, got.cwd, got.errMsg)
-		}
-	}
-}
-
 func TestPathModel_SortingIgnoresCase(t *testing.T) {
 	// given mixed-case names, when listed, then directories lead and each group is ordered ignoring case
 	// (why: Zed should not sort before alpha)
@@ -936,9 +925,9 @@ func TestPathModel_SortingIgnoresCase(t *testing.T) {
 	}
 }
 
-func TestPathModel_WorkDir_NoDefaultOpensInWorkDirShownRelativeToInvoke(t *testing.T) {
-	// given a WorkDir below Invoke and no default, when the picker opens, then it lists WorkDir and the input reads relative to Invoke
-	// (why: the task's working directory is the start, but the line stays in invocation-relative form)
+func TestPathModel_WorkDir_NoDefaultOpensInWorkDirShownAbsolute(t *testing.T) {
+	// given a WorkDir below Invoke and no default, when the picker opens, then it lists WorkDir and the filter line holds its absolute path
+	// (why: the task's working directory is the start, written absolute like every path)
 
 	// Arrange
 	root := tree(t, "sub/a.txt")
@@ -947,8 +936,8 @@ func TestPathModel_WorkDir_NoDefaultOpensInWorkDirShownRelativeToInvoke(t *testi
 	m := newPathModel(PathPrompt{Type: "file", Invoke: root, WorkDir: filepath.Join(root, "sub")})
 
 	// Assert
-	if m.cwd != filepath.Join(root, "sub") || m.dirText() != "sub/" {
-		t.Errorf("cwd=%s dirText=%q, want sub and %q", m.cwd, m.dirText(), "sub/")
+	if m.dir() != filepath.Join(root, "sub") || m.text != filepath.ToSlash(filepath.Join(root, "sub"))+"/" {
+		t.Errorf("dir=%s text=%q, want sub as an absolute path", m.dir(), m.text)
 	}
 }
 
@@ -964,8 +953,8 @@ func TestPathModel_WorkDir_RelativeDefaultResolvesAgainstIt(t *testing.T) {
 	row, _ := m.highlighted()
 
 	// Assert
-	if m.cwd != filepath.Join(root, "sub") || row.name != "a.txt" || !equal(m.picks, []string{filepath.Join(root, "sub", "a.txt")}) {
-		t.Errorf("cwd=%s row=%s picks=%v", m.cwd, row.name, m.picks)
+	if m.dir() != filepath.Join(root, "sub") || row.name != "a.txt" || !equal(m.picks, []string{filepath.Join(root, "sub", "a.txt")}) {
+		t.Errorf("cwd=%s row=%s picks=%v", m.dir(), row.name, m.picks)
 	}
 }
 
