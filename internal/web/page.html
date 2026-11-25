@@ -63,6 +63,10 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .icon.ok { background: rgba(78,194,122,.15); color: var(--green); }
 .icon.bad { background: rgba(255,107,107,.12); color: var(--red); }
 .lead { color: var(--t2); max-width: 560px; margin: -14px 0 24px; }
+.field { width: 100%; max-width: 560px; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--t1); }
+.field:focus { outline: 2px solid var(--brand-2); border-color: transparent; }
+.refusal { margin-top: 10px; color: var(--red); font-size: 14px; }
+.actions { display: flex; gap: 10px; }
 .solo { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--t2); }
 </style>
 </head>
@@ -122,6 +126,27 @@ function progress(s) {
   };
 }
 
+let draft = { id: null, text: '' };
+
+function ask(s) {
+  const p = s.prompt;
+  if (draft.id !== p.id) draft = { id: p.id, text: p.default || '' };
+  const send = () => post('answer', { id: p.id, value: draft.text });
+  const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
+    autocomplete: 'off', spellcheck: 'false', placeholder: p.hasDefault && p.secret ? '••••' : '',
+    onkeydown: (event) => { if (event.key === 'Enter') send(); } });
+  field.value = draft.text;
+  field.addEventListener('input', () => { draft.text = field.value; });
+  setTimeout(() => field.focus(), 0);
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  return {
+    body: [el('h1', {}, p.info || p.varName), field, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
+    bar: [el('span'), el('div', { class: 'actions' }, buttons)],
+  };
+}
+
 function result(s) {
   const r = s.result;
   const copy = el('button', { class: 'btn alt', onclick: async () => {
@@ -148,7 +173,7 @@ function result(s) {
 function render() {
   clearInterval(clock);
   const s = snap;
-  const screen = s.screen === 'progress' ? progress(s) : result(s);
+  const screen = s.screen === 'prompt' ? ask(s) : s.screen === 'progress' ? progress(s) : result(s);
   app.replaceChildren(el('div', { class: 'shell' }, rail(s),
     el('div', { class: 'main' }, el('main', { class: 'pagebody' }, screen.body), el('footer', { class: 'bar' }, screen.bar))));
 }
@@ -162,7 +187,7 @@ const events = new EventSource('/events?token=' + encodeURIComponent(token));
 events.onmessage = (event) => { snap = JSON.parse(event.data); received = Date.now(); render(); };
 events.onerror = () => {
   events.close();
-  if (!snap || snap.screen === 'progress') stopped();
+  if (!snap || snap.screen === 'progress' || snap.screen === 'prompt') stopped();
 };
 </script>
 </body>

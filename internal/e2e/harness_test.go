@@ -183,9 +183,6 @@
 // 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 159. never mark a task failed in tui.RunLog.TaskFailed                -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 160. label a task by its name even when it has an info: in web.label  -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
-// 170. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
-// 171. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
-// 172. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
 // 161. drop the server.AwaitDelivery call from app.execWebTask         -> web_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
 // 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
 // 163. call app.checkWebFlag before --quiet is stripped, in app.run       -> web_test.go (FlagsThatCannotCombine, quiet cases)
@@ -195,6 +192,18 @@
 // 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> web_test.go (LastLineHasNoColourCodes)
 // 168. leave elapsed time out of web.state.snapshot -> web_test.go (ProgressSnapshotsCarryElapsedTime)
 // 169. never mark a rail entry done in web.state.TaskLeft -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 170. drop the r.Host check in web.Server.guard                         -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 171. drop the Origin check in web.Server.guard                          -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 172. accept --web on Windows in app.checkWebFlag                        -> internal/app/args_test.go (WebFlagFailsOnWindows)
+// 173. skip the validate call in web.state.PromptText                    -> web_prompt_test.go (RefusedAnswerKeepsThePromptWithTheReason)
+// 174. let web.state.skip skip a required prompt                         -> web_prompt_test.go (SkipContinuesAnOptionalPromptWithoutAnAnswer)
+// 175. send a secret prompt's default to the page in web.state.PromptText -> web_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 176. put a secret answer on the rail unmasked in web.state.PromptText   -> web_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 177. drop the prompt id check in web.state.openPrompt                   -> web_prompt_test.go (AnswerToAPromptThatIsNotOpenIsRefused)
+// 178. pass runner.TerminalPrompts() instead of browserPrompts in app.execWebTask -> web_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
+// 179. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 180. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 181. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
 package e2e
 
 import (

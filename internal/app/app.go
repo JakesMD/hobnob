@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"hobnob/internal/cli"
@@ -144,7 +145,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 	flagQuiet, args := extractFlag(args, "--quiet", "-q")
 	a.web, args = extractFlag(args, "--web")
 	if a.web {
-		if err := checkWebFlag(args); err != nil {
+		if err := checkWebFlag(runtime.GOOS, args); err != nil {
 			return err
 		}
 	}

@@ -66,6 +66,8 @@ func Listen() (*Server, error) {
 	}
 	server.changed = server.notify
 	server.initCancel()
+	server.actions["answer"] = server.answer
+	server.actions["skip"] = server.skip
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", server.servePage)
 	mux.HandleFunc("GET /events", server.serveEvents)
@@ -102,7 +104,18 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 }
 
 func (s *Server) guard(next http.Handler) http.Handler {
+	address := s.listener.Addr().String()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Host and Origin checks stop a web page on another site reaching
+		// this server through DNS rebinding or a cross-site request.
+		if r.Host != address {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+address {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
 		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(s.token)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return

@@ -1,17 +1,18 @@
 package tui
 
 import (
+	"context"
 	"errors"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
-// IsInterrupted reports whether err came from a prompt's tea.Program being
-// torn down by ctx cancellation (see WithContext below), rather than the user
-// declining the prompt normally.
+// IsInterrupted reports whether err came from a prompt being torn down by ctx
+// cancellation (a tea.Program's WithContext, or a web prompt's context),
+// rather than the user declining the prompt normally.
 func IsInterrupted(err error) bool {
-	return errors.Is(err, tea.ErrProgramKilled)
+	return errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, context.Canceled)
 }
 
 var (

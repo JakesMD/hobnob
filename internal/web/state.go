@@ -21,6 +21,10 @@ type state struct {
 	result   *Result
 	logLines []string
 
+	prompt     *openPrompt
+	nextPrompt int
+	answers    []RailEntry
+
 	cancelling bool
 }
 
@@ -138,6 +142,7 @@ func (s *state) snapshot() (Snapshot, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	snap := Snapshot{Screen: ScreenProgress, Task: s.task, Rail: Rail{Answers: []RailEntry{}, Setup: []RailEntry{}}}
+	snap.Rail.Answers = append(snap.Rail.Answers, s.answers...)
 	for _, entry := range s.setup {
 		snap.Rail.Setup = append(snap.Rail.Setup, RailEntry{Label: entry.label, State: entry.state})
 	}
@@ -147,6 +152,12 @@ func (s *state) snapshot() (Snapshot, int) {
 			snap.Screen = ScreenFailed
 		}
 		snap.Result = s.result
+		return snap, s.version
+	}
+	if s.prompt != nil {
+		snap.Screen = ScreenPrompt
+		prompt := s.prompt.Prompt
+		snap.Prompt = &prompt
 		return snap, s.version
 	}
 	progress := &Progress{}
