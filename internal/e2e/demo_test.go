@@ -90,7 +90,7 @@ func TestE2E_Demo_NotReachableWithoutTheFlag(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "no hobnob.yml or hobnob.yaml found")
+	res.Err(t, "no hobnob.yml or hobnob.yaml in")
 	assertNoDemoNotice(t, res)
 }
 

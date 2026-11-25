@@ -45,7 +45,9 @@ run: [fetch-question] echo "still running"
 ```
 
 `soft:` works on a `call:` step too: if the called task fails, the caller
-carries on.
+carries on. After the called task's own lines, the calling step ends with a
+yellow `!` and the failure counts in the caller's total: `deploy ! 1.9s → lint:
+failed`.
 
 ## Reacting to a failure
 

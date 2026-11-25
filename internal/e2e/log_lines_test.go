@@ -321,3 +321,48 @@ func TestE2E_Log_EmptyValueForARequiredVariablePrintsAVariableLine(t *testing.T)
 		})
 	}
 }
+
+func TestE2E_Log_SkippedCallNamesTheCalledTask(t *testing.T) {
+	// given a call: step whose if: is false, when executed, then it prints
+	// "task ⊘ called" (why: a skipped step names what it skips)
+	// Arrange
+	yml := `
+		tasks:
+		  deploy:
+		    steps:
+		      - call: lint
+		        if: 'false'
+		  lint:
+		    steps:
+		      - run: echo linting
+	`
+
+	// Act
+	res := Yml(t, yml, "deploy")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "deploy ⊘ lint\n")
+	res.NotOut(t, "linting")
+}
+
+func TestE2E_Log_DefaultTakenWithPromptsOffIsNoted(t *testing.T) {
+	// given a get: with a default and --no-input, when executed, then its
+	// variable line says "# default" (why: nobody typed it)
+	// Arrange
+	yml := `
+		tasks:
+		  deploy:
+		    steps:
+		      - get:
+		          - REPLICAS:
+		              default: 3
+	`
+
+	// Act
+	res := Yml(t, yml, "deploy", "--no-input")
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "deploy » REPLICAS=3 # default\n")
+}
