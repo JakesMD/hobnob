@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 
 	"hobnob/internal/eval"
@@ -123,8 +122,8 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 
 // checkWebFlag rejects --web where the page has nothing to do: on Windows,
 // beside --no-input, and with --list, --select, --help or no task.
-func checkWebFlag(args []string) error {
-	if runtime.GOOS == "windows" {
+func checkWebFlag(goos string, args []string) error {
+	if goos == "windows" {
 		return fmt.Errorf("--web is not yet supported on Windows")
 	}
 	for _, arg := range args {
