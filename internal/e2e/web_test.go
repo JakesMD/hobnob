@@ -456,3 +456,35 @@ func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
 		t.Errorf("elapsed = %dms", later.Progress.ElapsedMS)
 	}
 }
+
+func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
+	// given an open page and the right token, when a request has another
+	// Host or another Origin, then it is refused, and with the page's own
+	// Host and Origin, or no Origin, it is served (why: a web page on
+	// another site must not reach the run, by rebinding or cross-site)
+	// Arrange
+	statuses := map[string]int{}
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		own := "http://" + b.Address()
+		statuses["no origin"] = b.GetWith("/", nil)
+		statuses["own origin"] = b.GetWith("/", map[string]string{"Origin": own})
+		statuses["wrong host"] = b.GetWith("/", map[string]string{"Host": "example.com"})
+		statuses["wrong port"] = b.GetWith("/", map[string]string{"Host": "127.0.0.1:1"})
+		statuses["wrong origin"] = b.GetWith("/", map[string]string{"Origin": "http://example.com"})
+		statuses["null origin"] = b.GetWith("/", map[string]string{"Origin": "null"})
+		tab := b.Open()
+		b.Release("go")
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	Run(t, c)
+
+	// Assert
+	want := map[string]int{"no origin": 200, "own origin": 200, "wrong host": 403, "wrong port": 403, "wrong origin": 403, "null origin": 403}
+	for name, status := range want {
+		if statuses[name] != status {
+			t.Errorf("%s: status %d, want %d", name, statuses[name], status)
+		}
+	}
+}
