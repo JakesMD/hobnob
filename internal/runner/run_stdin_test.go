@@ -113,3 +113,46 @@ func TestExecRun_TerminalStdin_CtrlCReachesHobnobNotTheCommand(t *testing.T) {
 		t.Error("the command received the SIGINT too")
 	}
 }
+
+func TestExecRun_TerminalStdin_ShowsWhatTheCommandWritesToItsTerminalWhenStdoutIsPiped(t *testing.T) {
+	// given hobnob's stdin is a terminal and its stdout a pipe, when a command
+	// writes a prompt to its terminal and the user types, then the prompt and
+	// the echo reach hobnob's terminal (why: sudo and ssh prompt on /dev/tty,
+	// and a redirected run must still show them)
+
+	// Arrange
+	keys := terminalStdin(t)
+	dir := t.TempDir()
+	cfg := makeRunCfg(t, "printf 'Password: ' >&0; read n", nil)
+	done := make(chan error, 1)
+
+	// Act
+	go func() {
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+	}()
+	seen := make(chan string, 1)
+	go func() {
+		var got strings.Builder
+		buf := make([]byte, 256)
+		for !strings.Contains(got.String(), "Password: ") {
+			n, err := keys.Read(buf)
+			if err != nil {
+				break
+			}
+			got.Write(buf[:n])
+		}
+		seen <- got.String()
+	}()
+	var got string
+	select {
+	case got = <-seen:
+	case <-time.After(3 * time.Second):
+	}
+	_, _ = keys.WriteString("\n")
+	<-done
+
+	// Assert
+	if !strings.Contains(got, "Password: ") {
+		t.Errorf("terminal saw %q, want the prompt", got)
+	}
+}

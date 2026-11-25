@@ -11,9 +11,8 @@ import (
 // partial line (a prompt with no newline) through shown as it arrives, so
 // read, sudo and [y/N] don't look hung. Whole lines stay hidden.
 type promptWriter struct {
-	held    io.Writer
-	shown   *tui.LineWriter
-	watched bool // shown streams partial text; unwatched, it holds a line until it ends
+	held  io.Writer
+	shown *tui.LineWriter
 
 	open bool // a partial line is showing
 }
@@ -30,10 +29,7 @@ func (w *promptWriter) Write(p []byte) (int, error) {
 	}
 	if len(tail) > 0 {
 		w.shown.Write(tail)
-		if !w.watched {
-			w.shown.Flush()
-		}
-		w.open = w.watched
+		w.open = true
 	}
 	return n, err
 }

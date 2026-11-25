@@ -190,14 +190,15 @@ yourself.
   blank line above it: `step 1.2s · total 3.4s`, and just `total 3.4s`
   between steps. It stays for the whole run, stays under a command's prompt
   while it waits for your answer (its clock stops there), and is hidden only
-  while a tool redraws several lines. A card prompt clears it while open.
+  while a tool redraws several lines, until it stops. A card prompt clears it while open.
   While a CTRL+C is shutting the run down, the rule's left says
   `stopping, ctrl+c again to force`. Piped, redirected to a file or in CI, the
   rule is never written.
 - **Long lines wrap under their own text on a terminal.** Piped, they stay
   on one line.
 - **Lines a tool redraws by moving the cursor, such as `docker pull`'s
-  layers, show without a prefix.**
+  layers, show without a prefix**, until the tool has stopped moving the
+  cursor for a moment; plain lines before and after them keep theirs.
 - **On Windows the terminal is a ConPTY**, and it works the same, with two
   gaps. It needs Windows 11 (22H2) or newer; on older Windows a command gets
   pipes, as if the output were piped. And the terminal follows a resize within

@@ -34,9 +34,10 @@ func (f *conPTYFilter) Write(b []byte) (int, error) {
 		}
 		out = append(out, data[:esc]...)
 		data = data[esc:]
-		switch matchMode(data) {
+		match, n := matchMode(data)
+		switch match {
 		case modeWhole:
-			data = data[len(conPTYModes[0]):]
+			data = data[n:]
 		case modePartial:
 			f.held = append([]byte(nil), data...)
 			data = nil
@@ -70,17 +71,18 @@ const (
 )
 
 // matchMode reports whether data, which starts with an escape byte, starts
-// with a whole mode switch, or is a prefix of one.
-func matchMode(data []byte) modeMatch {
+// with a whole mode switch, or is a prefix of one. For a whole one, n is its
+// length.
+func matchMode(data []byte) (match modeMatch, n int) {
 	for _, mode := range conPTYModes {
 		if bytes.HasPrefix(data, mode) {
-			return modeWhole
+			return modeWhole, len(mode)
 		}
 	}
 	for _, mode := range conPTYModes {
 		if len(data) < len(mode) && bytes.HasPrefix(mode, data) {
-			return modePartial
+			return modePartial, 0
 		}
 	}
-	return modeNone
+	return modeNone, 0
 }

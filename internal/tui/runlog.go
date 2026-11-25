@@ -263,17 +263,18 @@ func (l *RunLog) Output(task string) (stdout, stderr *LineWriter) {
 	if l.live == nil {
 		return NewLineWriter(l.stdout, prefix), NewLineWriter(l.stderr, prefix)
 	}
-	stdout = NewLineWriter(liveWriter{l.live, l.stdout}, prefix)
-	stderr = NewLineWriter(liveWriter{l.live, l.stderr}, prefix)
-	l.live.restart = func() []byte {
+	restart := func() []byte {
 		stdout.Restart()
 		stderr.Restart()
 		return []byte(prefix)
 	}
+	stdout = NewLineWriter(liveWriter{l.live, l.stdout, restart}, prefix)
+	stderr = NewLineWriter(liveWriter{l.live, l.stderr, restart}, prefix)
 	if l.screen != nil {
 		width := func() int { cols, _ := l.screen.Size(); return cols }
 		stdout.Watch(width)
 		stderr.Watch(width)
+		stdout.now, stderr.now = l.live.now, l.live.now
 	}
 	return stdout, stderr
 }

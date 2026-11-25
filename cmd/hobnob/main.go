@@ -8,6 +8,7 @@ import (
 
 	"hobnob/internal/app"
 	"hobnob/internal/runner"
+	"hobnob/internal/tui"
 )
 
 var version string // injected at build time via -ldflags="-X main.version=vX.Y.Z"
@@ -39,6 +40,7 @@ func main() {
 		// unconditional os.Exit against its (async) teardown.
 		if runner.KillRunningStep() {
 			runner.RestoreTerminal()
+			tui.ClearStatusLine()
 			os.Exit(1)
 		}
 	}()

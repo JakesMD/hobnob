@@ -5,6 +5,7 @@ import (
 	"io"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 )
@@ -23,28 +24,34 @@ const minWrapWidth = 20
 // multi-line display.
 var cursorMove = regexp.MustCompile(`\x1b\[[0-9;]*[ABEFHJf]|\x1b\[\?1049h|\x1b\[\?47h`)
 
-// LineWriter prefixes a command's output line by line. Piped, a line is held
-// until it ends; watched (see Watch), text is written as it arrives so a
-// prompt with no newline shows, long lines wrap under their own text, and a
-// tool that moves the cursor to draw several rows gets the terminal to
-// itself, unprefixed.
-type LineWriter struct {
-	out    io.Writer
-	prefix string
-	indent string
-	buf    bytes.Buffer // piped: the line so far
+// drawIdle is how long a tool must go without moving the cursor before its
+// output is a plain log again: prefixed, with the status line back.
+const drawIdle = 300 * time.Millisecond
 
-	watched bool
-	width   func() int // watched: the terminal's width; 0 means no wrapping
-	col     int        // watched: visible width of the open line's text
-	drawing bool       // watched: a tool is drawing its own display
+// LineWriter prefixes a command's output line by line, writing text as it
+// arrives so a prompt with no newline shows. Watched (see Watch), long lines
+// also wrap under their own text, and a tool that moves the cursor to draw
+// several rows gets the terminal to itself, unprefixed, until it stops. Each
+// Write reaches out in one write.
+type LineWriter struct {
+	out     io.Writer
+	prefix  string
+	indent  string
+	pending bytes.Buffer // what this Write or Flush sends to out
+
+	watched  bool
+	width    func() int       // watched: the terminal's width; 0 means no wrapping
+	now      func() time.Time // watched: the clock for drawIdle
+	col      int              // watched: visible width of the open line's text
+	drawing  bool             // watched: a tool is drawing its own display
+	lastMove time.Time        // watched: when the tool last moved the cursor
 
 	open   bool // the current line has its prefix written
 	crOver bool // cursor sits at column 0 over previously written content
 }
 
 func NewLineWriter(out io.Writer, prefix string) *LineWriter {
-	return &LineWriter{out: out, prefix: prefix, indent: strings.Repeat(" ", ansi.StringWidth(prefix))}
+	return &LineWriter{out: out, prefix: prefix, indent: strings.Repeat(" ", ansi.StringWidth(prefix)), now: time.Now}
 }
 
 // Watch makes the writer stream for a terminal whose current width width
@@ -55,14 +62,31 @@ func (writer *LineWriter) Watch(width func() int) {
 
 func (writer *LineWriter) Write(p []byte) (int, error) {
 	total := len(p)
-	if writer.watched && !writer.drawing && cursorMove.Match(p) {
-		writer.drawing = true
-		writer.Flush()
-	}
-	if writer.drawing {
-		writer.out.Write(p)
+	defer writer.send()
+	if !writer.watched {
+		writer.lines(p)
 		return total, nil
 	}
+	if move := cursorMove.FindIndex(p); move != nil {
+		writer.lines(p[:move[0]])
+		writer.end()
+		writer.pending.Write(p[move[0]:])
+		writer.drawing, writer.lastMove = true, writer.now()
+		return total, nil
+	}
+	if writer.drawing {
+		if writer.now().Sub(writer.lastMove) <= drawIdle {
+			writer.pending.Write(p)
+			return total, nil
+		}
+		writer.drawing = false
+	}
+	writer.lines(p)
+	return total, nil
+}
+
+// lines prefixes p, which holds no cursor move, line by line.
+func (writer *LineWriter) lines(p []byte) {
 	start := 0
 	for i := 0; i < len(p); i++ {
 		switch p[i] {
@@ -76,14 +100,20 @@ func (writer *LineWriter) Write(p []byte) (int, error) {
 			if i+1 < len(p) && p[i+1] == '\n' {
 				continue
 			}
-			writer.flushBuf()
 			writer.begin()
-			writer.out.Write([]byte{'\r'})
+			writer.pending.WriteByte('\r')
 			writer.open, writer.crOver, writer.col = false, true, 0
 		}
 	}
 	writer.text(p[start:])
-	return total, nil
+}
+
+// send writes what Write or Flush gathered, in one write.
+func (writer *LineWriter) send() {
+	if writer.pending.Len() > 0 {
+		writer.out.Write(writer.pending.Bytes())
+		writer.pending.Reset()
+	}
 }
 
 // begin writes the prefix of a new line, wiping what a \r left behind.
@@ -92,9 +122,9 @@ func (writer *LineWriter) begin() {
 		return
 	}
 	if writer.crOver {
-		writer.out.Write([]byte(clearLine))
+		writer.pending.WriteString(clearLine)
 	}
-	writer.out.Write([]byte(writer.prefix))
+	writer.pending.WriteString(writer.prefix)
 	writer.open, writer.crOver, writer.col = true, false, 0
 }
 
@@ -102,17 +132,13 @@ func (writer *LineWriter) text(b []byte) {
 	if len(b) == 0 {
 		return
 	}
-	if !writer.watched {
-		writer.buf.Write(b)
-		return
-	}
 	writer.begin()
 	limit := 0
-	if writer.width != nil {
+	if writer.watched && writer.width != nil {
 		limit = writer.width() - ansi.StringWidth(writer.prefix)
 	}
 	if limit < minWrapWidth {
-		writer.out.Write(b)
+		writer.pending.Write(b)
 		return
 	}
 	var state byte
@@ -120,34 +146,24 @@ func (writer *LineWriter) text(b []byte) {
 		seq, width, n, next := ansi.DecodeSequence(b, state, nil)
 		state = next
 		if width > 0 && writer.col+width > limit {
-			writer.out.Write([]byte("\n" + writer.indent))
+			writer.pending.WriteString("\n" + writer.indent)
 			writer.col = 0
 		}
-		writer.out.Write(seq)
+		writer.pending.Write(seq)
 		writer.col += width
 		b = b[n:]
 	}
 }
 
-// flushBuf writes the held line so far, prefixed.
-func (writer *LineWriter) flushBuf() {
-	if writer.buf.Len() > 0 {
-		writer.begin()
-		writer.out.Write(writer.buf.Bytes())
-		writer.buf.Reset()
-	}
-}
-
 func (writer *LineWriter) newline() {
-	writer.flushBuf()
 	if !writer.open && writer.crOver {
 		// Completes a CRLF pair whose \r was already written.
-		writer.out.Write([]byte{'\n'})
+		writer.pending.WriteByte('\n')
 		writer.crOver = false
 		return
 	}
 	writer.begin()
-	writer.out.Write([]byte{'\n'})
+	writer.pending.WriteByte('\n')
 	writer.open, writer.col = false, 0
 }
 
@@ -158,7 +174,12 @@ func (writer *LineWriter) Restart() { writer.col = 0 }
 // Flush ends a partial line. Errors from out are discarded: a failing
 // terminal stream leaves nothing useful to do about it.
 func (writer *LineWriter) Flush() {
-	if writer.buf.Len() > 0 || writer.open {
+	writer.end()
+	writer.send()
+}
+
+func (writer *LineWriter) end() {
+	if writer.open {
 		writer.newline()
 	}
 }
