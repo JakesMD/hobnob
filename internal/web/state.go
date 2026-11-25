@@ -135,13 +135,28 @@ func (s *state) finish(outcome, task, reason string) {
 	})
 }
 
+// labelOf is the label of the task a run failed in. With no task named, as
+// when the failure was logged against no step, it is the innermost task that
+// failed or was still running, else the run's first task.
 func (s *state) labelOf(task string) string {
+	if task == "" {
+		return s.innermostLabel()
+	}
 	for i := len(s.setup) - 1; i >= 0; i-- {
 		if s.setup[i].name == task {
 			return s.setup[i].label
 		}
 	}
 	return task
+}
+
+func (s *state) innermostLabel() string {
+	for i := len(s.setup) - 1; i >= 0; i-- {
+		if s.setup[i].state != StateDone {
+			return s.setup[i].label
+		}
+	}
+	return label(s.task.Info, s.task.Name)
 }
 
 // startPick clears the last run and shows the task picker.

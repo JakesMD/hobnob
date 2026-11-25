@@ -247,6 +247,38 @@ func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
 	}
 }
 
+func TestE2E_Web_FailedNamesTheTaskWhenTheRunFailsOutsideAStep(t *testing.T) {
+	// given a task whose if: cannot be evaluated, when it runs with --web,
+	// then the page ends on Failed naming the task, never blank (why: Failed
+	// names the innermost task running when the run failed, step or not)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    info: Do everything
+		    steps:
+		      - call: inner
+		  inner:
+		    info: Install tools
+		    steps:
+		      - if: "{{ .NOPE.missing.deeper }}"
+		        run: echo never
+	`
+	var failed web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if failed.Result.Label != "Install tools" {
+		t.Errorf("failed result = %+v", failed.Result)
+	}
+}
+
 func TestE2E_Web_RequestsNeedTheToken(t *testing.T) {
 	// given an open page, when a request has no token or a wrong one, then it
 	// is refused, and with the right one it is served (why: other local
