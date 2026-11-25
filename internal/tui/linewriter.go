@@ -66,8 +66,8 @@ func (writer *LineWriter) flush(terminator byte) {
 	writer.lastWasCR = terminator == '\r'
 }
 
-// Flush writes any buffered partial line. Errors from out are discarded because
-// out is always os.Stdout/os.Stderr — if those fail the process is dying anyway.
+// Flush writes any buffered partial line. Errors from out are discarded: a
+// failing terminal stream leaves nothing useful to do about it.
 func (writer *LineWriter) Flush() {
 	if writer.buf.Len() > 0 {
 		writer.flush('\n')
