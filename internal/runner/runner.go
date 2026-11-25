@@ -130,7 +130,7 @@ type execCtx struct {
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
 	task, ok := cfg.Tasks[taskName]
 	if !ok {
-		return config.Task{}, nil, fmt.Errorf("task %q not found", taskName)
+		return config.Task{}, nil, fmt.Errorf("no task %q", taskName)
 	}
 	execCfg := cfg
 	if task.Cfg != nil {
@@ -147,6 +147,9 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // executes) and no longer, and the jobs its run: steps leave running, which
 // get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
 func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog) error {
+	if _, _, err := resolveTask(taskName, cfg); err != nil {
+		return err
+	}
 	defer stopLeftovers()
 	stopTerm := context.AfterFunc(ctx, termLeftovers)
 	defer stopTerm()
@@ -194,20 +197,20 @@ func runTask(execState execCtx, taskName string, callDirTmpl literal.Expr, scope
 	case !callDirTmpl.IsZero():
 		resolved, err := callDirTmpl.Text(scope.Vars())
 		if err != nil {
-			return false, fmt.Errorf("dir template: %w", err)
+			return false, fmt.Errorf("dir: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
 	case !task.Dir.IsZero():
 		resolved, err := task.Dir.Text(scope.Vars())
 		if err != nil {
-			return false, fmt.Errorf("task %q dir: %w", taskName, err)
+			return false, fmt.Errorf("dir: %w", err)
 		}
 		currentDir = resolveDirPath(resolved, execCfg.TaskfileDir)
 	}
 	if task.IfExpr != "" {
 		ok, err := eval.EvalCondition(execState.ctx, task.IfExpr, scope.Vars(), currentDir)
 		if err != nil {
-			return false, fmt.Errorf("task %q if: %w", taskName, err)
+			return false, fmt.Errorf("if %s: %w", task.IfExpr, err)
 		}
 		if !ok {
 			execState.log.TaskSkipped(taskName)
@@ -217,17 +220,53 @@ func runTask(execState execCtx, taskName string, callDirTmpl literal.Expr, scope
 	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, softs: softs}, task.Steps, scope)
 }
 
+// stepMessage is what a step that can't start reports: the step as written,
+// then why.
+func stepMessage(step config.Step, err error) string {
+	var written string
+	switch step.Kind {
+	case config.KindRun:
+		written = step.Command.String()
+		if !step.Argv.IsZero() {
+			written = step.Argv.String()
+		}
+	case config.KindCall:
+		written = step.CallTarget
+	}
+	if written == "" {
+		return err.Error()
+	}
+	return written + ": " + err.Error()
+}
+
+func execStep(execState execCtx, step config.Step, scope *scope.Scope) error {
+	switch step.Kind {
+	case config.KindRun:
+		return execRun(execState, step, scope)
+	case config.KindSet:
+		return execSet(step, scope)
+	case config.KindCall:
+		return execCall(execState, step, scope)
+	case config.KindFor:
+		return execFor(execState, step, scope)
+	case config.KindGet:
+		return execGet(execState, step, scope)
+	}
+	return nil
+}
+
 func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) error {
 	for _, step := range steps {
 		if execState.ctx.Err() != nil {
 			return reportedError{fmt.Errorf("%w: %v", ErrInterrupted, execState.ctx.Err())}
 		}
+		var err error
 		if step.IfExpr != "" {
-			ok, err := eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars(), execState.dir)
+			var ok bool
+			ok, err = eval.EvalCondition(execState.ctx, step.IfExpr, scope.Vars(), execState.dir)
 			if err != nil {
-				return fmt.Errorf("if condition: %w", err)
-			}
-			if !ok {
+				err = fmt.Errorf("if %s: %w", step.IfExpr, err)
+			} else if !ok {
 				if step.Kind == config.KindRun {
 					execState.log.RunSkipped(execState.task, skippedRunText(step, scope))
 				}
@@ -235,25 +274,15 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			}
 		}
 
-		var err error
-		switch step.Kind {
-		case config.KindRun:
-			err = execRun(execState, step, scope)
-		case config.KindSet:
-			err = execSet(step, scope)
-		case config.KindCall:
-			err = execCall(execState, step, scope)
-		case config.KindFor:
-			err = execFor(execState, step, scope)
-		case config.KindGet:
-			err = execGet(execState, step, scope)
+		if err == nil {
+			err = execStep(execState, step, scope)
 		}
 		if err == nil {
 			continue
 		}
 		soft := step.Soft && !errors.Is(err, ErrInterrupted)
 		if !Reported(err) {
-			execState.log.StepError(execState.task, soft, err.Error())
+			execState.log.StepError(execState.task, soft, stepMessage(step, err))
 			err = reportedError{err}
 		}
 		// Only the kinds that take soft: can have it set (config.stepKinds).

@@ -29,20 +29,33 @@ func skippedRunText(step config.Step, scope *scope.Scope) string {
 	return "skipped"
 }
 
+// startFailure says why a command couldn't start in hobnob's terms, rather
+// than os/exec's: fork/exec blames the shell when the directory is what's
+// missing.
+func startFailure(dir, invocationDir string, err error) error {
+	if _, statErr := os.Stat(dir); errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("no directory %s", displayDirPath(dir, invocationDir))
+	}
+	if errors.Is(err, osExec.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+		return errors.New("no such command")
+	}
+	return err
+}
+
 func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var shellCmd *osExec.Cmd
 	var displayCmd string
 	if !step.Argv.IsZero() {
 		argv, err := step.Argv.Resolve(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("run argv: %w", err)
+			return err
 		}
 		shellCmd = osExec.CommandContext(execState.ctx, argv[0], argv[1:]...)
 		displayCmd = displayArgv(argv)
 	} else {
 		cmd, err := step.Command.Text(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("run template: %w", err)
+			return err
 		}
 		shellCmd = osExec.CommandContext(execState.ctx, "sh", "-c", cmd)
 		displayCmd = cmd
@@ -53,7 +66,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if !step.DirTmpl.IsZero() {
 		resolved, err := step.DirTmpl.Text(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("run dir template: %w", err)
+			return fmt.Errorf("dir: %w", err)
 		}
 		runDir = resolveDirPath(resolved, execState.cfg.TaskfileDir)
 		displayDir = displayDirPath(runDir, scope.InvocationDir())
@@ -67,7 +80,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if step.Quiet {
 		quietMsg, err := step.QuietMsg.Text(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("quiet template: %w", err)
+			return fmt.Errorf("quiet: %w", err)
 		}
 		hint := "output hidden"
 		if msg := scope.Mask(quietMsg); msg != "" {
@@ -126,7 +139,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		// The process never ran — no exit status exists, so there's nothing
 		// for into: exit to capture.
 		pipes.abandon()
-		return end(err)
+		return end(startFailure(shellCmd.Dir, scope.InvocationDir(), err))
 	}
 	pipes.startCopying(stdoutDest, stderrDest)
 	pid := shellCmd.Process.Pid

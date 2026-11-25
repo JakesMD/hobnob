@@ -105,7 +105,7 @@ func TestE2E_Modules_ShowFilterWhitelists(t *testing.T) {
 	// Assert
 	clean.OK(t)
 	die.Fails(t)
-	die.Err(t, `"yard:die" not found`)
+	die.Err(t, `no task "yard:die"`)
 }
 
 func TestE2E_Modules_HideFilterBlacklists(t *testing.T) {

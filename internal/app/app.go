@@ -86,7 +86,7 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
 	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
 		if !runner.Reported(err) {
-			log.StepError(taskName, false, err.Error())
+			tui.HobnobError(os.Stderr, err.Error())
 		}
 		return ErrSilent
 	}

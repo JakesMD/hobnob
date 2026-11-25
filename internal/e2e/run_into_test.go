@@ -149,7 +149,7 @@ func TestE2E_RunInto_UnknownFilterErrors(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "run into")
+	res.Err(t, "into OUT")
 }
 
 func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
@@ -171,7 +171,7 @@ func TestE2E_RunInto_UnknownSourceErrors(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "run into")
+	res.Err(t, "into OUT")
 	res.Err(t, "must be stdout, stderr or exit")
 }
 
