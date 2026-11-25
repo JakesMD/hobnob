@@ -115,9 +115,28 @@ A page already on Done or Failed keeps that screen.
 
 With a task, hobnob exits once the page has been sent how the run ended. The
 page keeps that screen after hobnob has gone. Without a task, hobnob stays until
-the page is closed or CTRL+C stops it, so Home can start another run. The exit
+the grace below runs out or CTRL+C stops it, so Home can start another run. The exit
 code is the last run's, as `hobnob <task>` reports it: 0 on success, 1 on
 failure, and 0 when no run happened.
+
+## Tabs and walking away
+
+A tab counts as open while its page is connected. Only one tab drives the run:
+opening the address again replaces the earlier tab, which shows "hobnob is open
+in another tab" and disconnects. A tab that connects, or reconnects after being
+closed, shows the screen the run is at, with the answers and setup so far.
+
+When no tab is open, hobnob waits 60 seconds for one. The wait only counts
+while hobnob is waiting on you: at the task picker, at a prompt, or on Done or
+Failed. It never runs while steps run, and it starts when a run ends with no tab
+open. A tab connecting stops it. When it runs out:
+
+- at a prompt, hobnob cancels the run as a first CTRL+C does and exits like an
+  interrupted run (1);
+- anywhere else it just exits, with the last run's exit code.
+
+Done and Failed, including **Copy details**, keep working in the page after
+hobnob has exited.
 
 ## Rules
 

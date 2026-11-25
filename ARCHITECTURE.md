@@ -744,7 +744,7 @@ the task picker: `Server.PickTask` clears the last run's state and blocks until
 the `choose` action names a task the picker offered; `runOnPage` runs it with a
 fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
 `home` action (only accepted on a finished run when no task was named) or
-until ctx ends or no page has been open for `deliveryGrace`. The exit code is
+until ctx ends or the grace timer gives up. The exit code is
 the last run's. `web.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
@@ -801,9 +801,21 @@ folder and the next snapshot lists it; the picks live in the page.
 **Requests.** Every request must carry the token (constant-time compare).
 `POST /actions/{name}` routes through `Server.actions` (`answer`, `skip`,
 `open`, `choose`, `home`). After a task-launched run ends `app` waits in `AwaitDelivery` for
-a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
+a page to receive the final snapshot (or the grace timer giving up), so Done and Failed
 outlive hobnob; if the terminal's CTRL+C ended the run, it still waits up to
 `interruptGrace` when a page is open, so Cancelled reaches it. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
+
+**Tabs and the grace timer.** A tab is one open `GET /events` connection.
+The newest wins: a new connection closes the previous one's `replaced`
+channel, whose handler sends an `another-tab` snapshot and returns. While no
+tab is open and hobnob waits on the person (task picker, an open prompt, a
+result), `Server.watchGrace` keeps a `grace` timer (60s; `web.SetGrace`
+shortens it) running; it re-evaluates on every state change and tab
+connect or disconnect, and never runs while steps run. When it fires,
+`giveUp` calls `Cancel` if a prompt is open, then closes `abandoned`, which
+`PickTask`, `AwaitHome` and `AwaitDelivery` all select on. The page closes its
+`EventSource` on `another-tab`, since it would otherwise reconnect and take
+the page back.
 
 **Cancel.** `execWebTask` runs the task under a context of its own and hands
 the server `SetInterrupt(stop, kill)`: `stop` cancels that context (a first
@@ -897,5 +909,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly six test seams: `runner.SetPrompts` (text, select and path prompts together),
-`runner.SetLeftoverGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.
+Production code exposes exactly seven test seams: `runner.SetPrompts` (text, select and path prompts together),
+`runner.SetLeftoverGrace`, `web.SetGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.

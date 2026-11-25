@@ -223,6 +223,14 @@
 // 198. open a path that is not a folder in web.state.askPicker -> web_picker_test.go (OpeningAFolderByPostChangesTheListing)
 // 199. accept a path match: excludes in web.pickerRules.pick -> web_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
 // 200. let a required picker go through with no pick in web.state.PromptPath -> web_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
+// 201. never close the previous tab's replaced channel in web.Server.serveEvents -> web_lifecycle_test.go (NewestTabWinsAndTheOldOneIsToldAndClosed)
+// 202. keep the timer running while steps run in web.Server.waitingOnPerson -> web_lifecycle_test.go (NothingExitsWhileStepsRunAndTheTimerStartsWhenTheRunEnds)
+// 203. ignore open tabs in web.Server.watchGrace -> web_lifecycle_test.go (AReconnectingTabStopsTheTimer)
+// 204. skip the Cancel at a prompt in web.Server.giveUp -> web_lifecycle_test.go (NoTabAtAPromptCancelsTheRunAfterTheGraceAsInterrupted)
+// 205. drop the abandoned case from web.Server.AwaitDelivery -> web_lifecycle_test.go (NoTabAtDoneExitsAfterTheGrace)
+// 206. drop the abandoned case from web.Server.AwaitHome -> web_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
+// 207. drop the watchGrace call when a tab closes in web.Server.serveEvents -> web_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
+// 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
 package e2e
 
 import (
