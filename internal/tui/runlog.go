@@ -19,6 +19,7 @@ type RunLog struct {
 	mu       sync.Mutex
 	running  []string
 	stopping bool
+	quiet    bool
 
 	screen *Screen
 }
@@ -28,6 +29,13 @@ type RunLog struct {
 func NewRunLog(stdout, stderr io.Writer) *RunLog {
 	return &RunLog{stdout: stdout, stderr: stderr}
 }
+
+// SetQuiet makes the log keep only each run: command's line and every task's
+// end; a failed step's held output and the failure lines still print.
+func (l *RunLog) SetQuiet(quiet bool) { l.quiet = quiet }
+
+// Quiet reports whether the log is quiet, so the runner holds a step's output.
+func (l *RunLog) Quiet() bool { return l.quiet }
 
 // Enter marks task as the one now running and returns the func that leaves it,
 // so Stopping can name the innermost task.
@@ -59,6 +67,9 @@ func (l *RunLog) Stopping() {
 // each as a grey "# …"; continuation lines of a multi-line command sit under
 // it, indented to the command's start.
 func (l *RunLog) Run(task, cmd string, notes ...string) {
+	if l.quiet {
+		notes = nil
+	}
 	lines := strings.Split(strings.TrimSuffix(cmd, "\n"), "\n")
 	first := lead(task, taskMark(task, "$")) + lines[0]
 	for _, note := range notes {
@@ -73,12 +84,18 @@ func (l *RunLog) Run(task, cmd string, notes ...string) {
 
 // Call logs a call: step, the called task in its own colour.
 func (l *RunLog) Call(task, calledTask string) {
+	if l.quiet {
+		return
+	}
 	fmt.Fprintln(l.stdout, lead(task, taskMark(task, "→"))+TaskStyle(calledTask).Render(calledTask))
 }
 
 // Var logs a get: value used, display already masked when it is a secret.
 // note says where a value nobody typed came from.
 func (l *RunLog) Var(task, name, display, note string) {
+	if l.quiet {
+		return
+	}
 	line := lead(task, taskMark(task, "»")) + name + "=" + display
 	if note != "" {
 		line += " " + SInfo.Render("# "+note)
@@ -103,11 +120,17 @@ func (l *RunLog) TaskSkipped(task string) {
 
 // RunSkipped logs a skipped step, naming what it would have run.
 func (l *RunLog) RunSkipped(task, what string) {
+	if l.quiet {
+		return
+	}
 	fmt.Fprintln(l.stdout, lead(task, SInfo.Render("⊘"))+SInfo.Render(what))
 }
 
 // StepDone logs the end of a step that succeeded: "task ✓ 1.6s".
 func (l *RunLog) StepDone(task string, elapsed time.Duration) {
+	if l.quiet {
+		return
+	}
 	fmt.Fprintln(l.stdout, lead(task, SChecked.Render("✓"))+SInfo.Render(formatElapsed(elapsed)))
 }
 

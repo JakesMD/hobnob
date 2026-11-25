@@ -36,6 +36,8 @@ type App struct {
 	// piped. A nil func means piped.
 	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
+
+	quiet bool
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -89,6 +91,7 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
+	log.SetQuiet(a.quiet)
 	if a.Screen != nil {
 		log.Watch(a.Screen())
 	}
@@ -119,6 +122,8 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 	useDemo, args := extractDemoFlag(args)
+	flagQuiet, args := extractQuietFlag(args)
+	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")
 	}
