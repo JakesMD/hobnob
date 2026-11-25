@@ -76,6 +76,35 @@ tasks:
     steps:
       - run: hobnob --list
 
+  release:
+    info: Tags origin/main with the next version; the Release workflow builds it and writes the notes
+    steps:
+      - run: git fetch --quiet --tags origin main
+      - run: git tag --list 'v*.*.*' --sort=-v:refname | head -n1
+        into:
+          - LATEST: stdout | trim
+      - get:
+          - BUMP:
+              info: "Latest release is {{.LATEST}}. Which part to bump?"
+              options: [patch, minor, major]
+      - run: |
+          v={{.LATEST}}; v=${v#v}
+          major=${v%%.*}; rest=${v#*.}; minor=${rest%%.*}; patch=${rest#*.}
+          case {{.BUMP}} in
+            major) echo "v$((major + 1)).0.0" ;;
+            minor) echo "v$major.$((minor + 1)).0" ;;
+            patch) echo "v$major.$minor.$((patch + 1))" ;;
+          esac
+        into:
+          - NEXT: stdout | trim
+      - run: git log --oneline {{.LATEST}}..origin/main
+      - get:
+          - CONFIRM:
+              info: "Release {{.NEXT}} from origin/main, with the commits above?"
+              options: ["no", "yes"]
+      - run: git tag {{.NEXT}} origin/main && git push origin {{.NEXT}}
+        if: '{{ eq .CONFIRM "yes" }}'
+
   _get_os_arch:
     once: true
     steps:
