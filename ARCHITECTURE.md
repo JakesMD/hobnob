@@ -433,11 +433,20 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
 
 1. `executeTask` resolves the task, calls `FileScopes.Apply` when `Task.Cfg !=
    nil` (a module task), resolves `dir:` (call-step > task > inherited), and
-   checks the task's `if:`. A false `if:` prints a skip line and succeeds.
+   checks the task's `if:`. A false `if:` prints a skip line and succeeds. It
+   then times the task and ends it in the log: `done after`, with the count of
+   soft failures, or `failed after` (`stopped after` for `ErrInterrupted`),
+   called tasks included, so a failure ends one line per task in the chain.
 2. `executeSteps` checks each step's `if:`, dispatches on `StepKind`, and
    renders against the _current_ scope, which earlier steps may have mutated.
 3. `soft:` makes `executeSteps` swallow any error except `ErrInterrupted`,
-   whatever the kind; parsing only lets it onto `run:` and `call:`.
+   whatever the kind, and count it for the task's end line; parsing only lets
+   it onto `run:` and `call:`.
+4. Every failure is logged once, where it happens. `execRun` ends its step with
+   `StepDone`, `StepFailed` or `StepSoftFailed`; an error from anywhere else
+   (a template, a missing task) is logged by `executeSteps` as a time-less
+   `StepError`. Either way the error is wrapped as `reportedError`, which
+   `runner.Reported` detects, so `app` prints nothing more for it.
 
 `execCtx` bundles what threads through the call graph: context, config,
 `FileScopes`, task name, prompt flag, working dir, `once:` memo, the `RunLog`.
@@ -629,7 +638,7 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; `app` creates it and the runner holds it on `execCtx`. The `get:` line is not routed yet: `printGetLine` in `styles.go` prints it directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. The `get:` line is not routed yet: `printGetLine` in `styles.go` prints it directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`

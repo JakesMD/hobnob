@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunLogWritesEachKindOfLineToItsStream(t *testing.T) {
@@ -21,8 +22,11 @@ func TestRunLogWritesEachKindOfLineToItsStream(t *testing.T) {
 		{"done earlier", func(l *RunLog) { l.DoneEarlier("t") }, "earlier", ""},
 		{"task skipped", func(l *RunLog) { l.TaskSkipped("t") }, "skipped", ""},
 		{"run skipped", func(l *RunLog) { l.RunSkipped("t", "go vet") }, "go vet", ""},
-		{"task done", func(l *RunLog) { l.TaskDone("t") }, "done", ""},
-		{"task failed", func(l *RunLog) { l.TaskFailed("t", "boom") }, "", "boom"},
+		{"step done", func(l *RunLog) { l.StepDone("t", time.Second) }, "1.0s", ""},
+		{"step soft failed", func(l *RunLog) { l.StepSoftFailed("t", time.Second, "go vet", "exit status 1") }, "exit status 1", ""},
+		{"step failed", func(l *RunLog) { l.StepFailed("t", time.Second, "go vet", "exit status 1") }, "", "exit status 1"},
+		{"task done", func(l *RunLog) { l.TaskDone("t", time.Second, 0) }, "done", ""},
+		{"task failed", func(l *RunLog) { l.TaskFailed("t", time.Second, false) }, "", "failed"},
 		{"command stdout", func(l *RunLog) { o, _ := l.Output("t"); o.Write([]byte("a\n")) }, "a\n", ""},
 		{"command stderr", func(l *RunLog) { _, e := l.Output("t"); e.Write([]byte("b\n")) }, "", "b\n"},
 	}
@@ -80,6 +84,47 @@ func TestRunLogLines(t *testing.T) {
 			// Assert
 			if out.String() != test.want {
 				t.Errorf("got %q, want %q", out.String(), test.want)
+			}
+		})
+	}
+}
+
+func TestRunLogEndLines(t *testing.T) {
+	// given a run log, when a step or task ends, then a step's line carries
+	// its mark and time, a task's says "done after" or "failed after", and a
+	// soft failure is a "!" with no ✗ (why: a step's end and a task's end
+	// must not be confusable)
+	tests := []struct {
+		name    string
+		log     func(l *RunLog)
+		wantOut string
+		wantErr string
+	}{
+		{"step done", func(l *RunLog) { l.StepDone("deploy", 1600*time.Millisecond) }, "deploy ✓ 1.6s\n", ""},
+		{"step failed", func(l *RunLog) { l.StepFailed("deploy", 500*time.Millisecond, "go test -v ./...", "exit status 1") }, "", "deploy ✗ 0.5s go test -v ./...: exit status 1\n"},
+		{"step soft failed", func(l *RunLog) {
+			l.StepSoftFailed("deploy", 600*time.Millisecond, "golangci-lint run", "exit status 1")
+		}, "deploy ! 0.6s golangci-lint run: exit status 1\n", ""},
+		{"step error without a time", func(l *RunLog) { l.StepError("deploy", false, "no task \"nope\"") }, "", "deploy ✗ no task \"nope\"\n"},
+		{"task done", func(l *RunLog) { l.TaskDone("setup", 1600*time.Millisecond, 0) }, "setup ✓ done after 1.6s\n", ""},
+		{"task done with one soft failure", func(l *RunLog) { l.TaskDone("deploy", 8200*time.Millisecond, 1) }, "deploy ✓ done after 8.2s • 1 soft failure\n", ""},
+		{"task done with soft failures", func(l *RunLog) { l.TaskDone("deploy", 8200*time.Millisecond, 2) }, "deploy ✓ done after 8.2s • 2 soft failures\n", ""},
+		{"task failed", func(l *RunLog) { l.TaskFailed("test", 1900*time.Millisecond, false) }, "", "test ✗ failed after 1.9s\n"},
+		{"task stopped", func(l *RunLog) { l.TaskFailed("test", 1900*time.Millisecond, true) }, "", "test ✗ stopped after 1.9s\n"},
+		{"minutes", func(l *RunLog) { l.TaskDone("t", 75*time.Second, 0) }, "t ✓ done after 1m15s\n", ""},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			var out, errOut bytes.Buffer
+			log := NewRunLog(&out, &errOut)
+
+			// Act
+			test.log(log)
+
+			// Assert
+			if out.String() != test.wantOut || errOut.String() != test.wantErr {
+				t.Errorf("got out %q err %q, want out %q err %q", out.String(), errOut.String(), test.wantOut, test.wantErr)
 			}
 		})
 	}

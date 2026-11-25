@@ -17,7 +17,10 @@ run: [fetch-question] curl -sf https://the-trivia-api.com/v2/question/no-such-id
 ✗ [fetch-question] exit status 56
 ```
 
-hobnob itself then exits with `1`, whatever code the command exited with.
+The failed step ends with `✗`, its time and the command with why it failed, as
+`fetch-question ✗ 0.5s curl -sf …: exit status 56`. Then every task in the call
+chain ends with `✗ failed after` and its time, innermost first, one line per
+task. hobnob itself exits with `1`, whatever code the command exited with.
 
 ## Carrying on after a failure
 
@@ -72,10 +75,12 @@ run: [fetch-question] echo "no question with that id (curl exited 56)"
 
 ## Rules
 
-- **A `soft:` step that fails prints nothing**, and that covers any failure,
-  not just a command exiting non-zero. A typo in a template or a path that
-  leads nowhere is passed over just as quietly. Only use `soft:` on steps
-  you expect might fail.
+- **A `soft:` step that fails ends with a yellow `!` where `✗` would be**, and
+  no other note: `deploy ! 0.6s golangci-lint run: exit status 1`. The task's
+  end line then counts them in grey: `deploy ✓ done after 8.2s • 1 soft
+  failure`. That covers any failure, not just a command exiting non-zero. A
+  typo in a template or a path that leads nowhere is passed over just as
+  quietly. Only use `soft:` on steps you expect might fail.
 - **Only `run:` and `call:` steps take `soft:`.** Inside a
   [loop](./loops.md), put it on the steps that might fail.
 - **A command killed by a signal has an `exit` of `-1`.**

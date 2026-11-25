@@ -106,6 +106,11 @@
 // 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
+// 89. skip the step end line in runner.endRunStep                    -> log_ends_test.go (StepAndTaskEndWithTheirOwnLines)
+// 90. skip the task end line for a called task in runner.executeTask -> log_ends_test.go (FailureTwoCallsDeepEndsEveryTaskInnermostFirst)
+// 91. log a soft failure with StepFailed in runner.endRunStep        -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 92. drop the soft count increment in runner.executeSteps           -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 93. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 package e2e
 
 import (

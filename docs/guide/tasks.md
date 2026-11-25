@@ -23,7 +23,8 @@ run: [ask-trivia] echo "Mercury"
 ```
 
 hobnob prints each command on a `task $` line before running it, then what
-the command prints on `task │` lines, then `✓` once the task is done. A command
+the command prints on `task │` lines, then ends the step with its own line, `task ✓ 1.6s`, and the task with
+`task ✓ done after 1.6s`. A command
 of several lines continues under its first, and a `dir:` or `quiet:` shows as a
 grey `# …` note after the command.
 

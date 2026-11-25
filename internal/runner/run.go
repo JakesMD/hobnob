@@ -9,6 +9,7 @@ import (
 	osExec "os/exec"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"hobnob/internal/config"
 	"hobnob/internal/scope"
@@ -75,6 +76,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		notes = append(notes, hint)
 	}
 	execState.log.Run(execState.task, displayCmd, notes...)
+	began := time.Now()
+	end := func(err error) error { return endRunStep(execState, step, displayCmd, began, err) }
 	stdoutLineWriter, stderrLineWriter := execState.log.Output(execState.task)
 	// setProcAttr (unix) puts the child in its own process group so
 	// cancelFunc can signal the whole group — otherwise SIGTERM only reaches
@@ -117,13 +120,13 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	pipes, err := attachPipes(shellCmd)
 	if err != nil {
-		return err
+		return end(err)
 	}
 	if err := shellCmd.Start(); err != nil {
 		// The process never ran — no exit status exists, so there's nothing
 		// for into: exit to capture.
 		pipes.abandon()
-		return err
+		return end(err)
 	}
 	pipes.startCopying(stdoutDest, stderrDest)
 	pid := shellCmd.Process.Pid
@@ -175,11 +178,32 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		kept.flush()
 	})
 	if waitErr != nil && execState.ctx.Err() != nil {
-		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
+		return end(fmt.Errorf("%w: %v", ErrInterrupted, waitErr))
 	}
 
 	captureErr := captureInto("run", step.IntoEntries, runSource(stdoutBuf.String(), stderrBuf.String(), exitCodeOf(waitErr)), scope, nil)
-	return errors.Join(waitErr, captureErr)
+	return end(errors.Join(waitErr, captureErr))
+}
+
+// endRunStep logs how a run: step ended, soft or not, and marks a failure as
+// logged.
+func endRunStep(execState execCtx, step config.Step, cmd string, began time.Time, err error) error {
+	elapsed := time.Since(began)
+	if err == nil {
+		execState.log.StepDone(execState.task, elapsed)
+		return nil
+	}
+	firstLine, _, _ := strings.Cut(cmd, "\n")
+	reason := strings.ReplaceAll(err.Error(), "\n", "; ")
+	switch {
+	case errors.Is(err, ErrInterrupted):
+		execState.log.StepFailed(execState.task, elapsed, firstLine, "stopped")
+	case step.Soft:
+		execState.log.StepSoftFailed(execState.task, elapsed, firstLine, reason)
+	default:
+		execState.log.StepFailed(execState.task, elapsed, firstLine, reason)
+	}
+	return reportedError{err}
 }
 
 // exitCodeOf reports a finished command's exit code — 0 on success, the

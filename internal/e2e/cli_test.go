@@ -152,7 +152,7 @@ func TestE2E_NamedTaskSuccessPrintsSuccessMessage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "✓", "[deploy]", "done")
+	res.Out(t, "deploy ✓ done after")
 }
 
 func TestE2E_NamedTaskFailurePrintsFailureMessage(t *testing.T) {
@@ -171,7 +171,7 @@ func TestE2E_NamedTaskFailurePrintsFailureMessage(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "✗", "[deploy]")
+	res.Err(t, "deploy ✗ failed after")
 }
 
 func TestE2E_DefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
@@ -191,7 +191,7 @@ func TestE2E_DefaultTaskSuccessPrintsSuccessMessage(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "✓", "[default]", "done")
+	res.Out(t, "default ✓ done after")
 }
 
 func TestE2E_DefaultTaskFailurePrintsFailureMessage(t *testing.T) {
@@ -211,7 +211,7 @@ func TestE2E_DefaultTaskFailurePrintsFailureMessage(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "✗", "[default]")
+	res.Err(t, "default ✗ failed after")
 }
 
 func TestE2E_NoArgsDefaultTaskFailsFastWhenStdinNotTerminal(t *testing.T) {
