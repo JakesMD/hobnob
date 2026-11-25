@@ -171,6 +171,7 @@
 // 147. discard the stdin PTY's output in runner.attachStdin instead of copying it to the terminal -> runner/run_stdin_test.go (ShowsWhatTheCommandWritesToItsTerminalWhenStdoutIsPiped)
 // 148. make tui.LineWriter.Restart write col directly instead of flagging -> live_test.go (RestartingTheOtherStreamsWriterIsRaceFree, under -race)
 // 149. drop the leading blank line in tui.card.render -> frame_test.go (OpensWithOneBlankLine)
+// 150. stop skipping the opening sequences in runner.conPTYFilter.Write -> runner/conptyfilter_test.go (OpeningSequencesLeaveTheOutputPrefixedOnBothStreams)
 package e2e
 
 import (

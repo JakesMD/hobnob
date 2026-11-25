@@ -14,10 +14,12 @@ var conPTYModes = [][]byte{
 	[]byte("\x1b[?1004h"), []byte("\x1b[?1004l"),
 }
 
-// conPTYFilter drops conPTYModes from the stream written through it.
+// conPTYFilter drops conPTYModes from the stream written through it, and the
+// opening sequences ConPTY writes before the command's first output.
 type conPTYFilter struct {
-	dest io.Writer
-	held []byte // a possibly unfinished mode switch at the end of the last write
+	dest    io.Writer
+	started bool   // the command's own output has begun
+	held    []byte // a possibly unfinished mode switch at the end of the last write
 }
 
 func newConPTYFilter(dest io.Writer) *conPTYFilter { return &conPTYFilter{dest: dest} }
@@ -25,6 +27,9 @@ func newConPTYFilter(dest io.Writer) *conPTYFilter { return &conPTYFilter{dest: 
 func (f *conPTYFilter) Write(b []byte) (int, error) {
 	data := append(f.held, b...)
 	f.held = nil
+	if !f.started {
+		data = f.skipOpening(data)
+	}
 	var out []byte
 	for len(data) > 0 {
 		esc := bytes.IndexByte(data, 0x1b)
@@ -52,6 +57,89 @@ func (f *conPTYFilter) Write(b []byte) (int, error) {
 		}
 	}
 	return len(b), nil
+}
+
+// skipOpening drops ConPTY's own set-up at the start of the stream: cursor
+// visibility and mode switches, screen clear, cursor home, attribute reset,
+// erase-line and the window title. Left in, the clear and the home look like a
+// tool redrawing the screen and the title makes a prefixed empty line, so the
+// command's output after them would pass through unprefixed. It returns what
+// follows, and holds back an unfinished sequence.
+func (f *conPTYFilter) skipOpening(data []byte) []byte {
+	for len(data) > 0 {
+		if data[0] != 0x1b {
+			f.started = true
+			return data
+		}
+		n, complete := openingSequence(data)
+		if !complete {
+			f.held = append([]byte(nil), data...)
+			return nil
+		}
+		if n == 0 {
+			f.started = true
+			return data
+		}
+		data = data[n:]
+	}
+	return data
+}
+
+// openingSequence reports the length of the set-up sequence data starts with,
+// 0 if it starts with another one. complete is false when data ends before
+// the sequence does.
+func openingSequence(data []byte) (n int, complete bool) {
+	if len(data) < 2 {
+		return 0, false
+	}
+	switch data[1] {
+	case '[':
+		for i := 2; i < len(data); i++ {
+			c := data[i]
+			if c >= 0x40 && c <= 0x7e {
+				return openingCSI(data[2:i], c, i+1)
+			}
+			if c < 0x20 || c > 0x3f {
+				return 0, true
+			}
+		}
+		return 0, false
+	case ']':
+		for i := 2; i < len(data); i++ {
+			if data[i] == 0x07 {
+				return i + 1, true
+			}
+			if data[i] == 0x1b {
+				if i+1 >= len(data) {
+					return 0, false
+				}
+				if data[i+1] == '\\' {
+					return i + 2, true
+				}
+				return 0, true
+			}
+		}
+		return 0, false
+	}
+	return 0, true
+}
+
+// openingCSI says whether a CSI sequence with these parameters and final byte
+// is set-up, giving its total length n.
+func openingCSI(params []byte, final byte, n int) (int, bool) {
+	switch final {
+	case 'h', 'l':
+		if len(params) > 0 && params[0] == '?' {
+			return n, true
+		}
+	case 'J', 'H', 'K':
+		return n, true
+	case 'm':
+		if len(params) == 0 || string(params) == "0" {
+			return n, true
+		}
+	}
+	return 0, true
 }
 
 // Flush writes what Write held back, once no more input is coming.
