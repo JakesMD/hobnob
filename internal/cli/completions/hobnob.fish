@@ -40,6 +40,7 @@ complete -c hobnob -f -l list -d 'List all available tasks'
 complete -c hobnob -f -l select -d 'Interactively select a task to run'
 complete -c hobnob -f -l help -d 'Show help'
 complete -c hobnob -f -l no-input -d 'Skip interactive prompts'
+complete -c hobnob -f -s q -l quiet -d 'Print only commands and task ends'
 complete -c hobnob -f -l version -d 'Print version and exit'
 complete -c hobnob -f -l upgrade -d 'Upgrade to latest release'
 complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)"

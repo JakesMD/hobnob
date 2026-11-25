@@ -138,10 +138,13 @@
 // 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
 // 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
 // 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 120. drop the HOBNOB_QUIET=1 check in app.Run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
+// 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
 //
-// 119. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
-// 120. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
-// 121. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 122. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
+// 123. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
+// 124. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
 package e2e
 
 import (

@@ -1,7 +1,7 @@
 # CLI
 
 ```
-hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input]
+hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q]
 hobnob [--file <path> | --demo] (--list | --select | --help)
 hobnob (--version | --upgrade | completion <shell>)
 ```
@@ -37,6 +37,28 @@ agents get it for free.
 
 ```bash
 hobnob ask-trivia --no-input
+```
+
+## `--quiet`, `-q`
+
+Quiet run, for agents and logs: it prints only each `run:` command's `$` line
+and every task's end line, called tasks included. Variables, calls, skips,
+`✓` step lines, `#` notes and command output are left out, except that a step
+that fails or soft-fails prints its output before its `✗` or `!` line. Failure
+ends, the soft-failure count and the ctrl+c lines print as in a normal run.
+`HOBNOB_QUIET=1` does the same. Nothing else turns it on: not a pipe, not CI,
+not a detected agent.
+
+```bash
+hobnob deploy -q
+HOBNOB_QUIET=1 hobnob deploy
+```
+
+```
+setup $ npm ci
+setup ✓ done after 1.6s
+deploy $ go build ./...
+deploy ✓ done after 7.5s
 ```
 
 ## `--file <path>`
