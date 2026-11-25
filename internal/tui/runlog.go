@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -72,14 +73,60 @@ func (l *RunLog) RunSkipped(task, what string) {
 	fmt.Fprintln(l.stdout, lead(task, SInfo.Render("⊘"))+SInfo.Render(what))
 }
 
-// TaskDone logs the end of a task that succeeded.
-func (l *RunLog) TaskDone(task string) {
-	fmt.Fprintln(l.stdout, SChecked.Render("✓")+" "+TaskPrefix(task)+SChecked.Render("done"))
+// StepDone logs the end of a step that succeeded: "task ✓ 1.6s".
+func (l *RunLog) StepDone(task string, elapsed time.Duration) {
+	fmt.Fprintln(l.stdout, lead(task, SChecked.Render("✓"))+SInfo.Render(formatElapsed(elapsed)))
 }
 
-// TaskFailed logs the end of a task that failed or was interrupted.
-func (l *RunLog) TaskFailed(task, message string) {
-	fmt.Fprintln(l.stderr, SError.Render("✗")+" "+TaskPrefix(task)+SError.Render(message))
+// StepFailed logs the end of a step that failed, with the command as written
+// and why it failed.
+func (l *RunLog) StepFailed(task string, elapsed time.Duration, cmd, reason string) {
+	fmt.Fprintln(l.stderr, lead(task, SError.Render("✗"))+SInfo.Render(formatElapsed(elapsed))+" "+SError.Render(cmd+": "+reason))
+}
+
+// StepSoftFailed logs the end of a soft: step that failed; the task carries on.
+func (l *RunLog) StepSoftFailed(task string, elapsed time.Duration, cmd, reason string) {
+	fmt.Fprintln(l.stdout, lead(task, SStep.Render("!"))+SInfo.Render(formatElapsed(elapsed))+" "+SStep.Render(cmd+": "+reason))
+}
+
+// StepError logs a step that failed with a message but no run to time, soft
+// or not.
+func (l *RunLog) StepError(task string, soft bool, message string) {
+	if soft {
+		fmt.Fprintln(l.stdout, lead(task, SStep.Render("!"))+SStep.Render(message))
+		return
+	}
+	fmt.Fprintln(l.stderr, lead(task, SError.Render("✗"))+SError.Render(message))
+}
+
+// TaskDone logs the end of a task that succeeded, counting its soft failures.
+func (l *RunLog) TaskDone(task string, elapsed time.Duration, softFailures int) {
+	line := lead(task, SChecked.Render("✓")) + SChecked.Render("done") + " " + SInfo.Render("after "+formatElapsed(elapsed))
+	if softFailures > 0 {
+		noun := "soft failures"
+		if softFailures == 1 {
+			noun = "soft failure"
+		}
+		line += SInfo.Render(fmt.Sprintf(" • %d %s", softFailures, noun))
+	}
+	fmt.Fprintln(l.stdout, line)
+}
+
+// TaskFailed logs the end of a task that failed, or stopped when it was
+// interrupted.
+func (l *RunLog) TaskFailed(task string, elapsed time.Duration, stopped bool) {
+	word := "failed"
+	if stopped {
+		word = "stopped"
+	}
+	fmt.Fprintln(l.stderr, lead(task, SError.Render("✗"))+SError.Render(word)+" "+SInfo.Render("after "+formatElapsed(elapsed)))
+}
+
+func formatElapsed(d time.Duration) string {
+	if d >= time.Minute {
+		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
+	}
+	return fmt.Sprintf("%.1fs", d.Seconds())
 }
 
 // Output returns the writers for a command's stdout and stderr, each line

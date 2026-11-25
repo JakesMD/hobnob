@@ -109,6 +109,11 @@
 // 89. leave the source note off a variable line in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom)
 // 90. print a skipped optional get: as an empty value, not ⊘ NAME -> log_lines_test.go (SkippedOptionalPromptPrintsAMarkedName, SkippedOptionalWithPromptsOffPrintsAMarkedName)
 // 91. let enter pick a task when the picker's filter matches nothing, in tui.taskSelectModel.Update -> prompt_taskselect_test.go (EnterWithNothingMatchingStaysOpen)
+// 92. skip the step end line in runner.endRunStep                    -> log_ends_test.go (StepAndTaskEndWithTheirOwnLines)
+// 93. skip the task end line for a called task in runner.executeTask -> log_ends_test.go (FailureTwoCallsDeepEndsEveryTaskInnermostFirst)
+// 94. log a soft failure with StepFailed in runner.endRunStep        -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 95. drop the soft count increment in runner.executeSteps           -> log_ends_test.go (SoftFailureEndsWithABangAndTheTaskCountsIt)
+// 96. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 package e2e
 
 import (
