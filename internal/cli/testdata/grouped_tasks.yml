@@ -1,0 +1,19 @@
+tasks:
+  install:
+    info: Install it
+    steps:
+      - run: echo install
+  go:build:
+    info: Build the app
+    steps:
+      - run: echo build
+  go:test:
+    steps:
+      - run: echo test
+  docs:dev:
+    info: Serve the docs
+    steps:
+      - run: echo dev
+  zap:
+    steps:
+      - run: echo zap

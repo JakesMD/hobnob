@@ -63,8 +63,9 @@ hobnob --demo --list
 
 ## `--list`
 
-Prints every public task with its `info:`. Internal tasks and modules are
-omitted.
+Prints every public task with its `info:`, grouped by the part of the name
+before the first `:`; tasks without one come last. Internal tasks and modules
+are omitted.
 
 ## `--select`
 
@@ -73,7 +74,8 @@ CI, or with `--no-input`, it prints the task list instead.
 
 ## `--help`
 
-Prints usage, the docs links, and the task list.
+Prints usage, the flags, the docs links, and the grouped task list under
+Tasks.
 
 ## `--version`
 

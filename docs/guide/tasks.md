@@ -36,6 +36,10 @@ Available tasks for this project:
 • ask-trivia  Ask a random trivia question.
 ```
 
+`--list` groups tasks under a bold heading: the part of the name before the
+first `:`. Each group's tasks are indented under it and share one colour. Tasks
+with no `:` come last, ungrouped. `info:` is grey and wraps under its column.
+
 ## Kinds of step
 
 Every step does one of five things, and most of this guide is about them:
