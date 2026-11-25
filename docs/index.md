@@ -71,7 +71,7 @@ tasks:
       # The menu is built from what that step returned.
       - get:
           - CATEGORY:
-              info: Which category?
+              info: Which trivia category?
               options: .CATEGORIES | keys
 
       # Look up the chosen category's id by name.
@@ -112,14 +112,14 @@ tasks:
       # Three prompts: a multi-select, a menu and a masked token.
       - get:
           - SERVICES:
-              info: Which services?
+              info: Which services should be deployed?
               options: .ALL_SERVICES
               multi: true
           - ENV:
-              info: Where to?
+              info: Which environment should they go to?
               options: [staging, production]
           - TOKEN:
-              info: Cluster token
+              info: "Cluster token for {{.ENV}}"
               secret: true
 
       # Once per service you picked. The token never shows.
@@ -163,7 +163,7 @@ tasks:
       # Opens in images/ and offers only Packer templates.
       - get:
           - IMAGE:
-              info: Which image?
+              info: Which Packer template should be built?
               type: file
               default: images/
               match: "*.pkr.hcl"
@@ -177,10 +177,10 @@ tasks:
           - DISKS: stdout | lines
       - get:
           - DISK:
-              info: Which disk?
+              info: Which disk should the image be flashed to?
               options: .DISKS
           - SURE:
-              info: "Wipe {{.DISK}}? Everything on it goes."
+              info: "Wipe '{{.DISK}}'? Everything on it goes."
               options: ["no", "yes"]
       - run: '[ "{{.SURE}}" = yes ]'
       - set:

@@ -660,7 +660,7 @@ async function trivia() {
     await sleep(400)
 
     highlight('- get:')
-    const category = await select(task, 'CATEGORY', 'Which category?', Object.keys(categories).sort())
+    const category = await select(task, 'CATEGORY', 'Which trivia category?', Object.keys(categories).sort())
     varLine(task, 'CATEGORY', category)
     await sleep(300)
 
@@ -713,13 +713,13 @@ async function deploy() {
     await sleep(400)
 
     highlight('- SERVICES:')
-    const picked = await multiSelect(task, 'SERVICES', 'Which services?', services)
+    const picked = await multiSelect(task, 'SERVICES', 'Which services should be deployed?', services)
     varLine(task, 'SERVICES', picked.join(', '))
     highlight('- ENV:')
-    const env = await select(task, 'ENV', 'Where to?', ['staging', 'production'])
+    const env = await select(task, 'ENV', 'Which environment should they go to?', ['staging', 'production'])
     varLine(task, 'ENV', env)
     highlight('- TOKEN:')
-    await secretText(task, 'TOKEN', 'Cluster token')
+    await secretText(task, 'TOKEN', `Cluster token for ${env}`)
     varLine(task, 'TOKEN', '****')
     await sleep(300)
 
@@ -760,7 +760,7 @@ async function flash() {
     let image = ''
     await call(task, '_pick-image', async () => {
       highlight('- IMAGE:')
-      image = await pickFile('_pick-image', 'IMAGE', 'Which image?', 'images', (name) => name.endsWith('.pkr.hcl'))
+      image = await pickFile('_pick-image', 'IMAGE', 'Which Packer template should be built?', 'images', (name) => name.endsWith('.pkr.hcl'))
       varLine('_pick-image', 'IMAGE', image)
       await sleep(250)
     })
@@ -772,10 +772,10 @@ async function flash() {
       await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', disks, 120))
       await sleep(300)
       highlight('- DISK:')
-      const line = await select('_pick-disk', 'DISK', 'Which disk?', disks)
+      const line = await select('_pick-disk', 'DISK', 'Which disk should the image be flashed to?', disks)
       varLine('_pick-disk', 'DISK', line)
       highlight('- SURE:')
-      const sure = await select('_pick-disk', 'SURE', `Wipe ${line}? Everything on it goes.`, ['no', 'yes'])
+      const sure = await select('_pick-disk', 'SURE', `Wipe '${line}'? Everything on it goes.`, ['no', 'yes'])
       varLine('_pick-disk', 'SURE', sure)
       await sleep(250)
 
