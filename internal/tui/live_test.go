@@ -48,7 +48,7 @@ func TestLiveStatusLineSitsUnderTheLogWithTheStepAndTotalClocks(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 60)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "sleep 1")
 	stdout, _ := rig.log.Output("t")
 
@@ -76,7 +76,7 @@ func TestLiveStatusLineBetweenStepsHasOnlyTheTotal(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "true")
 
 	// Act
@@ -101,7 +101,7 @@ func TestLiveStatusLineSaysStoppingOnItsLeftAfterCtrlC(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 70)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "sleep 9")
 
 	// Act
@@ -123,7 +123,7 @@ func TestLiveStatusLineIsGoneWhenTheRunEnds(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	leave := rig.log.Enter("t")
+	leave := rig.log.Enter("t", "")
 	rig.log.TaskDone("t", time.Second, 0)
 
 	// Act
@@ -144,7 +144,7 @@ func TestLiveStatusLineIsClearedWhileACardPromptIsOpen(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 
 	// Act
 	resume := rig.log.Pause()
@@ -168,7 +168,7 @@ func TestLiveStatusLineStaysUnderAPromptWaitingForInputWithItsClockFrozen(t *tes
 
 	// Arrange
 	rig := newLiveRig(t, 50)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "read n")
 	stdout, _ := rig.log.Output("t")
 	stdout.Write([]byte("name? "))
@@ -206,7 +206,7 @@ func TestLiveStatusLineHidesWhileAToolRedrawsRowsAndReturnsWhenItStops(t *testin
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "tool")
 	stdout, _ := rig.log.Output("t")
 
@@ -238,7 +238,7 @@ func TestLiveStatusLineComesBackOnItsOwnWhenAToolGoesQuiet(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "tool")
 	stdout, _ := rig.log.Output("t")
 	stdout.Write([]byte("a\n\x1b[1Ab\n"))
@@ -268,7 +268,7 @@ func TestLiveWatchedOutputCostsAFewTimesItsSizeInTerminalWrites(t *testing.T) {
 		OnResize: func(func()) func() { return func() {} },
 	})
 	log.live.tick = 0
-	log.Enter("t")
+	log.Enter("t", "")
 	log.Run("t", "tool")
 	stdout, _ := log.Output("t")
 	chunk := []byte(strings.Repeat(strings.Repeat("a", 80)+"\n", 50))
@@ -294,7 +294,7 @@ func TestLiveLateWriteFromAnEarlierStepUsesItsOwnPrefix(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 60)
-	rig.log.Enter("a")
+	rig.log.Enter("a", "")
 	rig.log.Run("a", "bg")
 	lateOut, _ := rig.log.Output("a")
 	lateOut.Write([]byte("early"))
@@ -322,7 +322,7 @@ func TestClearStatusLineLeavesNoRuleBehind(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "sleep 9")
 	rig.log.Stopping()
 
@@ -347,7 +347,7 @@ func TestLiveStatusLineNeverReachesAPipe(t *testing.T) {
 	log := NewRunLog(&out, &errs)
 
 	// Act
-	leave := log.Enter("t")
+	leave := log.Enter("t", "")
 	log.Run("t", "echo hi")
 	stdout, _ := log.Output("t")
 	stdout.Write([]byte("hi\n"))
@@ -368,7 +368,7 @@ func TestLiveRestartingTheOtherStreamsWriterIsRaceFree(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t")
+	rig.log.Enter("t", "")
 	rig.log.Run("t", "tool")
 	stdout, stderr := rig.log.Output("t")
 	done := make(chan struct{})

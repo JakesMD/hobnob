@@ -1,0 +1,284 @@
+package e2e
+
+import (
+	"net/http"
+	"strings"
+	"testing"
+
+	"hobnob/internal/web"
+)
+
+const waitForGo = `while [ ! -e go ]; do :; done`
+
+func TestE2E_Web_TaskWithoutPromptsEndsOnDone(t *testing.T) {
+	// given a task with no prompts, when it runs with --web, then the page is
+	// opened on 127.0.0.1 and ends on Done with the task and its duration,
+	// the URL is printed and the exit code is 0 (why: browser mode is the
+	// same run behind a page)
+	// Arrange
+	yml := `
+		tasks:
+		  deploy:
+		    info: Deploy the app
+		    steps:
+		      - run: echo hello
+	`
+	var done web.Snapshot
+	var address string
+	c := Case{Yml: yml, Args: []string{"--web", "deploy"}, Browser: func(b *Browser) {
+		address = b.Address()
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "http://127.0.0.1:", "deploy │ hello")
+	if res.URL != "http://"+address+"/?token="+strings.SplitN(res.URL, "token=", 2)[1] {
+		t.Errorf("URL %q is not on %s", res.URL, address)
+	}
+	if done.Task.Name != "deploy" || done.Task.Info != "Deploy the app" || done.Result.Outcome != web.OutcomeDone || done.Result.DurationMS < 0 {
+		t.Errorf("done snapshot = %+v", done)
+	}
+}
+
+func TestE2E_Web_FileFlagRunsTheNamedTaskfile(t *testing.T) {
+	// given --file beside --web, when run, then that taskfile's task runs
+	// (why: --web combines with --file)
+	// Arrange
+	c := Case{
+		Files:    Files{"other.yml": "tasks:\n  t:\n    steps:\n      - run: echo from-other\n"},
+		Args:     []string{"--file", "other.yml", "--web", "t"},
+		Discover: true,
+		Browser:  func(b *Browser) { b.Open().Screen(web.ScreenDone) },
+	}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t │ from-other")
+}
+
+func TestE2E_Web_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
+	// given a task that calls another, when it runs, then the page shows the
+	// innermost task's info (its name without one), the last output line and
+	// a rail with a setup entry per task entered, ticked as each finishes
+	// (why: the person watches setup progress, never the commands)
+	// Arrange
+	yml := `
+		tasks:
+		  top:
+		    info: Set up the laptop
+		    steps:
+		      - call: inner
+		      - run: echo after
+		  inner:
+		    steps:
+		      - run: echo "working on it"; ` + waitForGo + `
+	`
+	var running, done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "top"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		running = tab.Until(func(s web.Snapshot) bool {
+			return s.Progress != nil && s.Progress.LastLine == "working on it"
+		})
+		b.Release("go")
+		done = tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	wantRunning := []web.RailEntry{{Label: "Set up the laptop", State: web.StateRunning}, {Label: "inner", State: web.StateRunning}}
+	if running.Progress.Label != "inner" || !equalRail(running.Rail.Setup, wantRunning) {
+		t.Errorf("running snapshot = %+v", running)
+	}
+	wantDone := []web.RailEntry{{Label: "Set up the laptop", State: web.StateDone}, {Label: "inner", State: web.StateDone}}
+	if !equalRail(done.Rail.Setup, wantDone) {
+		t.Errorf("done rail = %+v", done.Rail)
+	}
+}
+
+func equalRail(got, want []web.RailEntry) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
+	// given a quiet: step and a step printing a secret, when they run, then
+	// the first shows an empty last line and the second shows the secret
+	// masked (why: a held step's output stays out of sight, and a secret
+	// never reaches the page)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    vars:
+		      - TOKEN:
+		          value: hunter2
+		          secret: true
+		    steps:
+		      - run: echo hidden; ` + waitForGo + `
+		        quiet: true
+		      - run: echo "token is {{.TOKEN}}"
+	`
+	var held, after web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		held = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil && s.Progress.Label == "t" })
+		b.Release("go")
+		after = tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if held.Progress.LastLine != "" {
+		t.Errorf("held step showed %q", held.Progress.LastLine)
+	}
+	if strings.Contains(after.Result.Log, "hunter2") || !strings.Contains(after.Result.Log, "token is") {
+		t.Errorf("log = %q", after.Result.Log)
+	}
+}
+
+func TestE2E_Web_QuietChangesOnlyTheTerminal(t *testing.T) {
+	// given a run with --quiet, when it ends, then the terminal holds only the
+	// command line, while the page still saw the output line (why: --quiet is
+	// for the terminal, the page is the person)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - run: echo chatter
+	`
+	var done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "--quiet", "t"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.NotOut(t, "t │ chatter")
+	if !strings.Contains(done.Result.Log, "chatter") {
+		t.Errorf("log = %q", done.Result.Log)
+	}
+}
+
+func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
+	// given a task whose step fails, when it runs with --web, then the page
+	// ends on Failed naming the task of the step and its last line, the
+	// rail marks it failed and the exit code is 1 (why: the person must see
+	// what broke, and scripts must see the same exit code)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    info: Install tools
+		    steps:
+		      - run: echo "disk is full"; exit 3
+	`
+	var failed web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(web.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	if failed.Result.Outcome != web.OutcomeFailed || failed.Result.Label != "Install tools" || failed.Result.LastLine != "disk is full" {
+		t.Errorf("failed result = %+v", failed.Result)
+	}
+	if len(failed.Rail.Setup) != 1 || failed.Rail.Setup[0].State != web.StateFailed {
+		t.Errorf("rail = %+v", failed.Rail)
+	}
+}
+
+func TestE2E_Web_RequestsNeedTheToken(t *testing.T) {
+	// given an open page, when a request has no token or a wrong one, then it
+	// is refused, and with the right one it is served (why: other local
+	// programs and web pages must not read the run or drive it)
+	// Arrange
+	var statuses []int
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+		for _, token := range []string{"", "wrong", b.Token()} {
+			status, _ := b.Get("/", token)
+			statuses = append(statuses, status)
+			if token == b.Token() {
+				continue
+			}
+			if status, _ = b.Get("/events", token); status != http.StatusForbidden {
+				b.Fail("events answered %d without the right token", status)
+			}
+		}
+		tab := b.Open()
+		b.Release("go")
+		tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	Run(t, c)
+
+	// Assert
+	if want := []int{403, 403, 200}; !equalInts(statuses, want) {
+		t.Errorf("statuses = %v, want %v", statuses, want)
+	}
+}
+
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
+	// given --web beside --no-input, --list, --select or no task, when run,
+	// then it is refused and no page opens (why: the page has nothing to do
+	// there)
+	// Arrange
+	for name, args := range map[string][]string{
+		"no-input": {"--web", "t", "--no-input"},
+		"list":     {"--web", "--list"},
+		"select":   {"--web", "--select"},
+		"help":     {"--web", "--help"},
+		"no task":  {"--web"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Act
+			res := Yml(t, "tasks:\n  t:\n    steps:\n      - run: echo hi\n", args...)
+
+			// Assert
+			res.Fails(t)
+			res.Err(t, "--web")
+			if res.URL != "" {
+				t.Errorf("opened %s", res.URL)
+			}
+		})
+	}
+}

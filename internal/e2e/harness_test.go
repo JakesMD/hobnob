@@ -174,6 +174,17 @@
 // 150. stop skipping the opening sequences in runner.conPTYFilter.Write -> runner/conptyfilter_test.go (OpeningSequencesLeaveTheOutputPrefixedOnBothStreams)
 // 151. drop the empty-answer refusal on enter in tui.textModel.Update -> tui/prompt_text_test.go (Update_Answers, required prompt on an empty field)
 // 152. drop the empty-picks refusal in tui.selectModel.confirm -> tui/prompt_select_test.go (MultiEnter_NoSelections)
+//
+// 153. drop the token compare in web.Server.guard                       -> web_test.go (RequestsNeedTheToken)
+// 154. bind web.Listen to all interfaces instead of 127.0.0.1           -> web_test.go (TaskWithoutPromptsEndsOnDone)
+// 155. let a held step's last line reach web.state's progress           -> web_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 156. skip the mask in tui.RunLog.Tap's callers (pass identity)        -> web_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 157. tap a step's output after --quiet's promptWriter, not before it  -> web_test.go (QuietChangesOnlyTheTerminal)
+// 158. report the outermost task as a failed step in tui.RunLog.RunFailed -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 159. never mark a task failed in tui.RunLog.TaskFailed                -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 160. label a task by its name even when it has an info: in web.label  -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 161. return before AwaitDelivery in app.execWebTask                   -> web_test.go (TaskWithoutPromptsEndsOnDone)
+// 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
 package e2e
 
 import (
@@ -229,6 +240,10 @@ type Case struct {
 	// returning the rows of the terminal as they are right now. It must end
 	// by letting the run finish (a command waiting for a file, say).
 	WhileRunning func(rows func() []string)
+
+	// Browser plays the page when a --web run opens it. It runs alongside the
+	// run; a failed check in it ends it, which cancels the run.
+	Browser func(b *Browser)
 }
 
 // screenOf is a Screen of fixed size, resized by calling the returned func
@@ -291,6 +306,7 @@ type Result struct {
 	ExitCode int
 	Prompts  []PromptCall
 	Dir      string
+	URL      string // what --web opened in the browser, empty if it didn't
 
 	// runErr is unexported so it can't be compared directly (app.ErrSilent's
 	// empty message makes that a footgun) — go through .OK/.Fails/.Err.
@@ -421,6 +437,29 @@ func Run(t *testing.T, c Case) *Result {
 	}
 
 	res := &Result{Dir: dir}
+	runCtx, cancelRun := context.WithCancel(t.Context())
+	defer cancelRun()
+	var browsers sync.WaitGroup
+	a.OpenBrowser = func(url string) error {
+		res.URL = url
+		if c.Browser == nil {
+			t.Errorf("unexpected OpenBrowser(%s) — Case.Browser not set", url)
+			return nil
+		}
+		browsers.Add(1)
+		go func() {
+			defer browsers.Done()
+			finished := false
+			defer func() {
+				if !finished {
+					cancelRun()
+				}
+			}()
+			c.Browser(newBrowser(t, url, dir))
+			finished = true
+		}()
+		return nil
+	}
 	stdout, stderr, combined := captureOutput(t, func(stdoutNow func() string) {
 		var watcher sync.WaitGroup
 		if c.WhileRunning != nil {
@@ -430,8 +469,9 @@ func Run(t *testing.T, c Case) *Result {
 				c.WhileRunning(func() []string { return termsim.Render(ansiRe.ReplaceAllString(stdoutNow(), "")) })
 			}()
 		}
-		res.runErr = a.Run(t.Context(), args)
+		res.runErr = a.Run(runCtx, args)
 		watcher.Wait()
+		browsers.Wait()
 	})
 	res.Raw = stdout
 	if c.Screen != nil {

@@ -22,9 +22,12 @@ type RunLog struct {
 	logErr io.Writer
 
 	mu       sync.Mutex
-	running  []string
+	running  []runningTask
 	stopping bool
 	quiet    bool
+
+	listener RunListener
+	failed   *taskFailure
 
 	screen *Screen
 	live   *liveArea
@@ -45,17 +48,24 @@ func (l *RunLog) Quiet() bool { return l.quiet }
 
 // Enter marks task as the one now running and returns the func that leaves it,
 // so Stopping can name the innermost task.
-func (l *RunLog) Enter(task string) (leave func()) {
+func (l *RunLog) Enter(task, info string) (leave func()) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.running = append(l.running, task)
+	l.running = append(l.running, runningTask{name: task})
+	if l.listener != nil {
+		l.listener.TaskEntered(task, info)
+	}
 	if len(l.running) == 1 && l.live != nil {
 		l.live.begin()
 	}
 	return func() {
 		l.mu.Lock()
 		defer l.mu.Unlock()
+		left := l.running[len(l.running)-1]
 		l.running = l.running[:len(l.running)-1]
+		if l.listener != nil {
+			l.listener.TaskLeft(left.name, left.failed)
+		}
 		if len(l.running) == 0 && l.live != nil {
 			l.live.end()
 		}
@@ -71,7 +81,7 @@ func (l *RunLog) Stopping() {
 		return
 	}
 	l.stopping = true
-	task := l.running[len(l.running)-1]
+	task := l.running[len(l.running)-1].name
 	if l.live != nil {
 		l.live.setNote(stoppingNote)
 	}
@@ -82,6 +92,11 @@ func (l *RunLog) Stopping() {
 // each as a grey "# …"; continuation lines of a multi-line command sit under
 // it, indented to the command's start.
 func (l *RunLog) Run(task, cmd string, notes ...string) {
+	l.mu.Lock()
+	if l.listener != nil {
+		l.listener.StepStarted(task, cmd)
+	}
+	l.mu.Unlock()
 	if l.quiet {
 		notes = nil
 	}
@@ -111,6 +126,9 @@ func (l *RunLog) Call(task, calledTask string) {
 // Var logs a get: value used, display already masked when it is a secret.
 // note says where a value nobody typed came from.
 func (l *RunLog) Var(task, name, display, note string) {
+	if l.listener != nil {
+		l.listener.Var(task, name, display)
+	}
 	if l.quiet {
 		return
 	}
@@ -157,6 +175,7 @@ func (l *RunLog) StepDone(task string, elapsed time.Duration) {
 // and why it failed.
 func (l *RunLog) StepFailed(task string, elapsed time.Duration, cmd, reason string) {
 	l.endStep()
+	l.recordFailure(task, reason)
 	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 
@@ -174,6 +193,7 @@ func (l *RunLog) StepError(task string, soft bool, message string) {
 		fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SStep.Render(message))
 		return
 	}
+	l.recordFailure(task, message)
 	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SError.Render(message))
 }
 
@@ -193,6 +213,7 @@ func (l *RunLog) TaskDone(task string, elapsed time.Duration, softFailures int) 
 // TaskFailed logs the end of a task that failed, or stopped when it was
 // interrupted.
 func (l *RunLog) TaskFailed(task string, elapsed time.Duration, stopped bool) {
+	l.markFailed()
 	word := "failed"
 	if stopped {
 		word = "stopped"

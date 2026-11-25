@@ -36,8 +36,11 @@ type App struct {
 	// piped. A nil func means piped.
 	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
+	// OpenBrowser opens url in the default browser for --web.
+	OpenBrowser func(url string) error
 
 	quiet bool
+	web   bool
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -48,8 +51,9 @@ func New(version string) *App {
 		IsTerminal: func() bool {
 			return cterm.IsTerminal(os.Stdin.Fd())
 		},
-		Screen:     tui.StdoutScreen,
-		SelectTask: tui.PromptTaskSelect,
+		Screen:      tui.StdoutScreen,
+		SelectTask:  tui.PromptTaskSelect,
+		OpenBrowser: openBrowser,
 	}
 }
 
@@ -90,6 +94,9 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 }
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
+	if a.web {
+		return a.execWebTask(ctx, taskName, scope, fileScopes, cfg, dir)
+	}
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
 	log.SetQuiet(a.quiet)
 	if a.Screen != nil {
@@ -122,6 +129,12 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 	useDemo, args := extractDemoFlag(args)
+	a.web, args = extractWebFlag(args)
+	if a.web {
+		if err := checkWebFlag(args); err != nil {
+			return err
+		}
+	}
 	flagQuiet, args := extractQuietFlag(args)
 	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {

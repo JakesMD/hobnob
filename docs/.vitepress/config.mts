@@ -62,6 +62,7 @@ export default defineConfig({
                 { text: 'Tasks', link: '/docs/guide/tasks' },
                 { text: 'Running tasks', link: '/docs/guide/running-tasks' },
                 { text: 'Running commands', link: '/docs/guide/commands' },
+                { text: 'Browser mode', link: '/docs/guide/browser-mode' },
               ],
             },
             {

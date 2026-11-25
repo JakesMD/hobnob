@@ -64,7 +64,7 @@ func TestConPTYFilter_Write_OpeningSequencesLeaveTheOutputPrefixedOnBothStreams(
 		Size:     func() (int, int) { return 80, 24 },
 		OnResize: func(func()) func() { return func() {} },
 	})
-	log.Enter("t")
+	log.Enter("t", "")
 	log.Run("t", "cmd")
 	stdout, stderr := log.Output("t")
 	filter := newConPTYFilter(stdout)

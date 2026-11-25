@@ -1,7 +1,7 @@
 # CLI
 
 ```
-hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q]
+hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q] [--web]
 hobnob [--file <path> | --demo] (--list | --select | --help)
 hobnob (--version | --upgrade | completion <shell>)
 ```
@@ -58,6 +58,18 @@ setup $ npm ci
 setup ✓ done after 1.1s
 deploy $ go build ./...
 deploy ✓ done after 2.1s
+```
+
+## `--web`
+
+Runs the task behind a local web page and opens it in the default browser.
+The terminal keeps the usual run log, plus the page's address. It needs a
+task, combines with `--file`, `--demo`, `KEY=VALUE` and `--quiet`, is an error
+with `--no-input`, `--list`, `--select` and `--help`, and is not yet supported
+on Windows. See [Browser mode](../guide/browser-mode.md).
+
+```bash
+hobnob --web setup
 ```
 
 ## `--file <path>`

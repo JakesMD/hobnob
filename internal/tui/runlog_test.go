@@ -182,8 +182,8 @@ func TestRunLog_Stopping_NamesTheInnermostTaskAndPrintsOnce(t *testing.T) {
 	// Arrange
 	var out, errOut bytes.Buffer
 	log := NewRunLog(&out, &errOut)
-	defer log.Enter("deploy")()
-	defer log.Enter("test")()
+	defer log.Enter("deploy", "")()
+	defer log.Enter("test", "")()
 
 	// Act
 	log.Stopping()

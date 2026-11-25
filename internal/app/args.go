@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"hobnob/internal/eval"
 )
@@ -117,4 +118,36 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 		cliVars[key] = val
 	}
 	return noPrompts, cliVars, nil
+}
+
+// extractWebFlag scans args for --web, removes it, and reports whether it was
+// present.
+func extractWebFlag(args []string) (bool, []string) {
+	remaining := make([]string, 0, len(args))
+	found := false
+	for _, arg := range args {
+		if arg == "--web" {
+			found = true
+			continue
+		}
+		remaining = append(remaining, arg)
+	}
+	return found, remaining
+}
+
+// checkWebFlag rejects --web where the page has nothing to do: on Windows,
+// beside --no-input, and with --list, --select, --help or no task.
+func checkWebFlag(args []string) error {
+	if runtime.GOOS == "windows" {
+		return fmt.Errorf("--web is not yet supported on Windows")
+	}
+	for _, arg := range args {
+		if arg == "--no-input" || isListingFlag(arg) {
+			return fmt.Errorf("--web can't be combined with %s", arg)
+		}
+	}
+	if len(args) == 0 {
+		return fmt.Errorf("--web needs a task name")
+	}
+	return nil
 }

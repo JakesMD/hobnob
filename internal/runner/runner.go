@@ -179,7 +179,7 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	if err != nil {
 		return err
 	}
-	defer execState.log.Enter(taskName)()
+	defer execState.log.Enter(taskName, task.Info)()
 	began := time.Now()
 	softs := 0
 	skipped, err := runTask(execState, task, execCfg, taskName, callDirTmpl, scope, &softs)

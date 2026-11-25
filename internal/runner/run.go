@@ -124,6 +124,9 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var stdoutDest, stderrDest io.Writer
 	holdOutput := step.Quiet || execState.log.Quiet()
+	if step.Quiet {
+		execState.log.StepHeld(execState.task)
+	}
 	switch {
 	case holdOutput:
 		// Buffered only — never teed to the LineWriters live. On failure,
@@ -140,6 +143,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	default:
 		stdoutDest, stderrDest = stdoutLineWriter, stderrLineWriter
 	}
+	stdoutDest = execState.log.Tap(execState.task, stdoutDest, scope.Mask)
+	stderrDest = execState.log.Tap(execState.task, stderrDest, scope.Mask)
 	shellCmd.Env = envWithScopeOverrides(scope.Vars())
 
 	var size *ptySize

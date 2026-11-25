@@ -59,6 +59,10 @@ Every change must preserve these. Each is explained in the section named.
   path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
   (restore func())`, never by reassigning a package variable.
+- **Web stays a front end.** `internal/web` implements `tui.RunListener` and
+  imports only `value` (and, for the picker prompt shape, `tui`), never `eval`,
+  `runner` or `config`; it observes a run through `RunLog` and never changes
+  what the runner does. ([web](#internalweb-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
   `keys`, `join` and accessors error on a String, naming `| json`, rather
@@ -77,6 +81,7 @@ internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
 internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
+internal/web/     the --web front end: local page, SSE snapshots, the run listener's state
 internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
@@ -98,6 +103,7 @@ flowchart TD
     app --> scope
     app --> config
     app --> tui
+    app --> web
     cli --> scope
     cli --> config
     cli --> tui
@@ -112,6 +118,7 @@ flowchart TD
     literal --> eval
     eval --> value
     tui --> value
+    web --> value
 ```
 
 For readability the graph omits the direct `eval`/`value` imports from
@@ -128,6 +135,8 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
+- `web` imports `value` and the stdlib; it implements `tui.RunListener`
+  structurally, so it needs no `tui` import for it. `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -724,6 +733,39 @@ line; a prompt model's `View` supplies only its body), `list.go` (what menus, th
 log line is built from, and `SecretMask`). The runner calls `PromptText`,
 `PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
+### `internal/web`: the browser front end
+
+`hobnob --web <task>` (`app/web.go`, `execWebTask`) runs the task as usual
+and has `web.Server` watch it. `web.Listen` binds a random port on 127.0.0.1
+with a random token; `App.OpenBrowser(url)` opens
+`http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
+the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says.
+
+**The run listener.** `tui.RunListener` is how a front end observes a run. A
+`RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
+(`Enter(task, info)`; the leave func carries whether the task failed), a step
+started and whether it is held (`quiet:`), each line of a command's output
+(`RunLog.Tap`, wrapped around the step's destination writers in `execRun`, so
+`--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
+and ANSI-stripped), each variable line, and the run ending (`RunSucceeded`,
+`RunFailed`, `RunCancelled`, called by `app`; `RunFailed` carries the first
+failed step's task and reason). Terminal output is unchanged.
+
+**State and snapshots.** `web.state` turns those events into a `Snapshot`
+(`snapshot.go`): the screen (progress, done or failed), the task, the rail
+(answers and setup entries), progress (the innermost running task's `info:` or
+name, the last line, empty for a held step) and the result (outcome, label,
+last line, duration and the masked log). Every SSE event on `GET /events` is
+a whole snapshot; a stream that is behind gets only the latest. To add a
+screen or field, extend `Snapshot`, set it from `state`, and draw it in
+`page.html`.
+
+**Requests.** Every request must carry the token (constant-time compare).
+`POST /actions/{name}` routes through `Server.actions`, empty until the prompt
+tickets register theirs. After the run ends `app` waits in `AwaitDelivery` for
+a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
+outlive hobnob. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
+
 ### `internal/app`: the CLI body
 
 ```go
@@ -732,16 +774,17 @@ type App struct {
     IsTerminal func() bool
     Screen     func() *tui.Screen
     SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
+    OpenBrowser func(url string) error
 }
 ```
 
-`IsTerminal`, `Screen` and `SelectTask` are fields, not package vars, so `internal/e2e`
+`IsTerminal`, `Screen`, `SelectTask` and `OpenBrowser` are fields, not package vars, so `internal/e2e`
 can fake the terminal and picker per test without global state. `App.Run`
 never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 
 `Run`, in order:
 
-1. Extract `--file <path>` and `--demo`; both together is an error.
+1. Extract `--file <path>`, `--demo` and `--web`; `--file` with `--demo` is an error, and `--web` is checked by `checkWebFlag`.
 2. Answer `--version`, `--upgrade` and `completion <shell>` before looking for
    a taskfile, so they work anywhere. Reject a `_`-prefixed task name.
 3. Pick a source: the embedded demo (`demo.go`, `//go:embed demo.yml`, parsed
@@ -808,5 +851,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly five test seams: `runner.SetPrompts` (text, select and path prompts together),
-`runner.SetLeftoverGrace`, `App.IsTerminal`, `App.Screen` and `App.SelectTask`.
+Production code exposes exactly six test seams: `runner.SetPrompts` (text, select and path prompts together),
+`runner.SetLeftoverGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.
