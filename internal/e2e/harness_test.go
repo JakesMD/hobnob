@@ -204,6 +204,9 @@
 // 179. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
 // 180. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
 // 181. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 182. drop the isOpen re-check once web.state.answer holds the prompt's busy lock -> web_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
+// 183. treat an untouched secret default as a skip in web.state.PromptText -> web_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
+// 184. drop the required-answer refusal in web.state.PromptText            -> web_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
 package e2e
 
 import (

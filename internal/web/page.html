@@ -126,17 +126,17 @@ function progress(s) {
   };
 }
 
-let draft = { id: null, text: '' };
+let draft = { id: null, text: '', touched: false };
 
 function ask(s) {
   const p = s.prompt;
-  if (draft.id !== p.id) draft = { id: p.id, text: p.default || '' };
-  const send = () => post('answer', { id: p.id, value: draft.text });
+  if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
+  const send = () => post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text });
   const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
     autocomplete: 'off', spellcheck: 'false', placeholder: p.hasDefault && p.secret ? '••••' : '',
     onkeydown: (event) => { if (event.key === 'Enter') send(); } });
   field.value = draft.text;
-  field.addEventListener('input', () => { draft.text = field.value; });
+  field.addEventListener('input', () => { draft.text = field.value; draft.touched = true; });
   setTimeout(() => field.focus(), 0);
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));

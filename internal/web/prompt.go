@@ -92,6 +92,9 @@ func (s *state) answer(body json.RawMessage) error {
 	}
 	open.busy.Lock()
 	defer open.busy.Unlock()
+	if !s.isOpen(open) {
+		return errNoSuchPrompt
+	}
 	entry, refusal, skip := open.judge(req.Value)
 	return s.settle(open, func() {
 		if refusal != "" {
@@ -137,6 +140,15 @@ func (s *state) openPrompt(id int) (*openPrompt, error) {
 	return s.prompt, nil
 }
 
+// isOpen says open is still the prompt waiting for the person. A POST that
+// waited for open.busy checks it again, since the answer ahead of it may have
+// settled the prompt.
+func (s *state) isOpen(open *openPrompt) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.prompt == open
+}
+
 // settle applies change if open is still the open prompt.
 func (s *state) settle(open *openPrompt, change func()) error {
 	var err error
@@ -163,10 +175,13 @@ func (s *state) PromptText(ctx context.Context, info, varName string,
 	var answer string
 	skipped, err := s.ask(ctx, prompt, func(raw json.RawMessage) (RailEntry, string, bool) {
 		var text string
+		// null is Continue on a secret's field left as its masked default,
+		// whose text the page never has.
+		untouchedDefault := string(raw) == "null"
 		if err := json.Unmarshal(raw, &text); err != nil {
 			return RailEntry{}, "the answer must be text", false
 		}
-		if text == "" && optional {
+		if text == "" && optional && !(untouchedDefault && defaultVal != "") {
 			return RailEntry{}, "", true
 		}
 		if text == "" {
