@@ -37,3 +37,10 @@ func KillRunningStep() bool {
 	}
 	return true
 }
+
+// foregroundTerminal: no terminal hand-off on windows.
+func foregroundTerminal(cmd *osExec.Cmd) (release func(), ok bool) { return func() {}, false }
+
+func diedOfInterrupt(err error) bool { return false }
+
+func interruptSelf() {}

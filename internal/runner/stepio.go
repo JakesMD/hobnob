@@ -50,15 +50,30 @@ func (p *outPipe) close() {
 type stepPipes struct {
 	stdout, stderr *outPipe
 	copied         chan struct{}
+	master         *os.File // stdout's PTY master; nil when stdout is a pipe
 
 	mu        sync.Mutex
 	abandoned bool // set once the run stops copying; later output is dropped
 }
 
-func attachPipes(cmd *osExec.Cmd) (*stepPipes, error) {
-	stdout, err := newOutPipe()
-	if err != nil {
-		return nil, err
+// ptySize is the size of the PTY a step's stdout goes to.
+type ptySize struct{ cols, rows int }
+
+// attachPipes gives cmd its stdout and stderr pipes. With a ptySize, stdout is
+// a PTY instead, unless the platform has none.
+func attachPipes(cmd *osExec.Cmd, size *ptySize) (*stepPipes, error) {
+	var stdout *outPipe
+	var master *os.File
+	if size != nil {
+		if pipe, m, err := newPTYPipe(*size); err == nil {
+			stdout, master = pipe, m
+		}
+	}
+	if stdout == nil {
+		var err error
+		if stdout, err = newOutPipe(); err != nil {
+			return nil, err
+		}
 	}
 	stderr, err := newOutPipe()
 	if err != nil {
@@ -67,7 +82,14 @@ func attachPipes(cmd *osExec.Cmd) (*stepPipes, error) {
 	}
 	cmd.Stdout = stdout.w
 	cmd.Stderr = stderr.w
-	return &stepPipes{stdout: stdout, stderr: stderr}, nil
+	return &stepPipes{stdout: stdout, stderr: stderr, master: master}, nil
+}
+
+// resize sets the PTY's size; it does nothing when stdout is a pipe.
+func (p *stepPipes) resize(size ptySize) {
+	if p.master != nil {
+		setPTYSize(p.master, size)
+	}
 }
 
 // startCopying closes hobnob's copies of the write ends (the child holds its

@@ -157,9 +157,41 @@ type Case struct {
 	// path at all — like the real CLI, a non-terminal stdin skips straight to
 	// getFromNoPrompts regardless of Answers, so any test asserting on a
 	// prompt (Answers, TaskPick, .Prompted) needs TTY: true.
-	Probe    []string // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
-	Cwd      string   // subdir of the temp root to chdir into (default: the root itself)
-	Discover bool     // omit --file, exercise findTaskfile's upward walk
+	Probe    []string    // paths (relative to the temp root) a picker's Included/Excluded predicates are asked about; the answers land in PromptCall.Included/Excluded
+	Cwd      string      // subdir of the temp root to chdir into (default: the root itself)
+	Discover bool        // omit --file, exercise findTaskfile's upward walk
+	Screen   *tui.Screen // the terminal the run is watched on (default nil: stdout is piped)
+	Stdin    string      // what hobnob's stdin holds, which a run: command inherits (default: nothing)
+}
+
+// screenOf is a Screen of fixed size, resized by calling the returned func
+// with the new size.
+func screenOf(cols, rows int) (screen *tui.Screen, resize func(cols, rows int)) {
+	var mu sync.Mutex
+	var watchers []func()
+	screen = &tui.Screen{
+		Size: func() (int, int) {
+			mu.Lock()
+			defer mu.Unlock()
+			return cols, rows
+		},
+		OnResize: func(fn func()) func() {
+			mu.Lock()
+			defer mu.Unlock()
+			watchers = append(watchers, fn)
+			return func() {}
+		},
+	}
+	resize = func(c, r int) {
+		mu.Lock()
+		cols, rows = c, r
+		fns := append([]func(){}, watchers...)
+		mu.Unlock()
+		for _, fn := range fns {
+			fn()
+		}
+	}
+	return screen, resize
 }
 
 // PromptCall records one prompt the run actually made.
@@ -304,6 +336,9 @@ func Run(t *testing.T, c Case) *Result {
 
 	a := app.New("v0.0.0-test")
 	a.IsTerminal = func() bool { return c.TTY }
+	a.Screen = func() *tui.Screen { return c.Screen }
+	restoreStdin := feedStdin(t, c.Stdin)
+	defer restoreStdin()
 	a.SelectTask = func(ctx context.Context, tasks []tui.TaskItem) (string, error) {
 		if c.TaskPick == "" {
 			t.Fatalf("unexpected task-select prompt (%d tasks offered) — Case.TaskPick not set", len(tasks))
@@ -367,6 +402,23 @@ func isolateEnv(t *testing.T, env map[string]string) (restore func()) {
 			}
 		}
 	}
+}
+
+// feedStdin swaps os.Stdin for a pipe holding text, closed at its end, and
+// returns a func restoring the original.
+func feedStdin(t *testing.T, text string) (restore func()) {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	if _, err := w.WriteString(text); err != nil {
+		t.Fatalf("write stdin: %v", err)
+	}
+	w.Close()
+	orig := os.Stdin
+	os.Stdin = r
+	return func() { os.Stdin = orig; r.Close() }
 }
 
 // captureOutput swaps os.Stdout/os.Stderr for the duration of f, draining
