@@ -35,6 +35,8 @@ type Server struct {
 	listener net.Listener
 	http     *http.Server
 	actions  map[string]action
+	stop     func()
+	kill     func()
 
 	deliveredOnce sync.Once
 	delivered     chan struct{}
@@ -63,6 +65,7 @@ func Listen() (*Server, error) {
 		subs:      map[chan struct{}]struct{}{},
 	}
 	server.changed = server.notify
+	server.initCancel()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", server.servePage)
 	mux.HandleFunc("GET /events", server.serveEvents)
@@ -88,6 +91,12 @@ func (s *Server) AwaitDelivery(ctx context.Context) {
 	select {
 	case <-s.delivered:
 	case <-ctx.Done():
+		if s.hasStreams() {
+			select {
+			case <-s.delivered:
+			case <-time.After(interruptGrace):
+			}
+		}
 	case <-time.After(deliveryGrace):
 	}
 }

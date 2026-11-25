@@ -37,6 +37,10 @@ func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Sco
 	defer server.Close()
 	go server.Serve()
 
+	runCtx, stop := context.WithCancel(ctx)
+	defer stop()
+	server.SetInterrupt(stop, func() { runner.KillRunningStep() })
+
 	log := a.newRunLog()
 	log.Listen(server)
 
@@ -45,7 +49,7 @@ func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Sco
 		tui.HobnobWarning(os.Stderr, "couldn't open the browser: "+err.Error())
 	}
 
-	runErr := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, false, dir, log, runner.TerminalPrompts())
+	runErr := runner.ExecuteTask(runCtx, taskName, scope, fileScopes, cfg, false, dir, log, runner.TerminalPrompts())
 	switch {
 	case runErr == nil:
 		log.RunSucceeded()

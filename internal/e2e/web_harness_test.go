@@ -29,6 +29,8 @@ type Browser struct {
 	base  string
 	token string
 	dir   string
+
+	interrupt func()
 }
 
 func newBrowser(t *testing.T, opened, dir string) *Browser {
@@ -104,6 +106,9 @@ func (b *Browser) Post(action string, body any) int {
 	status, _ := b.do(http.MethodPost, "/actions/"+action, b.token, data)
 	return status
 }
+
+// Interrupt is CTRL+C in the terminal that started hobnob.
+func (b *Browser) Interrupt() { b.interrupt() }
 
 // Token is the secret the page was opened with.
 func (b *Browser) Token() string { return b.token }

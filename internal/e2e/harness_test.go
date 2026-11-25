@@ -183,6 +183,9 @@
 // 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 159. never mark a task failed in tui.RunLog.TaskFailed                -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 160. label a task by its name even when it has an info: in web.label  -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 170. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 171. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 172. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
 // 161. drop the server.AwaitDelivery call from app.execWebTask         -> web_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
 // 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
 // 163. call app.checkWebFlag before --quiet is stripped, in app.run       -> web_test.go (FlagsThatCannotCombine, quiet cases)
@@ -463,7 +466,9 @@ func Run(t *testing.T, c Case) *Result {
 					cancelRun()
 				}
 			}()
-			c.Browser(newBrowser(t, url, dir))
+			browser := newBrowser(t, url, dir)
+			browser.interrupt = cancelRun
+			c.Browser(browser)
 			finished = true
 		}()
 		return nil

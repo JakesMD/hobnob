@@ -764,7 +764,15 @@ screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `POST /actions/{name}` routes through `Server.actions`, empty until the prompt
 tickets register theirs. After the run ends `app` waits in `AwaitDelivery` for
 a page to receive the final snapshot (or `deliveryGrace`), so Done and Failed
-outlive hobnob. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
+outlive hobnob; if the terminal's CTRL+C ended the run, it still waits up to
+`interruptGrace` when a page is open, so Cancelled reaches it. The page (`page.html`, `go:embed`) is plain HTML, CSS and JS.
+
+**Cancel.** `execWebTask` runs the task under a context of its own and hands
+the server `SetInterrupt(stop, kill)`: `stop` cancels that context (a first
+CTRL+C) and `kill` is `runner.KillRunningStep` (a second). `Server.Cancel`, also
+behind `POST /actions/cancel`, calls `stop` once and sets
+`Progress.Cancelling`, then `kill` on every later call; it does nothing after the
+run has ended. A run that ends with `runner.ErrInterrupted` is `RunCancelled`.
 
 ### `internal/app`: the CLI body
 

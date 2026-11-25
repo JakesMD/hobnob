@@ -27,7 +27,8 @@ address. The page is a setup assistant:
   the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
   of the time since the run began. The label is the task's `info:`, or its
   name when it has none;
-- a **bottom bar** holds the buttons for the screen.
+- a **bottom bar** holds the buttons for the screen. While steps run it holds
+  **Cancel** and a note to keep the window open.
 
 The page never shows a command. A step with [`quiet:`](./commands.md) shows no
 output line either.
@@ -38,7 +39,20 @@ output line either.
 - **Failed** names the task whose step failed and the last line it printed, or
   the reason it failed when it printed nothing. **Copy details** copies the
   run's log, with [secrets](./secrets.md) masked, to send to whoever can help.
-- **Cancelled** shows when the run was interrupted.
+- **Cancelled** shows when the run was interrupted, by **Cancel** on the page or
+  CTRL+C in the terminal.
+
+## Stopping a run
+
+The first press of **Cancel** acts as a first CTRL+C: the running step is asked
+to stop, and the page shows "Stopping…" while the button becomes **Force stop**.
+A step that ignores the request keeps running until the second press, which acts
+as a second CTRL+C and kills it. A run that ends after **Cancel** is Cancelled,
+not Failed, and exits like an interrupted run: 1.
+
+CTRL+C in the terminal works as it always does. The page then shows Cancelled,
+and if hobnob exits before it can say how the run ended, "hobnob has stopped".
+A page already on Done or Failed keeps that screen.
 
 hobnob exits once the page has been sent how the run ended. The page keeps
 that screen after hobnob has gone. The exit code is the one `hobnob <task>`

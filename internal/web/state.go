@@ -20,6 +20,8 @@ type state struct {
 	started  time.Time
 	result   *Result
 	logLines []string
+
+	cancelling bool
 }
 
 type setupEntry struct {
@@ -157,6 +159,7 @@ func (s *state) snapshot() (Snapshot, int) {
 	if !s.started.IsZero() {
 		progress.ElapsedMS = time.Since(s.started).Milliseconds()
 	}
+	progress.Cancelling = s.cancelling
 	snap.Progress = progress
 	return snap, s.version
 }
