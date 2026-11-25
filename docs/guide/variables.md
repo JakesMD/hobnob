@@ -194,5 +194,6 @@ The rules below cover the edge cases. You won't need most of them day to day.
 - **Only `.sh` files are run.** Any other file is read as `NAME=value` lines.
   A `.sh` file is run in a separate shell, and only the variables it sets or
   changes are loaded.
-- **A missing file prints a warning and is skipped.**
+- **A missing file prints a warning and is skipped**: `hobnob ! no env file
+  missing.env, skipping it`.
 - **Later files override earlier ones.**

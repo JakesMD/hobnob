@@ -83,6 +83,20 @@ run: [fetch-question] echo "no question with that id (curl exited 56)"
   quietly. Only use `soft:` on steps you expect might fail.
 - **Only `run:` and `call:` steps take `soft:`.** Inside a
   [loop](./loops.md), put it on the steps that might fail.
+- **A step that can't start is one `✗` line**: the step as written, then
+  what's wrong, with no time: `deploy ✗ echo {{ upper .X }}: upper: expected a
+  string, got nil`. That covers a template error, a broken `if:` (`deploy ✗
+  echo hi: if {{ nope }}: function "nope" not defined`) and a `call:` to a task
+  that doesn't exist (`deploy ✗ nope: no task "nope"`). The task's end line
+  follows.
+- **A command that can't start, or an `into:` that can't take its output,
+  ends like any failed step**, with a time: `deploy ✗ 0.0s nosuchcmd a: no such
+  command`, `deploy ✗ 0.0s echo hi: no directory ./nowhere`, `deploy ✗ 0.1s
+  echo notjson: into X: …`.
+- **Before a run, `hobnob` takes the task's place**, in bold: `hobnob ✗
+  hobnob.yml line 2: did not find expected ',' or ']'` for an error, `hobnob ✗
+  no task "nope"`, and `hobnob !` in yellow for a warning after which hobnob
+  carries on, such as `hobnob ! no env file missing.env, skipping it`.
 - **A command killed by a signal has an `exit` of `-1`.**
 - **A command that never started**, such as one that isn't installed,
   captures nothing, so `CODE` above wouldn't be set. Write

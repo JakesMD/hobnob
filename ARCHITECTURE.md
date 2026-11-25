@@ -446,7 +446,13 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
    `StepDone`, `StepFailed` or `StepSoftFailed`; an error from anywhere else
    (a template, a missing task) is logged by `executeSteps` as a time-less
    `StepError`. Either way the error is wrapped as `reportedError`, which
-   `runner.Reported` detects, so `app` prints nothing more for it.
+   `runner.Reported` detects, so `app` prints nothing more for it. A step that
+   can't start reads `task ✗ <step as written>: <why>` (`stepMessage`); template
+   noise is stripped where it arises (`eval.plainTemplateError`). Errors before
+   any task runs (an unparsable taskfile, `ExecuteTask`'s unknown task) reach
+   `App.Run`, which prints them as `hobnob ✗` (`tui.HobnobError`) and returns
+   `ErrSilent`; warnings and notes use the other `tui.Hobnob*` writers, and
+   `--upgrade` writes its installer's output through `tui.HobnobOutput`.
 
 `execCtx` bundles what threads through the call graph: context, config,
 `FileScopes`, task name, prompt flag, working dir, `once:` memo, the `RunLog`.

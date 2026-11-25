@@ -116,6 +116,13 @@
 // 96. drop the StepError for an unreported error in runner.executeSteps -> log_ends_test.go (StepErrorWithoutARunEndsTheStepWithTheMessage)
 // 97. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
 // 98. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
+// 99. drop the step as written from the message in runner.stepMessage -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 100. skip eval.plainTemplateError on a template's Execute error     -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 101. report a missing dir as the command's fork/exec error in runner.startFailure -> log_errors_test.go (CommandThatCannotStartEndsLikeAnyFailedStep)
+// 102. print an App.Run error without the hobnob ✗ line               -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace)
+// 103. print the missing env file warning with the old warning: word in scope.loadEnvFiles -> log_errors_test.go (MissingEnvFileWarnsAsHobnobAndTheRunCarriesOn)
+// 104. print the demo notice without hobnob » in app.announceDemo     -> log_errors_test.go (DemoNoticeIsAHobnobNote)
+// 105. write the installer's output without the hobnob │ prefix in app.runInstaller -> internal/app/upgrade_test.go (TestUpgradeWritesInTheLogsStyle)
 package e2e
 
 import (

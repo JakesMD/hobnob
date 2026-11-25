@@ -8,6 +8,7 @@ func TestE2E_LogErrors_StepThatCannotStartIsOneLineWithTheStepAsWritten(t *testi
 	// as written, then the error in hobnob's terms, no time, and the task's
 	// end line follows (why: Go's template noise says nothing the author can
 	// act on)
+	// Arrange
 	tests := []struct {
 		name string
 		yml  string
@@ -51,6 +52,7 @@ func TestE2E_LogErrors_CommandThatCannotStartEndsLikeAnyFailedStep(t *testing.T)
 	// any failed step, with a reason in hobnob's terms (why: a Go exec error
 	// like "fork/exec /bin/sh: no such file or directory" blames the wrong
 	// thing)
+	// Arrange
 	tests := []struct {
 		name string
 		yml  string
@@ -94,6 +96,7 @@ func TestE2E_LogErrors_BeforeARunHobnobTakesTheTasksPlace(t *testing.T) {
 	// given errors before any task runs, when hobnob reports them, then each
 	// is a "hobnob ✗" line on stderr (why: the same log style as a run, and
 	// no "error:" prefix to tell apart from a task's own output)
+	// Arrange
 	tests := []struct {
 		name string
 		c    Case
