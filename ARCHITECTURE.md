@@ -440,7 +440,7 @@ The core loop is `ExecuteTask` → `executeTask` → `executeSteps`:
    whatever the kind; parsing only lets it onto `run:` and `call:`.
 
 `execCtx` bundles what threads through the call graph: context, config,
-`FileScopes`, task name, prompt flag, working dir, `once:` memo.
+`FileScopes`, task name, prompt flag, working dir, `once:` memo, the `RunLog`.
 `*scope.Scope` stays a separate argument because it is what mutates: `call:`
 swaps in a child scope while `execCtx` carries forward.
 
@@ -453,7 +453,7 @@ flowchart TD
     start["run: step (its if: already passed)"] --> form{"YAML sequence?"}
     form -- yes --> argv["Step.Argv.Resolve<br/>exec argv directly, no shell"]
     form -- no --> sh["Step.Command.Text<br/>sh -c"]
-    argv --> show["print the command, masked"]
+    argv --> show["RunLog.Run: the command, masked by the caller"]
     sh --> show
     show --> out{"output mode"}
     out -- "quiet:" --> quiet["buffers only<br/>quiet note on the run line"]
@@ -609,7 +609,7 @@ signal the group safely until it is reaped.
 Once the shell has exited, a first CTRL+C no longer signals it (`Cancel`
 returns `os.ErrProcessDone`). `handoff` then reads what the step left in the
 pipes (non-blocking, `stepio_unix.go`) into the step's writers and switches
-the pipes to the LineWriters alone (`io.Discard` for `quiet:`). Each copy
+the pipes to the LineWriters from `RunLog.Output` alone (`io.Discard` for `quiet:`). Each copy
 goroutine reads and writes under the same lock, so nothing the shell wrote
 lands after the switch. If `groupHasOthers` finds a live process in the group
 (`/proc` on Linux, `kern.proc.pgrp` on macOS), the shell stays a zombie: the
@@ -629,7 +629,7 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer every line of a run goes through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; the runner holds it on `execCtx` and `app` creates it, so nothing in `runner` or `app` prints a run line directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; `app` creates it and the runner holds it on `execCtx`. The `get:` line is not routed yet: `printGetLine` in `styles.go` prints it directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`

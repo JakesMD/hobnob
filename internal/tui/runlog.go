@@ -8,8 +8,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// RunLog is the one writer every line of a run goes through: the lines
-// hobnob prints about the run and the output of the commands it starts.
+// RunLog is the one writer for the lines the runner and app print during a
+// run, and for the output of the commands it starts. The get: line is not
+// routed through it yet.
 type RunLog struct {
 	stdout io.Writer
 	stderr io.Writer
@@ -21,7 +22,7 @@ func NewRunLog(stdout, stderr io.Writer) *RunLog {
 	return &RunLog{stdout: stdout, stderr: stderr}
 }
 
-// Run logs a run: step's command, masked. The first line carries the notes,
+// Run logs a run: step's command, which the caller passes already masked. The first line carries the notes,
 // each as a grey "# …"; continuation lines of a multi-line command sit under
 // it, indented to the command's start.
 func (l *RunLog) Run(task, cmd string, notes ...string) {
