@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -164,6 +165,13 @@ func TestTextModel_Update_Answers(t *testing.T) {
 			typed:      "0",
 			keys:       []tea.KeyMsg{enter},
 			wantInView: "✗ validation failed: N >= 1",
+		},
+		{
+			name:       "given a check that errors, when enter is pressed, then the error line shows the evaluation error",
+			model:      newTextModel(card{task: "t", varName: "N"}, textOptions{validate: func(string) (bool, error) { return false, errors.New("boom") }, checkDesc: "N >= 1"}),
+			typed:      "0",
+			keys:       []tea.KeyMsg{enter},
+			wantInView: "✗ check failed: boom",
 		},
 	}
 

@@ -3,6 +3,7 @@ package e2e
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -719,5 +720,30 @@ func TestE2E_GetPath_PickerGetsMatchAsPredicates(t *testing.T) {
 	}
 	if !got.Excluded["other"] || got.Excluded["sub/f.txt"] {
 		t.Errorf("Excluded = %v, want other true and f.txt false", got.Excluded)
+	}
+}
+
+func TestE2E_GetPath_ErroringCheckReopensThePickerShowingItsError(t *testing.T) {
+	// given a type: file entry whose check: cannot be evaluated, when a path is picked, then the picker reopens with the evaluation error on its error line
+	// (why: a broken check must explain itself instead of looping silently)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - CONF:
+		              type: file
+		              optional: true
+		              check: "{{ .CONF | keys }}"
+	`
+
+	// Act
+	res := Run(t, Case{Files: pathFiles(yml), TTY: true, Args: []string{"t"},
+		Answers: map[string][]string{"CONF": {"sub/f.txt", ""}}})
+
+	// Assert
+	if len(res.Prompts) < 2 || !strings.HasPrefix(res.Prompts[1].Error, "check failed:") {
+		t.Errorf("prompts %+v, want the second picker opened with a check failed error", res.Prompts)
 	}
 }

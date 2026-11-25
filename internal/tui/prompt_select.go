@@ -146,6 +146,10 @@ func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (model selectModel) confirm() (tea.Model, tea.Cmd) {
 	if model.multi {
 		model.values = model.picks()
+		if model.optional && len(model.values) == 0 {
+			model.done, model.skipped = true, true
+			return model, tea.Quit
+		}
 	} else {
 		rows := model.rows()
 		if len(rows) == 0 {
@@ -155,7 +159,11 @@ func (model selectModel) confirm() (tea.Model, tea.Cmd) {
 	}
 	if model.validate != nil && !(model.optional && model.answer().IsEmpty()) {
 		ok, err := model.validate(model.answer())
-		if err != nil || !ok {
+		if err != nil {
+			model.errMsg = fmt.Sprintf("check failed: %v", err)
+			return model, nil
+		}
+		if !ok {
 			model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
 			return model, nil
 		}

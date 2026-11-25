@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -340,5 +341,40 @@ func TestSelectModel_View(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSelectModel_ErroringCheckShowsItsError(t *testing.T) {
+	// given a menu whose check errors, when enter is pressed, then the prompt stays open and the error line shows the evaluation error
+	// (why: a broken check must explain itself instead of rejecting every answer silently)
+	// Arrange
+	model := newSelectModel("ENV", "", []string{"a", "b"}, false, "")
+	model.checkDesc = "broken"
+	model.validate = func(value.Value) (bool, error) { return false, errors.New("boom") }
+
+	// Act
+	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Assert
+	if model.done || !strings.Contains(model.View(), "✗ check failed: boom") || strings.Contains(model.View(), "validation failed") {
+		t.Errorf("done %v view %q, want open with the check's error", model.done, model.View())
+	}
+}
+
+func TestSelectModel_OptionalMultiEnterWithNothingToggledSkips(t *testing.T) {
+	// given an optional multi menu with nothing toggled, when enter is pressed, then it skips without calling check:
+	// (why: [] is no answer, like esc)
+	// Arrange
+	called := false
+	model := newSelectModel("TAGS", "", []string{"a", "b"}, true, "")
+	model.optional = true
+	model.validate = func(value.Value) (bool, error) { called = true; return false, nil }
+
+	// Act
+	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
+
+	// Assert
+	if !model.done || !model.skipped || called {
+		t.Errorf("done %v skipped %v check called %v, want skipped without a check", model.done, model.skipped, called)
 	}
 }

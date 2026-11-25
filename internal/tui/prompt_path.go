@@ -37,6 +37,7 @@ type PathPrompt struct {
 	Optional bool     // esc clears the segment, then gives no answer
 	Included func(path string, isDir bool) bool
 	Excluded func(path string, isDir bool) bool
+	Error    string // shown on the error line until the first key: why the picker reopened
 }
 
 const pathListHeight = 12
@@ -90,7 +91,7 @@ type pathModel struct {
 
 func newPathModel(prompt PathPrompt) pathModel {
 	home, _ := os.UserHomeDir()
-	m := pathModel{prompt: prompt, home: home}
+	m := pathModel{prompt: prompt, home: home, errMsg: prompt.Error}
 	if m.prompt.WorkDir == "" {
 		m.prompt.WorkDir = prompt.Invoke
 	}

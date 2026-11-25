@@ -146,7 +146,7 @@ func isDirDefault(getEntry config.GetEntry, val value.Value, base string) bool {
 
 // getPathInteractive opens the picker for a type: file|dir entry. A picked
 // path goes through the same checks as a preset one; a failing check:
-// re-opens the picker.
+// re-opens the picker, showing the evaluation error when the check errored.
 func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	name := getEntry.VarName
 	info, err := eval.EvalTemplate(getEntry.Info, scope.Vars())
@@ -209,9 +209,11 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		if getEntry.Check != "" {
 			ok, err := eval.EvalCheckWithOverride(execState.ctx, getEntry.Check, scope.Vars(), name, picked)
 			if err != nil {
-				return fmt.Errorf("get %s check: %w", name, err)
+				prompt.Error = fmt.Sprintf("check failed: %v", err)
+				continue
 			}
 			if !ok {
+				prompt.Error = ""
 				continue
 			}
 		}

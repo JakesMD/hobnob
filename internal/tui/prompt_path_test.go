@@ -993,3 +993,21 @@ func TestPathModel_Multi_DefaultsThatMissMatchAreNotMarked(t *testing.T) {
 		t.Errorf("dir picker: picks %v, want none", dir.picks)
 	}
 }
+
+func TestPathModel_View_ShowsTheErrorItOpensWith(t *testing.T) {
+	// given a picker opened with an error, when viewed, then the error line shows it until the next key
+	// (why: a check that errors reopens the picker, which must say why)
+	// Arrange
+	root := tree(t, "a.txt")
+	m := newPathModel(PathPrompt{Type: "file", Invoke: root, Error: "check failed: boom"})
+
+	// Act
+	opened := m.View()
+	next, _ := m.Update(keyDown)
+	moved := next.(pathModel).View()
+
+	// Assert
+	if !strings.Contains(opened, "✗ check failed: boom") || strings.Contains(moved, "check failed") {
+		t.Errorf("opened:\n%s\nafter a key:\n%s", opened, moved)
+	}
+}
