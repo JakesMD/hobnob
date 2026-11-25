@@ -304,7 +304,7 @@ func TestE2E_RunArgv_DisplayLineQuotesOnlyWhenNeeded(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "run: [t] echo 'hello world'")
+	res.Out(t, "t $ echo 'hello world'")
 }
 
 func TestE2E_RunArgv_SpreadIsANoOp(t *testing.T) {

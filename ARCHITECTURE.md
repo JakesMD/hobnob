@@ -456,7 +456,7 @@ flowchart TD
     argv --> show["print the command, masked"]
     sh --> show
     show --> out{"output mode"}
-    out -- "quiet:" --> quiet["buffers only<br/>print RunQuietLine"]
+    out -- "quiet:" --> quiet["buffers only<br/>quiet note on the run line"]
     out -- "into:" --> tee["LineWriter tee'd into buffers"]
     out -- neither --> live["LineWriter only"]
     quiet --> startp["Start"]
@@ -496,8 +496,7 @@ other name errors. A call's source is `config.CallSource` (see the call
 contract under config). A bare `into:` entry parses to `NAME: NAME` (`literal.IntoLeaf`) with
 `Bare` set, which `parseStepNode` rejects on `run:`. For `call:`, every result is `Adopt`ed, and the target name is
 flagged secret whenever its value carries a child secret, whatever the leaf's
-shape. The name flag matters because `Display`, used by the `once:` cache-hit
-line, reads only it.
+shape. The name flag matters because `Display` reads only it.
 
 **`call:` (`call.go`)** copies scope, evaluates `with:` into the child, runs
 the target, then `finishCall` applies the call contract: `CallSource` checks
@@ -522,16 +521,16 @@ sequenceDiagram
         C->>S: finishCall(results:, into:, child scope)
     else once: true, cached
         C->>M: lookup by Task.Steps identity
-        M-->>C: cached child scope + summary
-        C->>S: print CallCacheHitLine, finishCall(results:, into:, cached scope)
+        M-->>C: cached child scope
+        C->>S: print "done earlier", finishCall(results:, into:, cached scope)
     else once: true, already running
         C-->>S: error: cycle detected
     else once: true, first call
-        C->>C: Copy() scope, evaluate with:, snapshot "before"
+        C->>C: Copy() scope, evaluate with:
         C->>M: mark running
         C->>T: run target
         T-->>C: child's final scope
-        C->>M: store whole child scope + summarizeCallDelta(before, after)
+        C->>M: store whole child scope
         C->>S: finishCall(results:, into:, child scope)
     end
 ```
@@ -545,8 +544,9 @@ The memo is load-bearing in three ways:
 2. **It caches the whole child scope, not a delta.** Each call site's `into:`
    (or the task's `results:`) projects what it wants, which a delta would
    have to guess in advance.
-3. **A hit is announced.** `tui.CallCacheHitLine` names what the first run
-   produced (`summarizeCallDelta`, masked, sorted).
+3. **A hit is announced.** `execCall` logs every call (`task → called`); a hit
+   then logs `called ✓ done earlier` (`RunLog.DoneEarlier`) in place of the
+   task's own lines.
 
 A failed first run is not stored, so under `soft: true` the next call retries.
 
@@ -629,13 +629,13 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer every line of a run goes through, with a method per kind of line: run, call, skip, note, task end and command output; the runner holds it on `execCtx` and `app` creates it, so nothing in `runner` or `app` prints a run line directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer every line of a run goes through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; the runner holds it on `execCtx` and `app` creates it, so nothing in `runner` or `app` prints a run line directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
-`Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
-and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,
+`Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
+log line is built from, and `SecretMask`). The runner calls `PromptText`,
 `PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the picker.
 
 ### `internal/app`: the CLI body
