@@ -539,18 +539,5 @@ func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool
 		}
 		val = value.Of(list)
 	}
-	printGetLine(task, prompt.VarName, pathDisplay(final.picked, final.picks, prompt.Multi, secret))
 	return val, true, nil
-}
-
-// pathDisplay is what the get: line shows for a pick: the path, the list
-// joined, or the mask for a secret.
-func pathDisplay(picked string, picks []string, multi, secret bool) string {
-	switch {
-	case secret:
-		return SecretMask
-	case multi:
-		return strings.Join(picks, ", ")
-	}
-	return picked
 }

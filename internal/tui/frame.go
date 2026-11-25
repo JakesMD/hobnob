@@ -27,15 +27,21 @@ type hint struct{ key, action string }
 // between prompt types. termWidth is the terminal's width, 0 until known.
 type card struct {
 	task, varName string
-	optional      bool
-	info          string
-	body          string
-	errMsg        string
-	hints         []hint
-	termWidth     int
+	// heading, when set, is the whole title: the task picker has no task or
+	// var name to show.
+	heading   string
+	optional  bool
+	info      string
+	body      string
+	errMsg    string
+	hints     []hint
+	termWidth int
 }
 
 func (c card) title() string {
+	if c.heading != "" {
+		return SLabel.Render(c.heading)
+	}
 	title := TaskStyle(c.task).Render(c.task) + " " + TaskStyle(c.task).Render("»") + " " + SLabel.Render(c.varName)
 	if c.optional {
 		title += " " + SHint.Render("(optional)")

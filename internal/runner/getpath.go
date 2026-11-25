@@ -199,6 +199,7 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 				picked = value.Str("")
 			}
 			scope.Set(name, picked, getEntry.Secret)
+			logVar(execState, getEntry, scope, "")
 			return nil
 		}
 		picked, err = resolvePaths(checker, getEntry, picked, prompt.Invoke)
@@ -215,6 +216,7 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 			}
 		}
 		scope.Set(name, picked, getEntry.Secret)
+		logVar(execState, getEntry, scope, "")
 		return nil
 	}
 }

@@ -630,14 +630,14 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; `app` creates it and the runner holds it on `execCtx`. The `get:` line is not routed yet: `printGetLine` in `styles.go` prints it directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
-line; a prompt model's `View` supplies only its body), `list.go` (what menus and the picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
+line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, and the filter line),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
 log line is built from, and `SecretMask`). The runner calls `PromptText`,
-`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the picker.
+`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
 ### `internal/app`: the CLI body
 

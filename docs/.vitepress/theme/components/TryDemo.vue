@@ -70,7 +70,7 @@ const runLine = (task: string, cmd: string) => print({ t: 'run:', c: 'a11' }, { 
 const skipLine = (task: string) => print({ t: 'run:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: 'skipped (if: false)', c: 'a8' })
 const outLine = (task: string, text: string) => print(...prefix(task), { t: text })
 const getLine = (task: string, name: string, val: string) =>
-  print({ t: 'get:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: `${name}: ${val}`, c: 'a11' })
+  print({ t: task, c: taskColor(task) }, { t: ' » ', c: taskColor(task) }, { t: `${name}=${val}` })
 const cachedLine = (task: string, called: string, summary: string) =>
   print({ t: 'call:', c: 'a11' }, { t: ' ' }, ...prefix(task), { t: called, c: 'a11' }, { t: ` (cached — ${summary})`, c: 'a8' })
 const doneLine = (task: string) => print({ t: '✓', c: 'a10' }, { t: ' ' }, ...prefix(task), { t: 'done', c: 'a10' })

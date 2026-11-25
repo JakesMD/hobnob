@@ -30,7 +30,8 @@ func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if existing, exists := scope.Vars()[getEntry.VarName]; exists {
-		return acceptAnswer(execState, getEntry, scope, existing, scope.FromInvocation(getEntry.VarName))
+		source := getSource(scope, getEntry.VarName)
+		return acceptAnswer(execState, getEntry, scope, existing, scope.FromInvocation(getEntry.VarName), source)
 	}
 	if execState.noPrompts {
 		return getFromNoPrompts(execState, getEntry, scope)
@@ -44,7 +45,7 @@ func execGetEntry(execState execCtx, getEntry config.GetEntry, scope *scope.Scop
 func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.Scope) error {
 	if getEntry.DefaultTmpl.IsZero() {
 		if getEntry.Optional {
-			return acceptAnswer(execState, getEntry, scope, value.Nil(), false)
+			return acceptAnswer(execState, getEntry, scope, value.Nil(), false, "")
 		}
 		return fmt.Errorf("--no-input: %s requires input; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName)
 	}
@@ -56,11 +57,11 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 		// A directory only says where a picker would start: with prompts
 		// off there's no default.
 		if getEntry.Optional {
-			return acceptAnswer(execState, getEntry, scope, value.Nil(), false)
+			return acceptAnswer(execState, getEntry, scope, value.Nil(), false, "")
 		}
 		return fmt.Errorf("--no-input: %s requires input; its default is a directory and %s needs a file; pass %s=VALUE on the command line (run 'hobnob --help' for details)", getEntry.VarName, getEntry.VarName, getEntry.VarName)
 	}
-	return acceptAnswer(execState, getEntry, scope, val, false)
+	return acceptAnswer(execState, getEntry, scope, val, false, "")
 }
 
 // acceptAnswer takes an answer nobody typed at a prompt (a value already in
@@ -68,8 +69,17 @@ func getFromNoPrompts(execState execCtx, getEntry config.GetEntry, scope *scope.
 // validates it. Setting a value already in scope claims it, so a later
 // module vars: default can't swap it out from under the task. fromInvocation
 // says val came from the command line or the shell, which decides what a
-// relative path in it is relative to.
-func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool) error {
+// relative path in it is relative to. source is the note the variable line
+// carries for a value nobody typed: where it came from, or empty.
+func acceptAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool, source string) error {
+	if err := takeAnswer(execState, getEntry, scope, val, fromInvocation); err != nil {
+		return err
+	}
+	logVar(execState, getEntry, scope, source)
+	return nil
+}
+
+func takeAnswer(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, val value.Value, fromInvocation bool) error {
 	if getEntry.Multi {
 		list, err := multiList(getEntry.VarName, val)
 		if err != nil {
@@ -121,6 +131,7 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 		if len(fromItems) == 0 {
 			if getEntry.Optional {
 				scope.Set(getEntry.VarName, value.Nil(), getEntry.Secret)
+				logVar(execState, getEntry, scope, "")
 				return nil
 			}
 			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
@@ -140,7 +151,42 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 	}
 
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
+	logVar(execState, getEntry, scope, "")
 	return nil
+}
+
+// getSource says where a value already in scope came from, for the note on
+// its variable line.
+func getSource(scope *scope.Scope, name string) string {
+	switch {
+	case scope.FromCLI(name):
+		return "from the command line"
+	case scope.FromEnv(name):
+		return "from the environment"
+	}
+	return ""
+}
+
+// logVar logs the value a get: entry ended up with, or that an optional
+// entry got none.
+func logVar(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, source string) {
+	val := scope.Vars()[getEntry.VarName]
+	if val.IsEmpty() || emptyList(val) {
+		execState.log.VarSkipped(execState.task, getEntry.VarName)
+		return
+	}
+	display := tui.SecretMask
+	if !getEntry.Secret && !scope.IsSecret(getEntry.VarName) {
+		display = val.String()
+		if items, ok := val.Any().([]any); ok {
+			texts := make([]string, len(items))
+			for i, item := range items {
+				texts[i] = value.Of(item).String()
+			}
+			display = strings.Join(texts, ", ")
+		}
+	}
+	execState.log.Var(execState.task, getEntry.VarName, display, source)
 }
 
 // resolveMatch renders getEntry's match: patterns and compiles them. patterns

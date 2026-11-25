@@ -96,7 +96,7 @@
 // 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
 // 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
 // 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
-// 79. print a secret picker's path in full in tui.pathDisplay          -> prompt_path_test.go (TestPathDisplay, secret cases)
+// 79. print a secret value in full in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom, secret cases)
 // 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
 // 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
@@ -106,8 +106,11 @@
 // 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
-// 89. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
-// 90. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
+// 89. leave the source note off a variable line in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom)
+// 90. print a skipped optional get: as an empty value, not ⊘ NAME -> log_lines_test.go (SkippedOptionalPromptPrintsAMarkedName, SkippedOptionalWithPromptsOffPrintsAMarkedName)
+// 91. let enter pick a task when the picker's filter matches nothing, in tui.taskSelectModel.Update -> prompt_taskselect_test.go (EnterWithNothingMatchingStaysOpen)
+// 92. let enter open a directory in a file picker (tui.pathModel.Update) -> prompt_path_test.go (EnterOnADirectoryInAFilePicker_ShowsThatRightOpensIt)
+// 93. let backspace delete the path line's leading "/" (tui.pathModel.Update) -> prompt_path_test.go (BackspaceCannotDeleteTheLeadingSlash)
 package e2e
 
 import (

@@ -13,7 +13,10 @@ first one it finds.
 ## Picking a task
 
 Run `hobnob` on its own and you don't need to remember any task names. It
-opens a menu of every task, with its `info:`, and you pick one.
+opens a menu of every task, with its `info:`, and you pick one. Type to filter
+it the way you filter a [prompt's menu](./prompts.md#menus): the
+best match comes first, and enter runs the highlighted task. CTRL+C quits;
+`q` is just a letter to filter by.
 
 If the taskfile has a task called `default`, bare `hobnob` runs that
 instead. These flags help either way:
