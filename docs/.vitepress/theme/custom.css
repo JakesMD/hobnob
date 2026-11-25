@@ -36,7 +36,8 @@
 
 /* ── Landing ──────────────────────────────────────────────────────────────
    One centred column: a narrow measure for the words, a wider stage for the
-   demo window, and whitespace rather than bands to separate the sections. */
+   features, wider still for the demo window so its terminal wraps less, and
+   whitespace rather than bands to separate the sections. */
 
 .VPHome {
   overflow-x: clip;
@@ -45,6 +46,7 @@
 .landing {
   --measure: 720px;
   --stage: 1080px;
+  --demo: 1600px;
   padding: 0 24px;
 }
 
@@ -214,10 +216,12 @@
 
 /* Demo: the product shot, on a soft glow */
 
+/* VitePress holds the home page to a 1280px column; the demo breaks out of
+   it, centred on the viewport, so the terminal has room to wrap less. */
 .l-demo {
   position: relative;
-  max-width: var(--stage);
-  margin: 120px auto 0;
+  width: min(var(--demo), 100vw - 48px);
+  margin: 120px 0 0 calc(50% - min(var(--demo), 100vw - 48px) / 2);
 }
 
 .l-demo::before {

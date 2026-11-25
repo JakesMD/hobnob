@@ -104,13 +104,33 @@ const doneEarlierLine = (task: string) =>
   print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ' earlier', c: GREY })
 const skipLine = (task: string, what: string) => print(...lead(task, { t: '⊘', c: GREY }), { t: what, c: GREY })
 
-// The terminal's width: output wraps, and cards stop, at the same column.
-const TERM_COLS = 60
+// The terminal's width: output wraps, and cards stop, at the same column. A
+// run sets it from the pane, so a wide screen wraps less; a narrow one keeps
+// 60 and scrolls sideways.
+let termCols = 60
+let cardW = termCols
+let cardInner = cardW - 2 - 4
+
+function fitColumns() {
+  const el = screen.value
+  if (!el) return
+  const probe = document.createElement('span')
+  probe.textContent = '0'.repeat(100)
+  probe.style.position = 'absolute'
+  el.appendChild(probe)
+  const ch = probe.getBoundingClientRect().width / 100
+  probe.remove()
+  const css = getComputedStyle(el)
+  const room = el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)
+  termCols = Math.min(110, Math.max(60, Math.floor(room / ch) - 1))
+  cardW = termCols
+  cardInner = cardW - 2 - 4
+}
 
 // Command output passes through a line at a time, wrapped under its own text
 // past the prefix.
 function outLine(task: string, text: string) {
-  const room = Math.max(20, TERM_COLS - task.length - 3)
+  const room = Math.max(20, termCols - task.length - 3)
   const chunks: string[] = []
   for (let i = 0; i < Math.max(text.length, 1); i += room) chunks.push(text.slice(i, i + room))
   for (const chunk of chunks) print(...lead(task, { t: '│', c: GREY }), { t: chunk })
@@ -238,8 +258,6 @@ function highlight(anchor: string | null, within?: string) {
 }
 
 
-const CARD_W = TERM_COLS
-const CARD_INNER = CARD_W - 2 - 4
 const MENU_HEIGHT = 10
 const PATH_HEIGHT = 12
 const PATH_LIMIT = 40
@@ -273,7 +291,7 @@ function hintSegs(hints: Hint[]): Seg[] {
 function card(p: { task: string; varName: string; info: string; body: BodyRow[]; err?: string; hints: Hint[] }): CardRow[] {
   const border = p.err ? RED : GREY
   const boxed = (segs: Seg[]): CardRow => ({
-    pre: [{ t: '│  ', c: border }, ...segs, { t: ' '.repeat(Math.max(0, CARD_INNER - width(segs))) + '  │', c: border }],
+    pre: [{ t: '│  ', c: border }, ...segs, { t: ' '.repeat(Math.max(0, cardInner - width(segs))) + '  │', c: border }],
   })
   const blank = boxed([])
   const title: Seg[] = [
@@ -283,14 +301,14 @@ function card(p: { task: string; varName: string; info: string; body: BodyRow[];
     { t: ' ' },
     { t: p.varName, c: 'a14 b' },
   ]
-  const fill = Math.max(1, CARD_W - width(title) - 5)
+  const fill = Math.max(1, cardW - width(title) - 5)
   const rows: CardRow[] = [
     { pre: [{ t: ' ' }] },
     { pre: [{ t: '╭─ ', c: border }, ...title, { t: ' ' }, { t: '─'.repeat(fill) + '╮', c: border }] },
     blank,
   ]
   if (p.info) {
-    for (const line of wrapText(p.info, CARD_INNER)) rows.push(boxed([{ t: line }]))
+    for (const line of wrapText(p.info, cardInner)) rows.push(boxed([{ t: line }]))
     rows.push(blank)
   }
   for (const b of p.body) {
@@ -298,7 +316,7 @@ function card(p: { task: string; varName: string; info: string; body: BodyRow[];
     else rows.push({ ...boxed(b.segs), row: b.row })
   }
   if (p.err) rows.push(blank, boxed([{ t: '✗ ' + p.err, c: RED }]))
-  rows.push(blank, { pre: [{ t: '╰' + '─'.repeat(CARD_W - 2) + '╯', c: border }] })
+  rows.push(blank, { pre: [{ t: '╰' + '─'.repeat(cardW - 2) + '╯', c: border }] })
   rows.push({ pre: [{ t: ' ' }, ...hintSegs(p.hints)] })
   return rows
 }
@@ -350,7 +368,7 @@ const scrollTo = (cursor: number, offset: number, height: number) =>
 function filterBody(text: string): BodyRow[] {
   return [
     { segs: [{ t: '› ', c: 'a14 b' }, { t: text, c: 'b' }, { t: '▏', c: 'a11 b' }] },
-    { segs: [{ t: '─'.repeat(CARD_INNER), c: GREY }] },
+    { segs: [{ t: '─'.repeat(cardInner), c: GREY }] },
   ]
 }
 
@@ -874,6 +892,7 @@ function pick(id: DemoId) {
 async function start() {
   if (state.value === 'running') return
   reset()
+  fitColumns()
   state.value = 'running'
   const id = runId
   try {
@@ -895,6 +914,7 @@ async function start() {
   if (id !== runId) return
   highlight(null)
   state.value = 'done'
+  scrollScreen()
 }
 </script>
 
@@ -940,6 +960,7 @@ async function start() {
               :ref="setInput"
               v-model="prompt.value"
               class="text-input"
+              :style="{ '--cols': cardInner - 2 }"
               :type="prompt.secret ? 'password' : 'text'"
               autocomplete="off"
               spellcheck="false"
@@ -1147,7 +1168,7 @@ async function start() {
 }
 .text-input {
   flex: none;
-  width: 52ch;
+  width: calc(var(--cols) * 1ch);
   padding: 0;
   border: none;
   outline: none;
@@ -1160,8 +1181,8 @@ async function start() {
 @media (pointer: coarse) {
   .text-input {
     font-size: 16px;
-    /* 52ch at the screen's 13px, so the row still ends at the border. */
-    width: calc(52ch * 13 / 16);
+    /* --cols at the screen's 13px, so the row still ends at the border. */
+    width: calc(var(--cols) * 1ch * 13 / 16);
   }
 }
 .text-input::placeholder {
