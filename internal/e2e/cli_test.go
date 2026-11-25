@@ -55,7 +55,7 @@ func TestE2E_ListGroupsTasksByNamePrefix(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Out(t, "docs\n  docs:dev\n\ngo\n  go:build\n\nzap       Zap it")
+	res.Out(t, "docs\n  docs:dev\n\ngo\n  go:build\n\nzap         Zap it")
 	res.NotOut(t, "Available tasks", "•")
 }
 

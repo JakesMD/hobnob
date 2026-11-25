@@ -52,7 +52,7 @@ Every change must preserve these. Each is explained in the section named.
   stays unreaped while its group may be signalled, so the group ID can't be
   reused: its PID stays registered until then, and a leftover's shell until
   its group is empty or the run ends. Output after the shell exits never
-  reaches `into:` or a `quiet:` buffer. ([runner](#internalrunner-the-interpreter))
+  reaches `into:` or a held (`quiet:` or `--quiet`) buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** Tests swap prompts with `runner.SetPrompts(text, sel, path)
@@ -90,7 +90,6 @@ Imports run one way. An arrow means "imports":
 flowchart TD
     cmd[cmd/hobnob] --> app
     cmd --> runner
-    cmd --> tui
     app --> cli
     app --> runner
     app --> scope
@@ -125,7 +124,7 @@ For readability the graph omits the direct `eval`/`value` imports from
   or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
-  imports `tui` only for `SecretMask`.
+  imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -472,7 +471,7 @@ flowchart TD
     argv --> show["RunLog.Run: the command, masked by the caller"]
     sh --> show
     show --> out{"output mode"}
-    out -- "quiet:" --> quiet["buffers only<br/>quiet note on the run line"]
+    out -- "quiet: or --quiet" --> quiet["buffers only, into: included<br/>(RunLog.Quiet() or Step.Quiet)<br/>quiet: adds a note on the run line"]
     out -- "into:" --> tee["LineWriter tee'd into buffers"]
     out -- neither --> live["LineWriter only"]
     quiet --> pty{"RunLog.PTYSize:<br/>watched?"}
@@ -488,7 +487,7 @@ flowchart TD
     handoff --> keep{"jobs still in the group<br/>or holding the pipes?"}
     keep -- yes --> kl["keepLeftover<br/>(shell stays unreaped)"]
     keep -- no --> replay
-    kl --> replay{"quiet: and failed?"}
+    kl --> replay{"held and failed?"}
     replay -- yes --> rp["replay both buffers<br/>through the LineWriters"]
     replay -- no --> intr
     rp --> intr{"failed and ctx cancelled?"}
@@ -688,7 +687,7 @@ signal the group safely until it is reaped.
 Once the shell has exited, a first CTRL+C no longer signals it (`Cancel`
 returns `os.ErrProcessDone`). `handoff` then reads what the step left in the
 pipes (non-blocking, `stepio_unix.go`) into the step's writers and switches
-the pipes to the LineWriters from `RunLog.Output` alone (`io.Discard` for `quiet:`). Each copy
+the pipes to the LineWriters from `RunLog.Output` alone (`io.Discard` when the output is held). Each copy
 goroutine reads and writes under the same lock, so nothing the shell wrote
 lands after the switch. If `groupHasOthers` finds a live process in the group
 (`/proc` on Linux, `kern.proc.pgrp` on macOS), the shell stays a zombie: the
@@ -708,7 +707,7 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
+`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does; the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`

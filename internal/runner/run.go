@@ -23,7 +23,7 @@ func skippedRunText(step config.Step, scope *scope.Scope) string {
 		return display
 	}
 	if !step.Argv.IsZero() {
-		return scope.Mask(displayArgv(step.Argv.Raw()))
+		return scope.Mask(writtenArgv(step.Argv))
 	}
 	return scope.Mask(step.Command.String())
 }
@@ -50,7 +50,7 @@ func renderRun(step config.Step, scope *scope.Scope) (argv []string, display str
 			return nil, "", err
 		}
 		if len(argv) == 0 {
-			return nil, "", fmt.Errorf("run argv: no command")
+			return nil, "", errors.New("no command")
 		}
 		return argv, scope.Mask(displayArgv(argv)), nil
 	}

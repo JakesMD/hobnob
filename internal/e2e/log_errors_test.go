@@ -87,7 +87,7 @@ func TestE2E_LogErrors_CommandThatCannotStartEndsLikeAnyFailedStep(t *testing.T)
 
 			// Assert
 			res.Fails(t)
-			res.streamMatches(t, "stderr", res.Stdout+res.Stderr, test.want)
+			res.streamMatches(t, "output", res.Stdout+res.Stderr, test.want)
 		})
 	}
 }

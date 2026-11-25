@@ -89,7 +89,7 @@ func TestListTasks(t *testing.T) {
 func TestListTasksGrouping(t *testing.T) {
 	// given tasks named group:name and tasks without a colon, when listed,
 	// then each group gets a heading with its tasks indented under it and
-	// ungrouped tasks come last with no header or bullets (why: a long
+	// ungrouped tasks come last with no header or bullets, with every info in one column (why: a long
 	// namespaced list is unreadable flat)
 	// Arrange
 	cfg, err := config.ParseConfig("testdata/grouped_tasks.yml")
@@ -115,7 +115,7 @@ func TestListTasksGrouping(t *testing.T) {
 		"  go:build  Build the app\n" +
 		"  go:test\n" +
 		"\n" +
-		"install   Install it\n" +
+		"install     Install it\n" +
 		"zap\n"
 	if got := buf.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)

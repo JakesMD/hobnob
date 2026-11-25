@@ -3,14 +3,10 @@ package tui
 import (
 	"fmt"
 	"io"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
-var sHobnob = lipgloss.NewStyle().Bold(true)
-
 func hobnobLead(mark string) string {
-	return sHobnob.Render("hobnob") + " " + mark + " "
+	return SBold.Render("hobnob") + " " + mark + " "
 }
 
 // HobnobError writes hobnob's own error, which takes a task's place in the
