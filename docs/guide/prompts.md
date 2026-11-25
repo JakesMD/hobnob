@@ -196,7 +196,7 @@ tells you which variable to pass.
   it. The card is as wide as the terminal, up to 76 columns. A failing
   `check:` shows `✗` and its message inside the card, which turns the border
   red, and the prompt stays open.
-- **ctrl+c is the only key that aborts the run.**
+- **CTRL+C is the only key that aborts the run.**
 - **A text prompt starts filled in with its `default:`**, so enter keeps it
   (a `secret:` default shows as `••••`). With `optional: true`, enter on an
   empty field skips the prompt, and so does esc.
