@@ -8,6 +8,7 @@ import (
 
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
+	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
 
@@ -32,10 +33,11 @@ func loadEnvFiles(ctx context.Context, entries []config.EnvFileEntry, taskfileDi
 		if err != nil {
 			return nil, nil, fmt.Errorf("env file %q: %w", entry.PathTmpl, err)
 		}
+		written := path
 		path = eval.ResolvePath(path, taskfileDir)
 
 		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
-			fmt.Fprintf(os.Stderr, "warning: env file %q not found, skipping\n", path)
+			tui.HobnobWarning(os.Stderr, "no env file "+written+", skipping it")
 			continue
 		}
 

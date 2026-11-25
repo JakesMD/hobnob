@@ -89,3 +89,61 @@ func TestE2E_LogErrors_CommandThatCannotStartEndsLikeAnyFailedStep(t *testing.T)
 		})
 	}
 }
+
+func TestE2E_LogErrors_BeforeARunHobnobTakesTheTasksPlace(t *testing.T) {
+	// given errors before any task runs, when hobnob reports them, then each
+	// is a "hobnob ✗" line on stderr (why: the same log style as a run, and
+	// no "error:" prefix to tell apart from a task's own output)
+	tests := []struct {
+		name string
+		c    Case
+		want string
+	}{
+		{"unparsable taskfile", Case{Yml: "tasks: [\n", Args: []string{"x"}}, `^hobnob ✗ hobnob\.yml line 1: did not find expected node content\n$`},
+		{"no such task", Case{Yml: "tasks: {}\n", Args: []string{"nope"}}, `^hobnob ✗ no task "nope"\n$`},
+		{"no taskfile", Case{Files: Files{}, Args: []string{"x"}, Discover: true}, `^hobnob ✗ no hobnob\.yml or hobnob\.yaml found in \S+ or any parent directory\n$`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Act
+			res := Run(t, test.c)
+
+			// Assert
+			res.Fails(t)
+			res.streamMatches(t, "stderr", res.Stderr, test.want)
+		})
+	}
+}
+
+func TestE2E_LogErrors_MissingEnvFileWarnsAsHobnobAndTheRunCarriesOn(t *testing.T) {
+	// given an env: file that doesn't exist, when the task runs, then a
+	// "hobnob !" line names the file as written and the task still runs (why:
+	// an optional env file mustn't block every task)
+	// Arrange
+	yml := `
+		env:
+		  - missing.env
+		tasks:
+		  t:
+		    steps:
+		      - run: echo ran
+	`
+
+	// Act
+	res := Yml(t, yml, "t")
+
+	// Assert
+	res.OK(t)
+	res.streamMatches(t, "stderr", res.Stderr, `^hobnob ! no env file missing\.env, skipping it\n$`)
+}
+
+func TestE2E_LogErrors_DemoNoticeIsAHobnobNote(t *testing.T) {
+	// given --demo, when a demo task runs, then the notice is "hobnob » …" on
+	// stderr (why: it follows the log's style and stays off a piped stdout)
+	// Act
+	res := Run(t, Case{Files: Files{}, Args: []string{"--demo", "--list"}, Discover: true})
+
+	// Assert
+	res.OK(t)
+	res.streamMatches(t, "stderr", res.Stderr, `^hobnob » Running the built-in demo\. Write your own: \S+\n$`)
+}
