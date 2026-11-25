@@ -122,7 +122,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 			fmt.Fprintln(os.Stdout, "hobnob "+cli.DisplayVersion(a.Version))
 			return nil
 		case "--upgrade":
-			return selfUpgrade()
+			return selfUpgrade(a.Version)
 		case "completion":
 			if len(args) < 2 {
 				return fmt.Errorf("usage: hobnob completion [bash|zsh|fish]")

@@ -8,11 +8,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"hobnob/internal/cli"
+	"hobnob/internal/tui"
 )
 
 // selfUpgrade runs the latest release's install.sh, so an upgrade also gets
 // the installer's PATH and completion setup, not just a new binary.
-func selfUpgrade() error {
+func selfUpgrade(from string) error {
 	url := os.Getenv("HOBNOB_UPGRADE_URL")
 	if url == "" {
 		url = "https://github.com/jakesmd/hobnob/releases/latest/download/install.sh"
@@ -31,11 +34,27 @@ func selfUpgrade() error {
 		}
 	}
 
-	return runInstaller(url, filepath.Dir(executablePath), os.Stdout, os.Stderr)
+	if err := runInstaller(url, filepath.Dir(executablePath), os.Stdout, os.Stderr); err != nil {
+		return err
+	}
+	tui.HobnobDone(os.Stdout, upgradedMessage(from, executablePath))
+	return nil
+}
+
+// upgradedMessage names the versions the upgrade went between. The new one
+// is asked of the binary the installer just wrote; when it can't say, the
+// message names no versions.
+func upgradedMessage(from, executablePath string) string {
+	out, err := exec.Command(executablePath, "--version").Output()
+	fields := strings.Fields(string(out))
+	if err != nil || len(fields) == 0 {
+		return "upgraded"
+	}
+	return "upgraded " + cli.DisplayVersion(from) + " → " + fields[len(fields)-1]
 }
 
 func runInstaller(url, installDir string, stdout, stderr io.Writer) error {
-	fmt.Fprintln(stdout, "Downloading latest hobnob installer...")
+	tui.HobnobNote(stdout, "downloading the latest installer…")
 
 	resp, err := http.Get(url) //nolint:noctx
 	if err != nil {
@@ -69,9 +88,13 @@ func runInstaller(url, installDir string, stdout, stderr io.Writer) error {
 	cmd := exec.Command("bash", scriptPath)
 	cmd.Dir = workDir
 	cmd.Env = append(installerEnv(), "HOBNOB_INSTALL_DIR="+installDir)
-	cmd.Stdout = stdout
-	cmd.Stderr = stderr
-	if err := cmd.Run(); err != nil {
+	out, errOut := tui.HobnobOutput(stdout), tui.HobnobOutput(stderr)
+	cmd.Stdout = out
+	cmd.Stderr = errOut
+	err = cmd.Run()
+	out.Flush()
+	errOut.Flush()
+	if err != nil {
 		return fmt.Errorf("installer failed: %w", err)
 	}
 	return nil
