@@ -74,7 +74,7 @@ internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
-internal/tui/     bubbletea prompts, lipgloss styles, output line writers
+internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
 internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
@@ -628,9 +628,10 @@ end of the run.
 
 ### `internal/tui`
 
-`linewriter.go` (the prefixing writer for `run:` output), `frame.go` (the
+`runlog.go` (`RunLog`: the one writer every line of a run goes through, with a method per kind of line: run, call, skip, note, task end and command output; the runner holds it on `execCtx` and `app` creates it, so nothing in `runner` or `app` prints a run line directly), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
-line; a prompt model's `View` supplies only its body), `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
+line; a prompt model's `View` supplies only its body),
+`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
 (bubbletea models; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list), and `styles.go` (lipgloss styles, the line builders like `SkipLine`
 and `CallCacheHitLine`, and `SecretMask`). The runner calls `PromptText`,

@@ -14,6 +14,7 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/literal"
 	"hobnob/internal/scope"
+	"hobnob/internal/tui"
 )
 
 // shellCommand parses raw as a run: command string.
@@ -62,7 +63,7 @@ func TestExecRun_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -81,7 +82,7 @@ func TestExecRun_OrdinaryFailure_NotWrappedAsInterrupted(t *testing.T) {
 	cfg := makeRunCfg(t, "exit 3", nil)
 
 	// Act
-	err := ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if err == nil {
@@ -107,7 +108,7 @@ func TestExecRun_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir)
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -136,7 +137,7 @@ func TestKillRunningStep_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir)
+		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 
@@ -171,7 +172,7 @@ func TestExecRun_Argv_CtxCancelled_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -196,7 +197,7 @@ func TestKillRunningStep_Argv_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir)
+		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 

@@ -108,6 +108,7 @@ type execCtx struct {
 	noPrompts  bool
 	dir        string
 	memo       *callMemo
+	log        *tui.RunLog
 }
 
 func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.ConfigFile, error) {
@@ -129,11 +130,11 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer, and the jobs its run: steps leave running, which
 // get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
-func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string) error {
+func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog) error {
 	defer stopLeftovers()
 	stopTerm := context.AfterFunc(ctx, termLeftovers)
 	defer stopTerm()
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo()}, taskName, literal.Expr{}, scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log}, taskName, literal.Expr{}, scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
@@ -174,11 +175,11 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 			return fmt.Errorf("task %q if: %w", taskName, err)
 		}
 		if !ok {
-			fmt.Println(tui.SkipLine(taskName))
+			execState.log.TaskSkipped(taskName)
 			return nil
 		}
 	}
-	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo}, task.Steps, scope)
+	return executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log}, task.Steps, scope)
 }
 
 func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) error {
@@ -193,7 +194,7 @@ func executeSteps(execState execCtx, steps []config.Step, scope *scope.Scope) er
 			}
 			if !ok {
 				if step.Kind == config.KindRun {
-					fmt.Println(tui.RunSkipLine(execState.task))
+					execState.log.RunSkipped(execState.task)
 				}
 				continue
 			}

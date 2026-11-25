@@ -3,11 +3,13 @@ package runner
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 	"time"
 
 	"hobnob/internal/config"
 	"hobnob/internal/scope"
+	"hobnob/internal/tui"
 )
 
 func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
@@ -35,7 +37,7 @@ func TestExecFor_CtxCancelledMidLoop_ReturnsErrInterrupted(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

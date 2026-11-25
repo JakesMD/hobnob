@@ -12,7 +12,6 @@ import (
 
 	"hobnob/internal/config"
 	"hobnob/internal/scope"
-	"hobnob/internal/tui"
 	"hobnob/internal/value"
 )
 
@@ -47,19 +46,15 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	}
 
 	displayCmd = scope.Mask(displayCmd)
-	for _, displayLine := range tui.RunDisplayLines(displayCmd, execState.task, displayDir) {
-		fmt.Println(displayLine)
-	}
+	execState.log.Run(execState.task, displayCmd, displayDir)
 	if step.Quiet {
 		quietMsg, err := step.QuietMsg.Text(scope.Vars())
 		if err != nil {
 			return fmt.Errorf("quiet template: %w", err)
 		}
-		fmt.Println(tui.RunQuietLine(execState.task, scope.Mask(quietMsg)))
+		execState.log.Note(execState.task, scope.Mask(quietMsg))
 	}
-	prefix := tui.TaskPrefix(execState.task)
-	stdoutLineWriter := tui.NewLineWriter(os.Stdout, prefix)
-	stderrLineWriter := tui.NewLineWriter(os.Stderr, prefix)
+	stdoutLineWriter, stderrLineWriter := execState.log.Output(execState.task)
 	// setProcAttr (unix) puts the child in its own process group so
 	// cancelFunc can signal the whole group — otherwise SIGTERM only reaches
 	// the direct child, leaving any children it forked (multi-command
