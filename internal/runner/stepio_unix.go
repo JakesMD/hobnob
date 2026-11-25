@@ -3,8 +3,11 @@
 package runner
 
 import (
+	"context"
 	"os"
+	osExec "os/exec"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"golang.org/x/sys/unix"
@@ -104,3 +107,11 @@ func setPTYSize(master *os.File, size ptySize) {
 		_ = unix.IoctlSetWinsize(int(fd), unix.TIOCSWINSZ, &unix.Winsize{Row: uint16(size.rows), Col: uint16(size.cols)})
 	})
 }
+
+// startOnPTY: a Unix PTY needs nothing but the slave as stdout, which
+// attachPipes did.
+func (p *stepPipes) startOnPTY(ctx context.Context, cmd *osExec.Cmd) error { return cmd.Start() }
+
+// closePTY and waitPTY: closing the master is the copy goroutine's own job.
+func (p *stepPipes) closePTY()             {}
+func (p *stepPipes) waitPTY(time.Duration) {}
