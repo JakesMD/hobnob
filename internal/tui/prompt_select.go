@@ -150,6 +150,9 @@ func (model selectModel) confirm() (tea.Model, tea.Cmd) {
 			model.done, model.skipped = true, true
 			return model, tea.Quit
 		}
+		if len(model.values) == 0 {
+			return model, nil
+		}
 	} else {
 		rows := model.rows()
 		if len(rows) == 0 {

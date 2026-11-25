@@ -260,7 +260,8 @@ tells you which variable to pass.
 - **With `optional: true`, esc skips the prompt**, after clearing any filter
   text first.
 - **A text prompt starts filled in with its `default:`**, so enter keeps it.
-  With `optional: true`, enter on an empty field skips the prompt.
+  With `optional: true`, enter on an empty field skips the prompt. Without it,
+  enter on an empty field with no `default:` does nothing.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
@@ -268,6 +269,7 @@ tells you which variable to pass.
 - **With `optional: true` and no answer**, the variable is set but empty
   (`[]` with `multi:`), and `match:` and `check:` are skipped. On an optional
   `multi:` menu, enter with nothing toggled counts as no answer, like esc.
+  Without `optional: true`, enter with nothing toggled does nothing.
 - **A menu with nothing left after `match:`** stops the task, naming the
   variable and the patterns. With `optional: true` the variable is set empty
   instead, without asking.

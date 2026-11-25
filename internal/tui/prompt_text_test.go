@@ -143,6 +143,11 @@ func TestTextModel_Update_Answers(t *testing.T) {
 			wantDone: true,
 		},
 		{
+			name:  "given a required prompt with no default, when enter is pressed on an empty field, then nothing happens",
+			model: newTextModel(card{task: "t", varName: "N"}, textOptions{validate: func(string) (bool, error) { return true, nil }}),
+			keys:  []tea.KeyMsg{enter},
+		},
+		{
 			name:     "given an optional prompt with a default, when esc is pressed, then it is skipped with no answer",
 			model:    newTextModel(card{task: "t", varName: "N", optional: true}, textOptions{defaultVal: "keep"}),
 			keys:     []tea.KeyMsg{esc},

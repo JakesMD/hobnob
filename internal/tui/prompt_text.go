@@ -101,8 +101,11 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			model.done = true
 			return model, tea.Quit
 		}
-		if val == "" && model.defaultVal != "" {
+		if val == "" {
 			val = model.defaultVal
+		}
+		if val == "" {
+			return model, nil
 		}
 		if model.validate != nil {
 			ok, err := model.validate(val)

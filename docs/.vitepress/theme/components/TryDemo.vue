@@ -403,12 +403,15 @@ function submit() {
   const p = prompt.value
   if (!p || p.kind === 'path') return
   if (p.kind === 'text') {
+    if (!p.value) return
     prompt.value = null
     return p.resolve(p.value)
   }
   if (p.multi) {
+    const picks = p.items.filter((_, i) => p.picked[i])
+    if (!picks.length) return
     prompt.value = null
-    return p.resolve(p.items.filter((_, i) => p.picked[i]))
+    return p.resolve(picks)
   }
   const row = menuRows(p)[p.cursor]
   if (!row) return
