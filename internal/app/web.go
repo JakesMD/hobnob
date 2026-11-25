@@ -11,26 +11,17 @@ import (
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
-	"hobnob/internal/value"
 	"hobnob/internal/web"
 )
 
-// browserPrompts is what a --web run asks its answers through. Menus and
-// pickers aren't in the page yet.
+// browserPrompts is what a --web run asks its answers through.
 func browserPrompts(server *web.Server) runner.Prompts {
 	return runner.Prompts{
-		Text: server.PromptText,
-		Select: func(context.Context, string, string, []string, bool, string, string, bool, bool,
-			func(value.Value) (bool, error), string) (value.Value, error) {
-			return value.Value{}, errNotInBrowser
-		},
-		Path: func(context.Context, tui.PathPrompt, string, bool) (value.Value, bool, error) {
-			return value.Value{}, false, errNotInBrowser
-		},
+		Text:   server.PromptText,
+		Select: server.PromptSelect,
+		Path:   server.PromptPath,
 	}
 }
-
-var errNotInBrowser = errors.New("this prompt isn't supported in browser mode yet")
 
 // openBrowser opens url with the platform's opener.
 func openBrowser(url string) error {

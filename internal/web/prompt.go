@@ -33,6 +33,13 @@ type Prompt struct {
 	Optional   bool   `json:"optional,omitempty"`
 	// Refusal is why the last answer was refused, empty when none was.
 	Refusal string `json:"refusal,omitempty"`
+	// Picker is the folder listing of a picker prompt.
+	Picker *Picker `json:"picker,omitempty"`
+	// Options, Multi and Defaults belong to a menu: what it offers, whether
+	// several may be chosen, and the options ticked to start with.
+	Options  []string `json:"options,omitempty"`
+	Multi    bool     `json:"multi,omitempty"`
+	Defaults []string `json:"defaults,omitempty"`
 }
 
 // judge decides an answer's JSON value: a non-empty refusal keeps the prompt
@@ -44,8 +51,10 @@ type judge func(raw json.RawMessage) (entry RailEntry, refusal string, skip bool
 type openPrompt struct {
 	Prompt
 	judge judge
-	busy  sync.Mutex // one answer is judged at a time
-	done  chan promptOutcome
+	// browse opens a folder in a picker prompt; nil for other kinds.
+	browse func(path string) error
+	busy   sync.Mutex // one answer is judged at a time
+	done   chan promptOutcome
 }
 
 type promptOutcome struct{ skipped bool }
@@ -55,8 +64,11 @@ var errNoSuchPrompt = errors.New("no such prompt is open")
 // ask shows p and blocks until it is answered, skipped or ctx ends. The
 // answer itself reaches the caller through what judge captures. Menus and
 // pickers call it with their own Kind, fields and judge.
-func (s *state) ask(ctx context.Context, p Prompt, judge judge) (skipped bool, err error) {
+func (s *state) ask(ctx context.Context, p Prompt, judge judge, configure ...func(*openPrompt)) (skipped bool, err error) {
 	open := &openPrompt{Prompt: p, judge: judge, done: make(chan promptOutcome, 1)}
+	for _, apply := range configure {
+		apply(open)
+	}
 	s.update(func() {
 		s.nextPrompt++
 		open.ID = s.nextPrompt

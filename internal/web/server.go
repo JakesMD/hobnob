@@ -93,6 +93,7 @@ func Listen() (*Server, error) {
 	server.initCancel()
 	server.actions["answer"] = server.answer
 	server.actions["skip"] = server.skip
+	server.actions["open"] = server.openFolder
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", server.servePage)
 	mux.HandleFunc("GET /events", server.serveEvents)

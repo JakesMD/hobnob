@@ -73,7 +73,29 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .field { width: 100%; max-width: 560px; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--t1); }
 .field:focus { outline: 2px solid var(--brand-2); border-color: transparent; }
 .refusal { margin-top: 10px; color: var(--red); font-size: 14px; }
+.search.menu { max-width: 360px; border-radius: 999px; margin-bottom: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.card { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); text-align: left; transition: border-color .15s, background .15s; }
+.card:hover { border-color: var(--border); background: var(--bg-soft); }
+.card.on { border-color: var(--brand-2); background: var(--brand-soft); }
+.card .dot, .card .box { width: 18px; height: 18px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 12px; color: var(--btn-text); }
+.card .dot { border-radius: 50%; }
+.card .box { border-radius: 5px; }
+.card.on .dot { border-color: var(--brand-1); background: radial-gradient(var(--brand-1) 40%, transparent 45%); }
+.card.on .box { border-color: var(--brand-1); background: var(--brand-1); }
 .actions { display: flex; gap: 10px; }
+.cols { display: flex; border: 1px solid var(--divider); border-radius: 12px; height: 320px; background: var(--bg-alt); overflow-x: auto; }
+.col { flex: none; width: 220px; border-right: 1px solid var(--divider); overflow-y: auto; padding: 6px; }
+.col:last-child { border-right: none; flex: 1; min-width: 220px; }
+.ent { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: left; color: var(--t2); white-space: nowrap; }
+.ent:hover { background: var(--bg-soft); }
+.ent.open { background: var(--alt-hover); color: var(--t1); }
+.ent.sel { background: var(--brand-2); color: var(--btn-text); }
+.ent.empty { color: var(--t3); cursor: default; }
+.ent .chev { color: var(--t3); }
+.ent.sel .chev { color: var(--btn-text); }
+.picked { font-size: 14px; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+.picked code { font-family: var(--mono); color: var(--brand-1); }
 .solo { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--t2); }
 </style>
 </head>
@@ -155,8 +177,47 @@ function tasks(s) {
 
 let draft = { id: null, text: '', touched: false };
 
+let menuDraft = { id: null, picks: [], filter: '' };
+
+function menu(s) {
+  const p = s.prompt;
+  if (menuDraft.id !== p.id) menuDraft = { id: p.id, picks: p.multi ? [...(p.defaults || [])] : (p.hasDefault ? [p.default] : []), filter: '' };
+  const cards = el('div', { class: 'cards', role: p.multi ? 'group' : 'radiogroup' });
+  const count = el('span', { class: 'note', id: 'count' });
+  const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
+  const fill = () => {
+    const needle = menuDraft.filter.trim().toLowerCase();
+    const shown = p.options.filter(o => o.toLowerCase().includes(needle));
+    cards.replaceChildren(...(shown.length ? shown.map(o => {
+      const on = menuDraft.picks.includes(o);
+      return el('button', { class: 'card' + (on ? ' on' : ''), role: p.multi ? 'checkbox' : 'radio', 'aria-checked': String(on),
+        onclick: () => {
+          if (!p.multi) menuDraft.picks = [o];
+          else menuDraft.picks = menuDraft.picks.includes(o) ? menuDraft.picks.filter(x => x !== o) : [...menuDraft.picks, o];
+          fill();
+        } }, el('span', { class: p.multi ? 'box' : 'dot' }, p.multi && on ? '✓' : ''), o);
+    }) : [el('div', { class: 'empty' }, 'No options match.')]));
+    count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
+  };
+  fill();
+  const body = [el('h1', {}, p.info || p.varName)];
+  if (p.options.length > 6) {
+    const search = el('input', { class: 'search menu', type: 'search', placeholder: 'Search', 'aria-label': 'Search options', autocomplete: 'off' });
+    search.value = menuDraft.filter;
+    search.addEventListener('input', () => { menuDraft.filter = search.value; fill(); });
+    body.push(search);
+    setTimeout(() => search.focus(), 0);
+  }
+  body.push(cards, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null);
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
+}
+
 function ask(s) {
   const p = s.prompt;
+  if (p.kind === 'menu') return menu(s);
   if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
   const send = () => post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text });
   const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
@@ -171,6 +232,45 @@ function ask(s) {
   return {
     body: [el('h1', {}, p.info || p.varName), field, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
     bar: [el('span'), el('div', { class: 'actions' }, buttons)],
+  };
+}
+
+let pick = { id: null, selected: [] };
+
+function picker(s) {
+  const p = s.prompt, v = p.picker;
+  if (pick.id !== p.id) pick = { id: p.id, selected: v.selected.slice() };
+  const folderPicker = v.type === 'dir';
+  const join = (dir, name) => (dir.endsWith('/') ? dir : dir + '/') + name;
+  const openFolder = (path) => post('open', { id: p.id, path });
+  const choose = (path, entry) => {
+    if (v.multi) {
+      const at = pick.selected.indexOf(path);
+      if (at >= 0) pick.selected.splice(at, 1); else pick.selected.push(path);
+      render();
+    } else if (folderPicker) openFolder(path);
+    else pick.selected = [path], render();
+  };
+  const cols = v.columns.map(col => el('div', { class: 'col' }, col.entries.length ? col.entries.map(e => {
+    const path = join(col.path, e.name);
+    const picked = (folderPicker && !v.multi && v.open === path) || pick.selected.includes(path);
+    const cls = 'ent' + (picked ? ' sel' : col.next === e.name ? ' open' : '');
+    if (e.dir && !e.pickable) return el('button', { class: cls, onclick: () => openFolder(path) }, el('span', {}, e.name), el('span', { class: 'chev' }, '›'));
+    if (e.dir) return el('button', { class: cls, onclick: () => choose(path, e), ondblclick: () => openFolder(path) },
+      el('span', {}, e.name), v.multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
+    return el('button', { class: cls, onclick: () => choose(path, e) }, el('span', {}, e.name));
+  }) : el('div', { class: 'ent empty' }, 'Nothing to pick here')));
+  const answer = folderPicker && !v.multi ? [v.open] : pick.selected;
+  const ready = folderPicker && !v.multi ? v.openPickable : answer.length > 0;
+  const statement = v.multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
+    : answer.length && ready ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
+  const send = () => post('answer', { id: p.id, value: v.multi ? answer : (answer[0] || '') });
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  return {
+    body: [el('h1', {}, p.info || p.varName), el('div', { class: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
+    bar: [el('span', { class: 'picked', id: 'picked' }, statement), el('div', { class: 'actions' }, buttons)],
   };
 }
 
@@ -201,7 +301,7 @@ function render() {
   clearInterval(clock);
   const s = snap;
   if (s.screen === 'tasks') return tasks(s);
-  const screen = s.screen === 'prompt' ? ask(s) : s.screen === 'progress' ? progress(s) : result(s);
+  const screen = s.screen === 'prompt' ? (s.prompt.kind === 'path' ? picker(s) : ask(s)) : s.screen === 'progress' ? progress(s) : result(s);
   app.replaceChildren(el('div', { class: 'shell' }, rail(s),
     el('div', { class: 'main' }, el('main', { class: 'pagebody' }, screen.body), el('footer', { class: 'bar' }, screen.bar))));
 }
