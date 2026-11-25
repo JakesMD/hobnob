@@ -19,7 +19,7 @@ fetch-question ✗ failed after 0.4s
 ```
 
 The failed step ends with `✗`, its time and the command with why it failed, as
-`fetch-question ✗ 0.5s curl -sf …: exit status 56`. Then every task in the call
+`fetch-question ✗ 0.4s curl -sf …: exit status 56`. Then every task in the call
 chain ends with `✗ failed after` and its time, innermost first, one line per
 task. hobnob itself exits with `1`, whatever code the command exited with.
 

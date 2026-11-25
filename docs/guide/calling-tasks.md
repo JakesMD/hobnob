@@ -26,11 +26,11 @@ tasks:
 $ hobnob ask-science
 ask-science → _fetch-question
 _fetch-question $ curl -s "https://the-trivia-api.com/v2/questions?limit=1&categories=science"
-_fetch-question │ [{"category":"science","id":"622a1c3a7cc59eab6f9510d4","correctAnswer":"Fo…
+_fetch-question │ [{"category":"science","id":"622a1c377cc59eab6f950484","correctAnswer":"study of the mouth and its diseases","incorrectAnswers":["music in society, usually non-western music","illness","embryos"],"question":{"text":"What is Stomatology the study of?"},"tags":["category:science","science:medicine","science:human-body","science:diseases","topic:ologies-and-phobias"],"type":"text_choice","difficulty":"hard","regions":[],"isNiche":false,"hint":"Dentists treat teeth and gums, which fall within this medical specialty's broader scope.","explanation":"Stomatology is the study of the mouth and its diseases, including conditions affecting tissues beyond the teeth.","sources":{"urls":["https://www.merriam-webster.com/medical/stomatology"],"checkedAt":"2026-11-18T16:58:54.555Z"}}]
 _fetch-question ✓ 0.3s
 _fetch-question ✓ done after 0.3s
-ask-science $ echo "How fast (mph) can a kangaroo hop?"
-ask-science │ How fast (mph) can a kangaroo hop?
+ask-science $ echo "What is Stomatology the study of?"
+ask-science │ What is Stomatology the study of?
 ask-science ✓ 0.0s
 ask-science ✓ done after 0.3s
 ```

@@ -157,7 +157,7 @@ tasks:
 │                                                                          │
 │  Which questions file?                                                   │
 │                                                                          │
-│  › /tmp/trivia/q▏                                                        │
+│  › /home/you/trivia/q▏                                                   │
 │  ──────────────────────────────────────────────────────────────────────  │
 │  ▶ questions/                                                            │
 │                                                                          │
@@ -180,8 +180,8 @@ hobnob count-questions QUESTIONS=questions/history.json
 
 ```
 $ hobnob count-questions QUESTIONS=questions/history.json
-count-questions » QUESTIONS=/tmp/trivia/questions/history.json # from the command line
-count-questions $ jq length /tmp/trivia/questions/history.json
+count-questions » QUESTIONS=/home/you/trivia/questions/history.json # from the command line
+count-questions $ jq length /home/you/trivia/questions/history.json
 count-questions │ 3
 count-questions ✓ 0.0s
 count-questions ✓ done after 0.0s

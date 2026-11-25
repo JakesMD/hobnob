@@ -57,10 +57,10 @@ HOBNOB_QUIET=1 hobnob deploy
 
 ```
 $ hobnob deploy -q
-setup $ echo installing
-setup ✓ done after 0.0s
-deploy $ echo building
-deploy ✓ done after 0.0s
+setup $ npm ci
+setup ✓ done after 1.1s
+deploy $ go build ./...
+deploy ✓ done after 2.1s
 ```
 
 ## `--file <path>`
@@ -112,7 +112,7 @@ Tasks.
 
 ```
 $ hobnob --help
-hobnob dev
+hobnob v1.5.0
 
 Usage
   hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]
@@ -135,7 +135,10 @@ Docs
   Reference  https://jakesmd.github.io/hobnob/docs/reference/
 
 Tasks
-  ask-trivia  Ask a random trivia question.
+  trivia
+    trivia:random  Fetch a random question.
+
+  standup
 ```
 
 ## `--version`
