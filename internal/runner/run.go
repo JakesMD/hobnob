@@ -130,6 +130,11 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		// below, the buffers are replayed through them so a hidden step
 		// never fails silently.
 		stdoutDest, stderrDest = &stdoutBuf, &stderrBuf
+		if execState.log.Quiet() {
+			_, _, watched := execState.log.PTYSize(execState.task)
+			stdoutDest = &promptWriter{held: &stdoutBuf, shown: stdoutLineWriter, watched: watched}
+			stderrDest = &promptWriter{held: &stderrBuf, shown: stderrLineWriter, watched: watched}
+		}
 	case len(step.IntoEntries) > 0:
 		stdoutDest = io.MultiWriter(stdoutLineWriter, &stdoutBuf)
 		stderrDest = io.MultiWriter(stderrLineWriter, &stderrBuf)

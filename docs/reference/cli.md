@@ -44,7 +44,8 @@ hobnob ask-trivia --no-input
 Quiet run, for agents and logs: it prints only each `run:` command's `$` line
 and every task's end line, called tasks included. Variables, calls, skips,
 `✓` step lines, `#` notes and command output are left out, except that a step
-that fails or soft-fails prints its output before its `✗` or `!` line. Failure
+that fails or soft-fails prints its output before its `✗` or `!` line, and a
+prompt a command prints with no newline shows as it arrives. Failure
 ends, the soft-failure count and the ctrl+c lines print as in a normal run.
 `HOBNOB_QUIET=1` does the same. Nothing else turns it on: not a pipe, not CI,
 not a detected agent.

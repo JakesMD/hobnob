@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -22,7 +23,10 @@ var promptPathFn PathPromptFunc = tui.PromptPath
 func execGet(execState execCtx, step config.Step, scope *scope.Scope) error {
 	for _, getEntry := range step.GetEntries {
 		if err := execGetEntry(execState, getEntry, scope); err != nil {
-			return err
+			if errors.Is(err, ErrInterrupted) || tui.IsInterrupted(err) {
+				return err
+			}
+			return fmt.Errorf("get %s: %w", getEntry.VarName, err)
 		}
 	}
 	return nil

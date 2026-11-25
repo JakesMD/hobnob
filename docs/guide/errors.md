@@ -89,8 +89,9 @@ run: [fetch-question] echo "no question with that id (curl exited 56)"
   what's wrong, with no time: `deploy ✗ echo {{ upper .X }}: upper: expected a
   string, got nil`. That covers a template error, a broken `if:` (`deploy ✗
   echo hi: if {{ nope }}: function "nope" not defined`) and a `call:` to a task
-  that doesn't exist (`deploy ✗ nope: no task "nope"`). The task's end line
-  follows.
+  that doesn't exist (`deploy ✗ nope: no task "nope"`). A `set:`, `loop:` or
+  `get:` shows its field as written: `deploy ✗ X={{ upper .Y }}: …`, `deploy ✗
+  loop {{ .Items }}: …`, `deploy ✗ get X: …`. The task's end line follows.
 - **A command that can't start, or an `into:` that can't take its output,
   ends like any failed step**, with a time: `deploy ✗ 0.0s nosuchcmd a: no such
   command`, `deploy ✗ 0.0s echo hi: no directory ./nowhere`, `deploy ✗ 0.1s

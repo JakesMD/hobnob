@@ -130,3 +130,23 @@ func TestE2E_Log_QuietRunKeepsTheCtrlCLines(t *testing.T) {
 	res.streamMatches(t, "stdout", res.Stdout, `^leaf ! stopping, ctrl\+c again to force\n$`)
 	res.streamMatches(t, "stderr", res.Stderr, `(?m)^leaf ✗ stopped after `+secs+`\ntop ✗ stopped after `+secs+`\n$`)
 }
+
+func TestE2E_Log_QuietRunStillShowsAPromptButNotWholeLines(t *testing.T) {
+	// given a step that prints a line and then a prompt with no newline, when
+	// it runs quietly, then the prompt shows and the line doesn't (why: a
+	// prompting step must not look hung)
+	// Arrange
+	yml := `
+		tasks:
+		  deploy:
+		    steps:
+		      - run: printf 'noise\nContinue? '
+	`
+
+	// Act
+	res := Run(t, Case{Yml: yml, Args: []string{"deploy", "--quiet"}})
+
+	// Assert
+	res.OK(t)
+	res.streamMatches(t, "stdout", res.Stdout, `^deploy \$ printf [^\n]*\ndeploy │ Continue\? \ndeploy ✓ done after `+secs+`\n$`)
+}

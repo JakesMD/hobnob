@@ -159,6 +159,9 @@
 // 135. drop the clear in tui.liveArea.pause                          -> live_test.go (IsClearedWhileACardPromptIsOpen)
 // 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRows)
 // 137. never notice a waiting prompt in tui.liveArea.redrawLocked     -> live_test.go (StaysUnderAPromptWaitingForInputWithItsClockFrozen)
+// 138. drop the partial-line write in runner.promptWriter.Write       -> log_quiet_test.go (QuietRunStillShowsAPromptButNotWholeLines)
+// 139. drop the field as written from execSet, execFor or execGet errors -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
+// 140. print Go's raw JSON syntax error from value.filterJSON            -> log_errors_test.go (StepThatCannotStartIsOneLineWithTheStepAsWritten)
 package e2e
 
 import (

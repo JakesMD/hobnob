@@ -67,7 +67,8 @@ The [CLI reference](../reference/cli.md) lists every flag.
   the same.
 - **`--quiet` (`-q`) or `HOBNOB_QUIET=1` makes a quiet run**: only each
   `run:` command's `$` line and every task's end line print, plus the output
-  of a step that fails or soft-fails, before its `✗` or `!` line. Nothing
-  else turns it on. It can go anywhere after `hobnob`.
+  of a step that fails or soft-fails, before its `✗` or `!` line. A prompt a
+  command prints with no newline (`read`, `sudo`, `[y/N]`) shows as it
+  arrives. Nothing else turns it on. It can go anywhere after `hobnob`.
 - **Every other argument after the task name must be `NAME=value`** or
   `--no-input`. Anything else is an error.

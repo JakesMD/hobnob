@@ -27,6 +27,35 @@ func TestE2E_LogErrors_StepThatCannotStartIsOneLineWithTheStepAsWritten(t *testi
 			      - run: echo hi
 			        if: "{{ nope }}"
 		`, `^deploy ✗ echo hi: if \{\{ nope \}\}: function "nope" not defined\ndeploy ✗ failed after ` + secs + `\n$`},
+		{"set that cannot render", `
+			tasks:
+			  deploy:
+			    steps:
+			      - set:
+			          - X: "{{ upper .Y }}"
+		`, `^deploy ✗ X=\{\{ upper \.Y \}\}: upper: [^\n]*\ndeploy ✗ failed after ` + secs + `\n$`},
+		{"set with bad json", `
+			tasks:
+			  deploy:
+			    steps:
+			      - set:
+			          - J: '{{ "nope" | json }}'
+		`, `^deploy ✗ J=\{\{ "nope" \| json \}\}: json: not valid JSON, at character 2\ndeploy ✗ failed after ` + secs + `\n$`},
+		{"loop that cannot render", `
+			tasks:
+			  deploy:
+			    steps:
+			      - loop: "{{ upper .Items }}"
+			        steps:
+			          - run: echo hi
+		`, `^deploy ✗ loop \{\{ upper \.Items \}\}: [^\n]*\ndeploy ✗ failed after ` + secs + `\n$`},
+		{"get that cannot take input", `
+			tasks:
+			  deploy:
+			    steps:
+			      - get:
+			          - X: {}
+		`, `^deploy ✗ get X: [^\n]*\ndeploy ✗ failed after ` + secs + `\n$`},
 		{"call to no task", `
 			tasks:
 			  deploy:

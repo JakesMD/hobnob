@@ -20,7 +20,7 @@ func execFor(execState execCtx, step config.Step, scope *scope.Scope) error {
 	if len(step.ForList) == 0 && !step.ForTarget.IsZero() {
 		rendered, err := step.ForTarget.Value(scope.Vars())
 		if err != nil {
-			return fmt.Errorf("loop from template: %w", err)
+			return fmt.Errorf("loop %s: %w", step.ForTarget.String(), err)
 		}
 		if rendered.Kind() == value.KindObject {
 			return execForMap(execState, rendered, step.ForSteps, scope)
