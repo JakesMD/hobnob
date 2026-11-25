@@ -9,7 +9,6 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/scope"
-	"hobnob/internal/tui"
 )
 
 // callMemo is the per-run cache backing once: true tasks. It lives for one
@@ -79,7 +78,7 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	id := callCacheID(task)
 	if cached, ok := execState.memo.scopes[id]; ok {
-		fmt.Println(tui.CallCacheHitLine(execState.task, taskName, execState.memo.summaries[id]))
+		execState.log.CallCached(execState.task, taskName, execState.memo.summaries[id])
 		return finishCall(execState.cfg, taskName, task, step, scope, cached)
 	}
 	if execState.memo.running[id] {

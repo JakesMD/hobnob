@@ -3,9 +3,11 @@ package runner
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
 	"hobnob/internal/scope"
+	"hobnob/internal/tui"
 )
 
 func TestDisplayDirPath(t *testing.T) {
@@ -78,7 +80,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr))
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

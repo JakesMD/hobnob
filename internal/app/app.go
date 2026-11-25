@@ -83,15 +83,16 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 }
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir); err != nil {
+	log := tui.NewRunLog(os.Stdout, os.Stderr)
+	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
 		if errors.Is(err, runner.ErrInterrupted) {
-			fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render("interrupted"))
+			log.TaskFailed(taskName, "interrupted")
 			return ErrSilent
 		}
-		fmt.Fprintln(os.Stderr, tui.SError.Render("✗")+" "+tui.TaskPrefix(taskName)+tui.SError.Render(err.Error()))
+		log.TaskFailed(taskName, err.Error())
 		return ErrSilent
 	}
-	fmt.Println(tui.SChecked.Render("✓") + " " + tui.TaskPrefix(taskName) + tui.SChecked.Render("done"))
+	log.TaskDone(taskName)
 	return nil
 }
 
