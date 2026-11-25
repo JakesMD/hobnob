@@ -128,12 +128,20 @@ func (scope *Scope) claimed(key string) bool {
 }
 
 // Display renders key's value for terminal output: tui.SecretMask when key
-// is a secret, its string form otherwise.
+// is a secret, its string form otherwise, a list's items joined by ", ".
 func (scope *Scope) Display(key string) string {
 	if scope.secrets[key] {
 		return tui.SecretMask
 	}
-	return scope.vars[key].String()
+	val := scope.vars[key]
+	if items, ok := val.Any().([]any); ok {
+		texts := make([]string, len(items))
+		for i, item := range items {
+			texts[i] = value.Of(item).String()
+		}
+		return strings.Join(texts, ", ")
+	}
+	return val.String()
 }
 
 // Mask replaces each secret value in text — every secret variable's, and

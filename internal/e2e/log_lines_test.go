@@ -282,3 +282,42 @@ func TestE2E_Log_SkippedOptionalWithPromptsOffPrintsAMarkedName(t *testing.T) {
 	res.OK(t)
 	res.Out(t, "t ⊘ REPLICAS\n")
 }
+
+func TestE2E_Log_EmptyValueForARequiredVariablePrintsAVariableLine(t *testing.T) {
+	// given a required get: given an empty value on the command line, or
+	// already set to "" by a set: step, when executed, then it prints a "»"
+	// line, not a skip (why: only an optional prompt left unanswered is a skip)
+	tests := []struct {
+		name string
+		yml  string
+		args []string
+		want string
+	}{
+		{
+			name: "command line",
+			yml:  "- get: [ENV]",
+			args: []string{"t", "ENV=", "--no-input"},
+			want: "t » ENV= # from the command line\n",
+		},
+		{
+			name: "set to empty",
+			yml:  "- set:\n          - ENV: \"\"\n      - get: [ENV]",
+			args: []string{"t", "--no-input"},
+			want: "t » ENV=\n",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			// Arrange
+			c := Case{Yml: "tasks:\n  t:\n    steps:\n      " + test.yml + "\n", Args: test.args}
+
+			// Act
+			res := Run(t, c)
+
+			// Assert
+			res.OK(t)
+			res.Out(t, test.want)
+			res.NotOut(t, "⊘")
+		})
+	}
+}

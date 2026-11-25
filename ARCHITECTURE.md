@@ -342,7 +342,7 @@ stateDiagram-v2
 
 **Masking.** `Mask(text)` redacts each secret's raw and JSON-escaped forms,
 named and `carried` alike, skipping bools and numbers under 4 characters as
-too generic. `Display(key)` renders one value or the mask. Secrecy follows
+too generic. `Display(key)` renders one value (a list joined by `, `) or the mask; the variable line of a `get:` reads it. Secrecy follows
 origin, not use: `secrets` rides along on `Copy()` and masking matches values,
 so a secret passed to a child under a new `with:` name stays masked. That is
 why `secret:` on `with:` is a parse error: redundant at best, over-masking a
