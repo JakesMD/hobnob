@@ -134,6 +134,9 @@
 // 112. never wrap in tui.LineWriter.text                             -> run_pty_test.go (LongLinesWrapUnderTheirTextOnlyOnATerminal), linewriter_test.go
 // 113. drop the cursorMove check in tui.LineWriter.Write             -> run_pty_test.go (CursorMovingOutputHasNoPrefix), linewriter_test.go
 // 114. buffer text until a newline when watched, in LineWriter.text  -> linewriter_test.go (Watched_Write, a prompt with no newline)
+// 115. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 116. drop the HOBNOB_QUIET=1 check in app.Run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
+// 117. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
 package e2e
 
 import (
