@@ -63,6 +63,8 @@ func Listen() (*Server, error) {
 		subs:      map[chan struct{}]struct{}{},
 	}
 	server.changed = server.notify
+	server.actions["answer"] = server.answer
+	server.actions["skip"] = server.skip
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", server.servePage)
 	mux.HandleFunc("GET /events", server.serveEvents)

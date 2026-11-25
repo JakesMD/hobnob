@@ -2,6 +2,7 @@ package web
 
 // Screens a Snapshot can show.
 const (
+	ScreenPrompt   = "prompt"
 	ScreenProgress = "progress"
 	ScreenDone     = "done"
 	ScreenFailed   = "failed"
@@ -27,6 +28,7 @@ type Snapshot struct {
 	Screen   string    `json:"screen"`
 	Task     Task      `json:"task"`
 	Rail     Rail      `json:"rail"`
+	Prompt   *Prompt   `json:"prompt,omitempty"`
 	Progress *Progress `json:"progress,omitempty"`
 	Result   *Result   `json:"result,omitempty"`
 }
