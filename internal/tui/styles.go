@@ -17,6 +17,7 @@ func IsInterrupted(err error) bool {
 var (
 	SLabel   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14"))
 	SInfo    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	SBold    = lipgloss.NewStyle().Bold(true)
 	SArrow   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
 	SChecked = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
 	SError   = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))

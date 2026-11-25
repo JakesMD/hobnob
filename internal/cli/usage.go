@@ -7,8 +7,6 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // DisplayVersion returns version, or "dev" when version is empty (unset by
@@ -33,7 +31,7 @@ const ReferenceURL = docsBase + "reference/"
 const docsBase = "https://jakesmd.github.io/hobnob/docs/"
 
 func PrintUsage(out io.Writer, version string) {
-	heading := lipgloss.NewStyle().Bold(true).Render
+	heading := tui.SBold.Render
 	grey := tui.SInfo.Render
 	fmt.Fprintf(out, "%s %s\n\n", heading("hobnob"), grey(DisplayVersion(version)))
 
@@ -67,6 +65,6 @@ func PrintHelp(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, versio
 	if rows, _ := buildTaskRows(cfg, scope); len(rows) == 0 {
 		return ListTasks(cfg, scope, out)
 	}
-	fmt.Fprintln(out, lipgloss.NewStyle().Bold(true).Render("Tasks"))
+	fmt.Fprintln(out, tui.SBold.Render("Tasks"))
 	return listTasks(cfg, scope, out, "  ")
 }

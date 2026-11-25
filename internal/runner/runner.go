@@ -108,6 +108,12 @@ func displayArgv(argv []string) string {
 	return strings.Join(parts, " ")
 }
 
+// writtenArgv is a run: argv as written, before its templates render, for the
+// skip line and the error line alike.
+func writtenArgv(argv literal.Argv) string {
+	return displayArgv(argv.Raw())
+}
+
 // execCtx bundles the state threaded through every step-execution function.
 // scope is kept separate — a call step swaps in a childScope while
 // cfg/task/noPrompts/dir change together as a unit. memo is shared across the
@@ -235,7 +241,7 @@ func stepMessage(step config.Step, err error) string {
 	case config.KindRun:
 		written = step.Command.String()
 		if !step.Argv.IsZero() {
-			written = step.Argv.String()
+			written = writtenArgv(step.Argv)
 		}
 	case config.KindCall:
 		written = step.CallTarget

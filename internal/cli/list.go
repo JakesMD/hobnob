@@ -45,6 +45,9 @@ func CollectSelectableTasks(cfg *config.ConfigFile, scope *scope.Scope) []tui.Ta
 	return tasks
 }
 
+// groupIndent is how far a grouped task sits right of the group heading.
+const groupIndent = 2
+
 // taskRow is one --list/--help row: a task plus its rendered info line.
 type taskRow struct {
 	name string
@@ -83,7 +86,7 @@ func listTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, indent
 
 	groups, groupNames, ungrouped := groupTaskRows(rows)
 	termWidth := listTermWidth()
-	heading := lipgloss.NewStyle().Bold(true)
+	heading := tui.SBold
 
 	wroteBlock := false
 	for _, group := range groupNames {
@@ -93,14 +96,18 @@ func listTasks(cfg *config.ConfigFile, scope *scope.Scope, out io.Writer, indent
 		wroteBlock = true
 		fmt.Fprintln(out, indent+heading.Render(group))
 		for _, row := range groups[group] {
-			printListRow(out, indent+"  ", row, maxTaskLen, termWidth, tui.TaskStyle(group))
+			printListRow(out, indent+strings.Repeat(" ", groupIndent), row, maxTaskLen, termWidth, tui.TaskStyle(group))
 		}
 	}
 	if len(ungrouped) > 0 && wroteBlock {
 		fmt.Fprintln(out)
 	}
+	ungroupedWidth := maxTaskLen
+	if len(groupNames) > 0 {
+		ungroupedWidth += groupIndent
+	}
 	for _, row := range ungrouped {
-		printListRow(out, indent, row, maxTaskLen, termWidth, tui.TaskStyle(row.name))
+		printListRow(out, indent, row, ungroupedWidth, termWidth, tui.TaskStyle(row.name))
 	}
 	return nil
 }
