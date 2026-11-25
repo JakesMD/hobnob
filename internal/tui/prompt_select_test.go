@@ -46,7 +46,7 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 }
 
 func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
-	// given multi-select model with no items toggled, when enter pressed, then result is an empty (non-nil) slice (why: empty selection must produce an empty array var, not an error and not nil)
+	// given a required multi-select with no items toggled, when enter pressed, then the prompt stays open (why: without optional an empty list is no answer)
 	// Arrange
 	model := selectModel{
 		varName:  "TAGS",
@@ -59,9 +59,8 @@ func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
 	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	got := updated.(selectModel).values
-	if got == nil || len(got) != 0 {
-		t.Errorf("values: got %v, want a non-nil empty slice", got)
+	if got := updated.(selectModel); got.done || got.skipped {
+		t.Errorf("done=%v skipped=%v, want the prompt still open", got.done, got.skipped)
 	}
 }
 
