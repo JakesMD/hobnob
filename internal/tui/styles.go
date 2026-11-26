@@ -9,7 +9,7 @@ import (
 )
 
 // IsInterrupted reports whether err came from a prompt being torn down by ctx
-// cancellation (a tea.Program's WithContext, or a web prompt's context),
+// cancellation (a tea.Program's WithContext, or a browser prompt's context),
 // rather than the user declining the prompt normally.
 func IsInterrupted(err error) bool {
 	return errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, context.Canceled)

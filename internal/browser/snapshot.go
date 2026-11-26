@@ -1,4 +1,4 @@
-package web
+package browser
 
 // Screens a Snapshot can show.
 const (

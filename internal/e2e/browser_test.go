@@ -8,13 +8,13 @@ import (
 	"testing"
 	"time"
 
-	"hobnob/internal/web"
+	"hobnob/internal/browser"
 )
 
 const waitForGo = `while [ ! -e go ]; do :; done`
 
-func TestE2E_Web_TaskWithoutPromptsEndsOnDone(t *testing.T) {
-	// given a task with no prompts, when it runs with --web, then the page is
+func TestE2E_Browser_TaskWithoutPromptsEndsOnDone(t *testing.T) {
+	// given a task with no prompts, when it runs with --browser, then the page is
 	// opened on 127.0.0.1 and ends on Done with the task and its duration,
 	// the URL is printed and the exit code is 0 (why: browser mode is the
 	// same run behind a page)
@@ -26,11 +26,11 @@ func TestE2E_Web_TaskWithoutPromptsEndsOnDone(t *testing.T) {
 		    steps:
 		      - run: echo hello
 	`
-	var done web.Snapshot
+	var done browser.Snapshot
 	var address string
-	c := Case{Yml: yml, Args: []string{"--web", "deploy"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "deploy"}, Browser: func(b *Browser) {
 		address = b.Address()
-		done = b.Open().Screen(web.ScreenDone)
+		done = b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -42,12 +42,12 @@ func TestE2E_Web_TaskWithoutPromptsEndsOnDone(t *testing.T) {
 	if res.URL != "http://"+address+"/?token="+strings.SplitN(res.URL, "token=", 2)[1] {
 		t.Errorf("URL %q is not on %s", res.URL, address)
 	}
-	if done.Task.Name != "deploy" || done.Task.Info != "Deploy the app" || done.Result.Outcome != web.OutcomeDone || done.Result.DurationMS < 0 {
+	if done.Task.Name != "deploy" || done.Task.Info != "Deploy the app" || done.Result.Outcome != browser.OutcomeDone || done.Result.DurationMS < 0 {
 		t.Errorf("done snapshot = %+v", done)
 	}
 }
 
-func TestE2E_Web_PageOpenedAfterTheRunEndedStillGetsTheOutcome(t *testing.T) {
+func TestE2E_Browser_PageOpenedAfterTheRunEndedStillGetsTheOutcome(t *testing.T) {
 	// given a run that ended before any page connected, when a page opens
 	// late, then it gets Done and the run only returns after that (why: a
 	// slow browser must not miss how the run went)
@@ -58,10 +58,10 @@ func TestE2E_Web_PageOpenedAfterTheRunEndedStillGetsTheOutcome(t *testing.T) {
 		    steps:
 		      - run: touch ran
 	`
-	var done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		b.WaitLate("ran")
-		done = b.Open().Screen(web.ScreenDone)
+		done = b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -69,20 +69,20 @@ func TestE2E_Web_PageOpenedAfterTheRunEndedStillGetsTheOutcome(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	if done.Result == nil || done.Result.Outcome != web.OutcomeDone {
+	if done.Result == nil || done.Result.Outcome != browser.OutcomeDone {
 		t.Errorf("late page saw %+v", done)
 	}
 }
 
-func TestE2E_Web_FileFlagRunsTheNamedTaskfile(t *testing.T) {
-	// given --file beside --web, when run, then that taskfile's task runs
-	// (why: --web combines with --file)
+func TestE2E_Browser_FileFlagRunsTheNamedTaskfile(t *testing.T) {
+	// given --file beside --browser, when run, then that taskfile's task runs
+	// (why: --browser combines with --file)
 	// Arrange
 	c := Case{
 		Files:    Files{"other.yml": "tasks:\n  t:\n    steps:\n      - run: echo from-other\n"},
-		Args:     []string{"--file", "other.yml", "--web", "t"},
+		Args:     []string{"--file", "other.yml", "--browser", "t"},
 		Discover: true,
-		Browser:  func(b *Browser) { b.Open().Screen(web.ScreenDone) },
+		Browser:  func(b *Browser) { b.Open().Screen(browser.ScreenDone) },
 	}
 
 	// Act
@@ -93,7 +93,7 @@ func TestE2E_Web_FileFlagRunsTheNamedTaskfile(t *testing.T) {
 	res.Out(t, "t │ from-other")
 }
 
-func TestE2E_Web_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
+func TestE2E_Browser_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
 	// given a task that calls another, when it runs, then the page shows the
 	// innermost task's info (its name without one), the last output line and
 	// a rail with a setup entry per task entered, ticked as each finishes
@@ -110,14 +110,14 @@ func TestE2E_Web_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
 		    steps:
 		      - run: echo "working on it"; ` + waitForGo + `
 	`
-	var running, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "top"}, Browser: func(b *Browser) {
+	var running, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "top"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		running = tab.Until(func(s web.Snapshot) bool {
+		running = tab.Until(func(s browser.Snapshot) bool {
 			return s.Progress != nil && s.Progress.LastLine == "working on it"
 		})
 		b.Release("go")
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -125,17 +125,17 @@ func TestE2E_Web_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	wantRunning := []web.RailEntry{{Label: "Set up the laptop", State: web.StateRunning}, {Label: "inner", State: web.StateRunning}}
+	wantRunning := []browser.RailEntry{{Label: "Set up the laptop", State: browser.StateRunning}, {Label: "inner", State: browser.StateRunning}}
 	if running.Progress.Label != "inner" || !equalRail(running.Rail.Setup, wantRunning) {
 		t.Errorf("running snapshot = %+v", running)
 	}
-	wantDone := []web.RailEntry{{Label: "Set up the laptop", State: web.StateDone}, {Label: "inner", State: web.StateDone}}
+	wantDone := []browser.RailEntry{{Label: "Set up the laptop", State: browser.StateDone}, {Label: "inner", State: browser.StateDone}}
 	if !equalRail(done.Rail.Setup, wantDone) {
 		t.Errorf("done rail = %+v", done.Rail)
 	}
 }
 
-func TestE2E_Web_LabelFillsInTheVariablesItCan(t *testing.T) {
+func TestE2E_Browser_LabelFillsInTheVariablesItCan(t *testing.T) {
 	// given tasks whose info: names variables, when they run, then the page's
 	// labels fill in each variable that is set, mask a secret, and keep an
 	// info: naming an unset variable as written
@@ -167,9 +167,9 @@ func TestE2E_Web_LabelFillsInTheVariablesItCan(t *testing.T) {
 		    steps:
 		      - run: "true"
 	`
-	var done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "top", "WHO=Sam"}, Browser: func(b *Browser) {
-		done = b.Open().Screen(web.ScreenDone)
+	var done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "top", "WHO=Sam"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -177,18 +177,18 @@ func TestE2E_Web_LabelFillsInTheVariablesItCan(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	want := []web.RailEntry{
-		{Label: "Set up for Sam", State: web.StateDone},
-		{Label: "Configuring vim", State: web.StateDone},
-		{Label: "Logging in with ****", State: web.StateDone},
-		{Label: "Waiting for {{.NOPE}}", State: web.StateDone},
+	want := []browser.RailEntry{
+		{Label: "Set up for Sam", State: browser.StateDone},
+		{Label: "Configuring vim", State: browser.StateDone},
+		{Label: "Logging in with ****", State: browser.StateDone},
+		{Label: "Waiting for {{.NOPE}}", State: browser.StateDone},
 	}
 	if !equalRail(done.Rail.Setup, want) {
 		t.Errorf("rail = %+v", done.Rail.Setup)
 	}
 }
 
-func equalRail(got, want []web.RailEntry) bool {
+func equalRail(got, want []browser.RailEntry) bool {
 	if len(got) != len(want) {
 		return false
 	}
@@ -200,7 +200,7 @@ func equalRail(got, want []web.RailEntry) bool {
 	return true
 }
 
-func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
+func TestE2E_Browser_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 	// given a quiet: step and a step printing a secret, when they run, then
 	// the first shows an empty last line and the log shows the secret masked
 	// (why: a held step's output stays out of sight, and a secret never
@@ -218,13 +218,13 @@ func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 		        quiet: true
 		      - run: echo "token is {{.TOKEN}}"
 	`
-	var held, after web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var held, after browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		b.Wait("printed")
 		tab := b.Open()
-		held = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		held = tab.Until(func(s browser.Snapshot) bool { return s.Progress != nil })
 		b.Release("go")
-		after = tab.Screen(web.ScreenDone)
+		after = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -240,7 +240,7 @@ func TestE2E_Web_HeldStepShowsNoLastLineAndASecretIsMasked(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_QuietChangesOnlyTheTerminal(t *testing.T) {
+func TestE2E_Browser_QuietChangesOnlyTheTerminal(t *testing.T) {
 	// given a run with --quiet, when it ends, then the terminal holds only the
 	// command line, while the page still saw the output line (why: --quiet is
 	// for the terminal, the page is the person)
@@ -251,9 +251,9 @@ func TestE2E_Web_QuietChangesOnlyTheTerminal(t *testing.T) {
 		    steps:
 		      - run: echo chatter
 	`
-	var done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "--quiet", "t"}, Browser: func(b *Browser) {
-		done = b.Open().Screen(web.ScreenDone)
+	var done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "--quiet", "t"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -267,8 +267,8 @@ func TestE2E_Web_QuietChangesOnlyTheTerminal(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
-	// given a task calling a task whose step fails, when it runs with --web,
+func TestE2E_Browser_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
+	// given a task calling a task whose step fails, when it runs with --browser,
 	// then the page ends on Failed naming the inner task of the step and its
 	// last line, the rail marks it failed and the exit code is 1 (why: the
 	// person must see what broke, and scripts must see the same exit code)
@@ -284,9 +284,9 @@ func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
 		    steps:
 		      - run: echo "disk is full"; exit 3
 	`
-	var failed web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		failed = b.Open().Screen(web.ScreenFailed)
+	var failed browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(browser.ScreenFailed)
 	}}
 
 	// Act
@@ -294,16 +294,16 @@ func TestE2E_Web_FailedNamesTheStepAndExitsLikeTheTerminalRun(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	if failed.Result.Outcome != web.OutcomeFailed || failed.Result.Label != "Install tools" || failed.Result.LastLine != "disk is full" {
+	if failed.Result.Outcome != browser.OutcomeFailed || failed.Result.Label != "Install tools" || failed.Result.LastLine != "disk is full" {
 		t.Errorf("failed result = %+v", failed.Result)
 	}
-	if len(failed.Rail.Setup) != 2 || failed.Rail.Setup[1].State != web.StateFailed {
+	if len(failed.Rail.Setup) != 2 || failed.Rail.Setup[1].State != browser.StateFailed {
 		t.Errorf("rail = %+v", failed.Rail)
 	}
 }
 
-func TestE2E_Web_FailedNamesTheTaskWhenTheRunFailsOutsideAStep(t *testing.T) {
-	// given a task whose if: cannot be evaluated, when it runs with --web,
+func TestE2E_Browser_FailedNamesTheTaskWhenTheRunFailsOutsideAStep(t *testing.T) {
+	// given a task whose if: cannot be evaluated, when it runs with --browser,
 	// then the page ends on Failed naming the task, never blank (why: Failed
 	// names the innermost task running when the run failed, step or not)
 	// Arrange
@@ -319,9 +319,9 @@ func TestE2E_Web_FailedNamesTheTaskWhenTheRunFailsOutsideAStep(t *testing.T) {
 		      - if: "{{ .NOPE.missing.deeper }}"
 		        run: echo never
 	`
-	var failed web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		failed = b.Open().Screen(web.ScreenFailed)
+	var failed browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(browser.ScreenFailed)
 	}}
 
 	// Act
@@ -334,13 +334,13 @@ func TestE2E_Web_FailedNamesTheTaskWhenTheRunFailsOutsideAStep(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_RequestsNeedTheToken(t *testing.T) {
+func TestE2E_Browser_RequestsNeedTheToken(t *testing.T) {
 	// given an open page, when a request has no token or a wrong one, then it
 	// is refused, and with the right one it is served (why: other local
 	// programs and web pages must not read the run or drive it)
 	// Arrange
 	var statuses []int
-	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		for _, token := range []string{"", "wrong", b.Token()} {
 			status, _ := b.Get("/", token)
 			statuses = append(statuses, status)
@@ -353,7 +353,7 @@ func TestE2E_Web_RequestsNeedTheToken(t *testing.T) {
 		}
 		tab := b.Open()
 		b.Release("go")
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -377,16 +377,16 @@ func equalInts(a, b []int) bool {
 	return true
 }
 
-func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
-	// given --web beside --no-input, --list, --select or --help, when run,
+func TestE2E_Browser_FlagsThatCannotCombine(t *testing.T) {
+	// given --browser beside --no-input, --list, --select or --help, when run,
 	// then it is refused and no page opens (why: the page has nothing to do
 	// there)
 	// Arrange
 	for name, args := range map[string][]string{
-		"no-input": {"--web", "t", "--no-input"},
-		"list":     {"--web", "--list"},
-		"select":   {"--web", "--select"},
-		"help":     {"--web", "--help"},
+		"no-input": {"--browser", "t", "--no-input"},
+		"list":     {"--browser", "--list"},
+		"select":   {"--browser", "--select"},
+		"help":     {"--browser", "--help"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Act
@@ -394,7 +394,7 @@ func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
 
 			// Assert
 			res.Fails(t)
-			res.Err(t, "--web")
+			res.Err(t, "--browser")
 			if res.URL != "" {
 				t.Errorf("opened %s", res.URL)
 			}
@@ -402,15 +402,15 @@ func TestE2E_Web_FlagsThatCannotCombine(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage(t *testing.T) {
-	// given a task name the taskfile lacks, when run with --web, then it
+func TestE2E_Browser_UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage(t *testing.T) {
+	// given a task name the taskfile lacks, when run with --browser, then it
 	// fails as the terminal run does and no page opens (why: a page showing a
 	// failed run of nothing is noise)
 	// Arrange
 	yml := "tasks:\n  t:\n    steps:\n      - run: echo hi\n"
 
 	// Act
-	res := Yml(t, yml, "--web", "nosuch")
+	res := Yml(t, yml, "--browser", "nosuch")
 
 	// Assert
 	res.Fails(t)
@@ -420,7 +420,7 @@ func TestE2E_Web_UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage(t *testin
 	}
 }
 
-func TestE2E_Web_FailedNamesTheFailureThatEndedTheRunNotAForgivenOne(t *testing.T) {
+func TestE2E_Browser_FailedNamesTheFailureThatEndedTheRunNotAForgivenOne(t *testing.T) {
 	// given a soft call: that fails and a later step that fails hard, when it
 	// runs, then Failed names the task of the later step and its last line
 	// (why: a forgiven failure did not end the run)
@@ -438,9 +438,9 @@ func TestE2E_Web_FailedNamesTheFailureThatEndedTheRunNotAForgivenOne(t *testing.
 		    steps:
 		      - run: echo "forgiven"; exit 2
 	`
-	var failed web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		failed = b.Open().Screen(web.ScreenFailed)
+	var failed browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(browser.ScreenFailed)
 	}}
 
 	// Act
@@ -453,7 +453,7 @@ func TestE2E_Web_FailedNamesTheFailureThatEndedTheRunNotAForgivenOne(t *testing.
 	}
 }
 
-func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testing.T) {
+func TestE2E_Browser_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testing.T) {
 	// given a step whose final output has no trailing newline, when it fails,
 	// then that text is the last line on the page and in the log (why: the
 	// last thing a tool said is the clue, newline or not)
@@ -464,9 +464,9 @@ func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testin
 		    steps:
 		      - run: printf "no newline at end"; exit 4
 	`
-	var failed web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		failed = b.Open().Screen(web.ScreenFailed)
+	var failed browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		failed = b.Open().Screen(browser.ScreenFailed)
 	}}
 
 	// Act
@@ -479,7 +479,7 @@ func TestE2E_Web_OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog(t *testin
 	}
 }
 
-func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
+func TestE2E_Browser_LastLineHasNoColourCodes(t *testing.T) {
 	// given a step printing coloured output, when it runs, then the page's
 	// last line and the log hold the text without escape sequences (why: the
 	// page shows text, not terminal codes)
@@ -490,14 +490,14 @@ func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
 		    steps:
 		      - run: printf '\033[31mred alert\033[0m\n'; ` + waitForGo + `
 	`
-	var running, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var running, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		running = tab.Until(func(s web.Snapshot) bool {
+		running = tab.Until(func(s browser.Snapshot) bool {
 			return s.Progress != nil && s.Progress.LastLine != ""
 		})
 		b.Release("go")
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -510,7 +510,7 @@ func TestE2E_Web_LastLineHasNoColourCodes(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
+func TestE2E_Browser_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
 	// given a running step, when a page connects some time into the run, then
 	// its snapshot carries the time elapsed since the run began (why: the
 	// page's clock starts from it, also after a reconnect)
@@ -521,16 +521,16 @@ func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
 		    steps:
 		      - run: echo started; ` + waitForGo + `
 	`
-	var later web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
-		b.Open().Until(func(s web.Snapshot) bool {
+	var later browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		b.Open().Until(func(s browser.Snapshot) bool {
 			return s.Progress != nil && s.Progress.LastLine == "started"
 		})
 		time.Sleep(150 * time.Millisecond)
 		tab := b.Open()
-		later = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		later = tab.Until(func(s browser.Snapshot) bool { return s.Progress != nil })
 		b.Release("go")
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -543,14 +543,14 @@ func TestE2E_Web_ProgressSnapshotsCarryElapsedTime(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
+func TestE2E_Browser_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
 	// given an open page and the right token, when a request has another
 	// Host or another Origin, then it is refused, and with the page's own
 	// Host and Origin, or no Origin, it is served (why: a web page on
 	// another site must not reach the run, by rebinding or cross-site)
 	// Arrange
 	statuses := map[string]int{}
-	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: " + waitForGo + "\n", Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		own := "http://" + b.Address()
 		statuses["no origin"] = b.GetWith("/", nil)
 		statuses["own origin"] = b.GetWith("/", map[string]string{"Origin": own})
@@ -560,7 +560,7 @@ func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
 		statuses["null origin"] = b.GetWith("/", map[string]string{"Origin": "null"})
 		tab := b.Open()
 		b.Release("go")
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -575,7 +575,7 @@ func TestE2E_Web_RequestsNeedTheLoopbackHostAndAMatchingOrigin(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_CancelStopsAStepGracefullyAndTheResultIsCancelled(t *testing.T) {
+func TestE2E_Browser_CancelStopsAStepGracefullyAndTheResultIsCancelled(t *testing.T) {
 	// given a running step that cleans up on SIGTERM, when the page POSTs
 	// cancel, then the step gets the graceful stop, the page ends on
 	// Cancelled and the exit code is an interrupted run's (why: Cancel is a
@@ -587,12 +587,12 @@ func TestE2E_Web_CancelStopsAStepGracefullyAndTheResultIsCancelled(t *testing.T)
 		    steps:
 		      - run: trap 'touch cleaned; exit 1' TERM; touch started; while :; do :; done
 	`
-	var result web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var result browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
 		b.Wait("started")
 		b.Post("cancel", struct{}{})
-		result = tab.Screen(web.ScreenFailed)
+		result = tab.Screen(browser.ScreenFailed)
 		b.Wait("cleaned")
 	}}
 
@@ -601,12 +601,12 @@ func TestE2E_Web_CancelStopsAStepGracefullyAndTheResultIsCancelled(t *testing.T)
 
 	// Assert
 	res.Fails(t)
-	if result.Result.Outcome != web.OutcomeCancelled {
+	if result.Result.Outcome != browser.OutcomeCancelled {
 		t.Errorf("result = %+v", result.Result)
 	}
 }
 
-func TestE2E_Web_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
+func TestE2E_Browser_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
 	// given a running step that ignores SIGTERM, when the page POSTs cancel
 	// twice, then after the first the snapshot says it is cancelling and
 	// the step still runs, and the second kills it and ends on Cancelled
@@ -618,15 +618,15 @@ func TestE2E_Web_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
 		    steps:
 		      - run: trap '' TERM; touch started; while :; do :; done
 	`
-	var before, cancelling, result web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var before, cancelling, result browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
 		b.Wait("started")
-		before = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		before = tab.Until(func(s browser.Snapshot) bool { return s.Progress != nil })
 		b.Post("cancel", struct{}{})
-		cancelling = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil && s.Progress.Cancelling })
+		cancelling = tab.Until(func(s browser.Snapshot) bool { return s.Progress != nil && s.Progress.Cancelling })
 		b.Post("cancel", struct{}{})
-		result = tab.Screen(web.ScreenFailed)
+		result = tab.Screen(browser.ScreenFailed)
 	}}
 
 	// Act
@@ -637,12 +637,12 @@ func TestE2E_Web_SecondCancelForceStopsAStepThatIgnoresTheFirst(t *testing.T) {
 	if before.Progress.Cancelling || !cancelling.Progress.Cancelling {
 		t.Errorf("cancelling before = %v, after the first press = %v", before.Progress.Cancelling, cancelling.Progress.Cancelling)
 	}
-	if result.Result.Outcome != web.OutcomeCancelled {
+	if result.Result.Outcome != browser.OutcomeCancelled {
 		t.Errorf("result = %+v", result.Result)
 	}
 }
 
-func TestE2E_Web_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully(t *testing.T) {
+func TestE2E_Browser_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully(t *testing.T) {
 	// given a finished run and Home, when the page POSTs cancel at the task
 	// picker and then runs a second task, then the POST is refused, the
 	// second run does not start on "Stopping..." and its first cancel is a
@@ -659,20 +659,20 @@ func TestE2E_Web_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully
 		      - run: trap 'touch cleaned; exit 1' TERM; touch started; while :; do :; done
 	`
 	var atPicker int
-	var before, result web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web"}, Browser: func(b *Browser) {
+	var before, result browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		tab.Screen(web.ScreenTasks)
+		tab.Screen(browser.ScreenTasks)
 		b.Post("choose", map[string]string{"task": "quick"})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 		b.Post("home", nil)
-		tab.Screen(web.ScreenTasks)
+		tab.Screen(browser.ScreenTasks)
 		atPicker = b.Post("cancel", struct{}{})
 		b.Post("choose", map[string]string{"task": "slow"})
 		b.Wait("started")
-		before = tab.Until(func(s web.Snapshot) bool { return s.Progress != nil })
+		before = tab.Until(func(s browser.Snapshot) bool { return s.Progress != nil })
 		b.Post("cancel", struct{}{})
-		result = tab.Screen(web.ScreenFailed)
+		result = tab.Screen(browser.ScreenFailed)
 		b.Wait("cleaned")
 		b.Interrupt()
 	}}
@@ -688,12 +688,12 @@ func TestE2E_Web_CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully
 	if before.Progress.Cancelling {
 		t.Error("the second run started on Stopping")
 	}
-	if result.Result.Outcome != web.OutcomeCancelled {
+	if result.Result.Outcome != browser.OutcomeCancelled {
 		t.Errorf("result = %+v", result.Result)
 	}
 }
 
-func TestE2E_Web_TerminalInterruptExitsPromptlyWithAPageOpen(t *testing.T) {
+func TestE2E_Browser_TerminalInterruptExitsPromptlyWithAPageOpen(t *testing.T) {
 	// given an open page and a running step, when CTRL+C reaches the
 	// terminal, then hobnob exits as an interrupted run at once, without
 	// waiting for the page (why: terminal CTRL+C behaves as it always does;
@@ -706,7 +706,7 @@ func TestE2E_Web_TerminalInterruptExitsPromptlyWithAPageOpen(t *testing.T) {
 		      - run: touch started; while :; do :; done
 	`
 	var interruptedAt time.Time
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		b.Open()
 		b.Wait("started")
 		interruptedAt = time.Now()
@@ -742,14 +742,14 @@ const pickerYml = `
 	      - run: exit 3
 `
 
-func TestE2E_Web_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t *testing.T) {
-	// given a taskfile with a default task and a _-prefixed task, when run with --web and no task, then the picker lists the visible
+func TestE2E_Browser_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t *testing.T) {
+	// given a taskfile with a default task and a _-prefixed task, when run with --browser and no task, then the picker lists the visible
 	// tasks with their info and name, and the default does not run, and the
 	// exit code is 0 as nothing ran (why: one shortcut offers several wizards)
 	// Arrange
-	var picker web.Snapshot
-	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
-		picker = b.Open().Screen(web.ScreenTasks)
+	var picker browser.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--browser"}, Browser: func(b *Browser) {
+		picker = b.Open().Screen(browser.ScreenTasks)
 		b.Interrupt()
 	}}
 
@@ -759,13 +759,13 @@ func TestE2E_Web_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t *te
 	// Assert
 	res.OK(t)
 	res.NotOut(t, "ran-default")
-	want := []web.Task{{Name: "broken"}, {Name: "default", Info: "The default"}, {Name: "setup", Info: "Set up the laptop"}}
+	want := []browser.Task{{Name: "broken"}, {Name: "default", Info: "The default"}, {Name: "setup", Info: "Set up the laptop"}}
 	if !equalTasks(picker.Tasks, want) {
 		t.Errorf("picker tasks = %+v, want %+v", picker.Tasks, want)
 	}
 }
 
-func equalTasks(got, want []web.Task) bool {
+func equalTasks(got, want []browser.Task) bool {
 	if len(got) != len(want) {
 		return false
 	}
@@ -777,22 +777,22 @@ func equalTasks(got, want []web.Task) bool {
 	return true
 }
 
-func TestE2E_Web_ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun(t *testing.T) {
+func TestE2E_Browser_ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun(t *testing.T) {
 	// given the picker, when a task is chosen, then it runs and ends on Done
 	// with Home, and Home returns to the picker, where a second task starts
 	// with a fresh rail and log (why: one page runs several tasks in a row)
 	// Arrange
-	var first, second web.Snapshot
+	var first, second browser.Snapshot
 	var tab *Tab
-	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+	c := Case{Yml: pickerYml, Args: []string{"--browser"}, Browser: func(b *Browser) {
 		tab = b.Open()
-		tab.Screen(web.ScreenTasks)
+		tab.Screen(browser.ScreenTasks)
 		b.Post("choose", map[string]string{"task": "setup"})
-		first = tab.Screen(web.ScreenDone)
+		first = tab.Screen(browser.ScreenDone)
 		b.Post("home", nil)
-		tab.Screen(web.ScreenTasks)
+		tab.Screen(browser.ScreenTasks)
 		b.Post("choose", map[string]string{"task": "default"})
-		second = tab.Screen(web.ScreenDone)
+		second = tab.Screen(browser.ScreenDone)
 		b.Interrupt()
 	}}
 
@@ -805,13 +805,13 @@ func TestE2E_Web_ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun(t *testing.T) 
 	if !first.Result.Home || first.Task.Name != "setup" || !strings.Contains(first.Result.Log, "ran-setup") {
 		t.Errorf("first run = %+v", first)
 	}
-	wantRail := []web.RailEntry{{Label: "The default", State: web.StateDone}}
+	wantRail := []browser.RailEntry{{Label: "The default", State: browser.StateDone}}
 	if second.Task.Name != "default" || !equalRail(second.Rail.Setup, wantRail) || strings.Contains(second.Result.Log, "ran-setup") {
 		t.Errorf("second run = %+v", second)
 	}
 }
 
-func TestE2E_Web_TheExitCodeIsTheLastRunsOutcome(t *testing.T) {
+func TestE2E_Browser_TheExitCodeIsTheLastRunsOutcome(t *testing.T) {
 	// given a failed run followed by a successful one, and the reverse, when
 	// the terminal is interrupted on the last Done or Failed page, then the
 	// exit code is the last run's (why: it reports like hobnob <task> does)
@@ -821,12 +821,12 @@ func TestE2E_Web_TheExitCodeIsTheLastRunsOutcome(t *testing.T) {
 		"failed last": {"setup", "broken"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+			c := Case{Yml: pickerYml, Args: []string{"--browser"}, Browser: func(b *Browser) {
 				tab := b.Open()
 				for i, task := range order {
-					tab.Screen(web.ScreenTasks)
+					tab.Screen(browser.ScreenTasks)
 					b.Post("choose", map[string]string{"task": task})
-					tab.Until(func(s web.Snapshot) bool { return s.Result != nil })
+					tab.Until(func(s browser.Snapshot) bool { return s.Result != nil })
 					if i == 0 {
 						b.Post("home", nil)
 					}
@@ -845,13 +845,13 @@ func TestE2E_Web_TheExitCodeIsTheLastRunsOutcome(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_HomeIsOnlyOfferedWhenHobnobHadNoTask(t *testing.T) {
+func TestE2E_Browser_HomeIsOnlyOfferedWhenHobnobHadNoTask(t *testing.T) {
 	// given a task named on the command line, when it ends, then Done offers
 	// no Home (why: a task-launched wizard ends at Done)
 	// Arrange
-	var done web.Snapshot
-	c := Case{Yml: pickerYml, Args: []string{"--web", "setup"}, Browser: func(b *Browser) {
-		done = b.Open().Screen(web.ScreenDone)
+	var done browser.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--browser", "setup"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -864,19 +864,19 @@ func TestE2E_Web_HomeIsOnlyOfferedWhenHobnobHadNoTask(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_PickerRefusesATaskItDidNotOffer(t *testing.T) {
+func TestE2E_Browser_PickerRefusesATaskItDidNotOffer(t *testing.T) {
 	// given the picker, when a _-prefixed task is chosen, then the request is
 	// refused and the picker still works (why: hidden tasks are not runnable
 	// from the page)
 	// Arrange
 	var status int
-	var after web.Snapshot
-	c := Case{Yml: pickerYml, Args: []string{"--web"}, Browser: func(b *Browser) {
+	var after browser.Snapshot
+	c := Case{Yml: pickerYml, Args: []string{"--browser"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		tab.Screen(web.ScreenTasks)
+		tab.Screen(browser.ScreenTasks)
 		status = b.Post("choose", map[string]string{"task": "_private"})
 		b.Post("choose", map[string]string{"task": "setup"})
-		after = tab.Screen(web.ScreenDone)
+		after = tab.Screen(browser.ScreenDone)
 		b.Interrupt()
 	}}
 
@@ -890,13 +890,13 @@ func TestE2E_Web_PickerRefusesATaskItDidNotOffer(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_DemoWithoutATaskOpensThePicker(t *testing.T) {
-	// given --demo beside --web and no task, when run, then the picker lists
-	// the demo's tasks (why: --demo --web works)
+func TestE2E_Browser_DemoWithoutATaskOpensThePicker(t *testing.T) {
+	// given --demo beside --browser and no task, when run, then the picker lists
+	// the demo's tasks (why: --demo --browser works)
 	// Arrange
-	var picker web.Snapshot
-	c := Case{Args: []string{"--demo", "--web"}, Discover: true, Browser: func(b *Browser) {
-		picker = b.Open().Screen(web.ScreenTasks)
+	var picker browser.Snapshot
+	c := Case{Args: []string{"--demo", "--browser"}, Discover: true, Browser: func(b *Browser) {
+		picker = b.Open().Screen(browser.ScreenTasks)
 		b.Interrupt()
 	}}
 
@@ -910,16 +910,24 @@ func TestE2E_Web_DemoWithoutATaskOpensThePicker(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_PortServesThePageOnThatPort(t *testing.T) {
-	// given --port with a free port, when run with --web, then the page is
-	// served on that port with a token (why: a fixed port can be
-	// forwarded, and the token still guards it)
+func TestE2E_Browser_PortServesThePageWithoutATokenAndOpensNoBrowser(t *testing.T) {
+	// given --port with a free port, when run with --browser, then the page
+	// is served on that port at an address with no token, the address is
+	// printed and no browser opens (why: a service runs it, and the person
+	// opens a bookmark of the address)
 	// Arrange
 	port := freePort(t)
 	var address string
-	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: echo hi\n", Args: []string{"--web", "--port", port, "t"}, Browser: func(b *Browser) {
+	var page int
+	var hosts map[string]int
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: echo hi\n", Args: []string{"--browser", "--port", port, "t"}, Browser: func(b *Browser) {
 		address = b.Address()
-		b.Open().Screen(web.ScreenDone)
+		page, _ = b.Get("/", "")
+		hosts = map[string]int{
+			"wrong host":   b.GetWith("/", map[string]string{"Host": "localhost:" + port}),
+			"wrong origin": b.GetWith("/", map[string]string{"Origin": "https://example.com"}),
+		}
+		b.Open().Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -927,13 +935,43 @@ func TestE2E_Web_PortServesThePageOnThatPort(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	if address != "127.0.0.1:"+port || !strings.HasPrefix(res.URL, "http://127.0.0.1:"+port+"/?token=") {
-		t.Errorf("served on %s at %q, want port %s", address, res.URL, port)
+	res.Out(t, "Browser mode: http://127.0.0.1:"+port+"/\n")
+	if res.URL != "" {
+		t.Errorf("opened %s in the browser", res.URL)
+	}
+	if address != "127.0.0.1:"+port || page != http.StatusOK {
+		t.Errorf("served on %s, page without a token got %d", address, page)
+	}
+	for name, status := range hosts {
+		if status != http.StatusForbidden {
+			t.Errorf("%s got %d, want 403", name, status)
+		}
 	}
 }
 
-func TestE2E_Web_PortRefusals(t *testing.T) {
-	// given --port without --web, with a value that isn't a port, or with a
+func TestE2E_Browser_PortWaitsForATabPastTheGrace(t *testing.T) {
+	// given --port and a run at a prompt with no page open, when the grace
+	// passes, then hobnob still waits and a page opening later answers it
+	// (why: a service waits until someone opens the bookmark)
+	// Arrange
+	defer browser.SetGrace(50 * time.Millisecond)()
+	c := Case{Yml: promptYml, Args: []string{"--browser", "--port", freePort(t), "t"}, Browser: func(b *Browser) {
+		time.Sleep(300 * time.Millisecond)
+		asked := b.Open().Screen(browser.ScreenPrompt)
+		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "Ada"})
+		b.Open().Screen(browser.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "hello=Ada")
+}
+
+func TestE2E_Browser_PortRefusals(t *testing.T) {
+	// given --port without --browser, with a value that isn't a port, or with a
 	// port already taken, when run, then it fails saying why and no page
 	// opens (why: a page on another port than asked for would be lost)
 	// Arrange
@@ -947,12 +985,12 @@ func TestE2E_Web_PortRefusals(t *testing.T) {
 		args []string
 		err  string
 	}{
-		"without web": {[]string{"--port", "8080", "t"}, "--port needs --web"},
-		"no value":    {[]string{"--web", "t", "--port"}, "--port requires an argument"},
-		"not a port":  {[]string{"--web", "--port", "http", "t"}, `--port takes a port number from 1 to 65535, not "http"`},
-		"zero":        {[]string{"--web", "--port", "0", "t"}, `from 1 to 65535, not "0"`},
-		"too high":    {[]string{"--web", "--port", "70000", "t"}, "from 1 to 65535"},
-		"taken":       {[]string{"--web", "--port", takenPort, "t"}, "can't serve the page on port " + takenPort},
+		"without browser": {[]string{"--port", "8080", "t"}, "--port needs --browser"},
+		"no value":        {[]string{"--browser", "t", "--port"}, "--port requires an argument"},
+		"not a port":      {[]string{"--browser", "--port", "http", "t"}, `--port takes a port number from 1 to 65535, not "http"`},
+		"zero":            {[]string{"--browser", "--port", "0", "t"}, `from 1 to 65535, not "0"`},
+		"too high":        {[]string{"--browser", "--port", "70000", "t"}, "from 1 to 65535"},
+		"taken":           {[]string{"--browser", "--port", takenPort, "t"}, "can't serve the page on port " + takenPort},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Act

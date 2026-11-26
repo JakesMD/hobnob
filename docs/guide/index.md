@@ -7,7 +7,7 @@ What a task is, how to run one, and how its commands run.
 - [Tasks](./tasks.md): what a task is, the kinds of step, helper tasks and naming.
 - [Running tasks](./running-tasks.md): running by name, the menu, passing variables and `--file`.
 - [Running commands](./commands.md): text and list commands, other directories, hiding output and background jobs.
-- [Browser mode](./browser-mode.md): run a task behind a web page with `--web`.
+- [Browser mode](./browser-mode.md): run a task behind a local page with `--browser`.
 
 ## Values
 

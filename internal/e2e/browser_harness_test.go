@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -14,14 +15,14 @@ import (
 	"testing"
 	"time"
 
-	"hobnob/internal/web"
+	"hobnob/internal/browser"
 )
 
 // browserTimeout bounds every wait of a played browser, so a snapshot that
 // never comes fails the test instead of hanging it.
 const browserTimeout = 15 * time.Second
 
-// Browser plays the browser a --web run opened: it subscribes to the page's
+// Browser plays the browser a --browser run opened: it subscribes to the page's
 // SSE stream, reads its snapshots and POSTs its actions. A failed check ends
 // the goroutine it runs in, which cancels the run.
 type Browser struct {
@@ -41,6 +42,34 @@ func newBrowser(t *testing.T, opened, dir string) *Browser {
 		runtime.Goexit()
 	}
 	return &Browser{t: t, base: parsed.Scheme + "://" + parsed.Host, token: parsed.Query().Get("token"), dir: dir}
+}
+
+// portArg is the value of --port in args, empty without one.
+func portArg(args []string) string {
+	for i, arg := range args {
+		if arg == "--port" && i+1 < len(args) {
+			return args[i+1]
+		}
+	}
+	return ""
+}
+
+// awaitPort reports whether port on 127.0.0.1 accepted a connection before
+// ran closed or browserTimeout passed.
+func awaitPort(port string, ran <-chan struct{}) bool {
+	deadline := time.Now().Add(browserTimeout)
+	for time.Now().Before(deadline) {
+		if conn, err := net.Dial("tcp", "127.0.0.1:"+port); err == nil {
+			_ = conn.Close()
+			return true
+		}
+		select {
+		case <-ran:
+			return false
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return false
 }
 
 // Fail ends the played browser with a failed test.
@@ -199,15 +228,15 @@ func (t *Tab) Close() {
 }
 
 // Until reads snapshots until one satisfies done, and returns it.
-func (t *Tab) Until(done func(web.Snapshot) bool) web.Snapshot {
+func (t *Tab) Until(done func(browser.Snapshot) bool) browser.Snapshot {
 	t.b.t.Helper()
-	var last web.Snapshot
+	var last browser.Snapshot
 	for t.events.Scan() {
 		data, ok := strings.CutPrefix(t.events.Text(), "data: ")
 		if !ok {
 			continue
 		}
-		var snap web.Snapshot
+		var snap browser.Snapshot
 		if err := json.Unmarshal([]byte(data), &snap); err != nil {
 			t.b.fail("bad snapshot %q: %v", data, err)
 		}
@@ -220,9 +249,9 @@ func (t *Tab) Until(done func(web.Snapshot) bool) web.Snapshot {
 }
 
 // Screen reads snapshots until one shows screen.
-func (t *Tab) Screen(screen string) web.Snapshot {
+func (t *Tab) Screen(screen string) browser.Snapshot {
 	t.b.t.Helper()
-	return t.Until(func(s web.Snapshot) bool { return s.Screen == screen })
+	return t.Until(func(s browser.Snapshot) bool { return s.Screen == screen })
 }
 
 // Closed reports whether the page closes the stream after what was already

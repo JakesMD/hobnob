@@ -1,16 +1,16 @@
 # Browser mode
 
-`--web` runs a task behind a local web page and opens it in your default
+`--browser` runs a task behind a local page and opens it in your default
 browser. The page shows what the task is doing, asks its prompts, and ends on a
 plain success or failure screen, so someone who never opens a terminal can still
 run your setup.
 
 ```bash
-hobnob --web setup
+hobnob --browser setup
 ```
 
 ```
-$ hobnob --web setup
+$ hobnob --browser setup
 hobnob » Browser mode: http://127.0.0.1:52814/?token=3f9c…
 setup $ npm ci
 setup │ added 214 packages
@@ -22,18 +22,29 @@ The terminal shows the usual run log, plus the page's address.
 
 ## Choosing the port
 
-The page gets a random free port each run. `--port` fixes it, so you can
-forward that port from another machine over SSH and open the page there:
+The page gets a random free port and a fresh token each run, so its address
+changes every time. `--port` fixes the port and drops the token, so the
+address stays the same. You can bookmark it, run hobnob as a service, or
+forward the port from another machine over SSH:
 
 ```bash
-hobnob --web --port 8080 setup
+hobnob --browser --port 8080
 ```
 
-Forward it to the same port number, and open the address hobnob prints: the
-page answers only to `127.0.0.1` on that port. The address still carries a
-fresh token each run, so a bookmark of an old
-address won't open. A fixed port is easier to guess than a random one, but
-the token still guards it.
+```
+$ hobnob --browser --port 8080
+hobnob » Browser mode: http://127.0.0.1:8080/
+```
+
+With `--port`, hobnob doesn't open the browser, and it never gives up on a
+closed tab: it waits until someone opens the address, or until CTRL+C. A
+named task still starts at once, and hobnob exits only after a page has shown
+its result, so for a service leave the task out and let the picker offer
+every task. Forward the port to the same port number, since the page answers
+only to `127.0.0.1` on that port.
+
+Without the token, any program or person on your machine can open the page and
+answer its prompts, so use `--port` only where that's fine.
 
 ## What the page shows
 
@@ -50,16 +61,16 @@ it printed nothing.
 
 ## Offering several tasks
 
-`--web` with no task opens a picker listing every task `hobnob --list` shows,
+`--browser` with no task opens a picker listing every task `hobnob --list` shows,
 titled by its `info:`. Choosing one runs it, and the end screen offers **Home**
 to pick another. A task named on the command line ends with no Home.
 
 ```bash
-hobnob --web
+hobnob --browser
 ```
 
 The picker opens even when the taskfile has a `default` task. To run `default`
-in browser mode, name it: `hobnob default --web`.
+in browser mode, name it: `hobnob default --browser`.
 
 ## Prompts
 
@@ -90,20 +101,21 @@ tasks:
   where it already has the rights it needs.
 - **Cancel on the page is CTRL+C.** The first press asks the running step to
   stop, the second kills it. A cancelled run exits with 1.
-- **hobnob waits 60 seconds for a closed tab.** The wait only counts while
-  hobnob is waiting on the person: at a prompt, the picker or an end screen.
+- **On a random port, hobnob waits 60 seconds for a closed tab.** The wait
+  only counts while hobnob is waiting on the person: at a prompt, the picker or an end screen.
   When it runs out at a prompt, the run is cancelled as by CTRL+C; anywhere
   else hobnob just exits.
 - **The exit code is the last run's**: 0 on success, 1 on failure, 0 when no
   run happened. With a task, hobnob exits once the run ends; without one, it
   stays for Home until CTRL+C or the wait runs out.
-- **`--web` combines with** `--file`, `--demo`, `KEY=VALUE`, `--port` and
+- **`--browser` combines with** `--file`, `--demo`, `KEY=VALUE`, `--port` and
   `--quiet` (which changes only the terminal). It is an error with `--no-input`,
   `--list`, `--select` and `--help`, and not yet supported on Windows.
-- **`--port` needs `--web`** and a number from 1 to 65535. A port already in
+- **`--port` needs `--browser`** and a number from 1 to 65535. A port already in
   use is an error; hobnob doesn't fall back to another.
-- **The page is local and guarded.** It is served on `127.0.0.1` only, and its
-  address carries a random token. hobnob refuses a request without the token,
-  or whose `Host` or `Origin` isn't that address and port, so another web
-  page can't reach it. Anyone who can read your
-  terminal can open it, so treat the address like a password while hobnob runs.
+- **The page is local and guarded.** It is served on `127.0.0.1` only, and
+  hobnob refuses a request whose `Host` or `Origin` isn't that address and
+  port, so another web page can't reach it. On a random port the address also
+  carries a random token, and hobnob refuses a request without it. Anyone who
+  can read your terminal can open that address, so treat it like a password
+  while hobnob runs.

@@ -7,15 +7,15 @@ import (
 	"os/exec"
 	"runtime"
 
+	"hobnob/internal/browser"
 	"hobnob/internal/config"
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
-	"hobnob/internal/web"
 )
 
-// browserPrompts is what a --web run asks its answers through.
-func browserPrompts(server *web.Server) runner.Prompts {
+// browserPrompts is what a --browser run asks its answers through.
+func browserPrompts(server *browser.Server) runner.Prompts {
 	return runner.Prompts{
 		Text:   server.PromptText,
 		Select: server.PromptSelect,
@@ -33,10 +33,10 @@ func openBrowser(url string) error {
 	return exec.Command(opener, url).Start()
 }
 
-// execWebTask runs taskName behind the web page: the run log still prints to
+// execBrowserTask runs taskName behind the page: the run log still prints to
 // the terminal, and the page observes the same run. It returns once the page
 // has been sent how the run ended.
-func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
+func (a *App) execBrowserTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
 	if err := runner.CheckTask(taskName, cfg); err != nil {
 		return failSilently(err)
 	}
@@ -51,19 +51,19 @@ func (a *App) execWebTask(ctx context.Context, taskName string, scope *scope.Sco
 	return err
 }
 
-// execWebHome is browser mode without a task: the page offers the visible
+// execBrowserHome is browser mode without a task: the page offers the visible
 // tasks, and each run ends on a screen with Home. It returns the last run's
 // outcome, nil when nothing ran.
-func (a *App) execWebHome(ctx context.Context, tasks []tui.TaskItem, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
+func (a *App) execBrowserHome(ctx context.Context, tasks []tui.TaskItem, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
 	server, err := a.openPage()
 	if err != nil {
 		return err
 	}
 	defer server.Close()
 
-	offered := make([]web.Task, len(tasks))
+	offered := make([]browser.Task, len(tasks))
 	for i, task := range tasks {
-		offered[i] = web.Task{Name: task.Name, Info: task.Info}
+		offered[i] = browser.Task{Name: task.Name, Info: task.Info}
 	}
 	var last error
 	for {
@@ -78,14 +78,18 @@ func (a *App) execWebHome(ctx context.Context, tasks []tui.TaskItem, scope *scop
 	}
 }
 
-// openPage serves the page and opens it in the browser.
-func (a *App) openPage() (*web.Server, error) {
-	server, err := web.Listen(a.port)
+// openPage serves the page and opens it in the browser, unless --port chose
+// the port: then the page is left for a bookmark or a forwarded port.
+func (a *App) openPage() (*browser.Server, error) {
+	server, err := browser.Listen(a.port)
 	if err != nil {
 		return nil, err
 	}
 	go server.Serve()
 	tui.HobnobNote(os.Stdout, "Browser mode: "+server.URL())
+	if a.port != 0 {
+		return server, nil
+	}
 	if err := a.OpenBrowser(server.URL()); err != nil {
 		tui.HobnobWarning(os.Stderr, "couldn't open the browser: "+err.Error())
 	}
@@ -94,7 +98,7 @@ func (a *App) openPage() (*web.Server, error) {
 
 // runOnPage runs one task with a fresh run log that the page listens to, and
 // tells the page how it ended.
-func (a *App) runOnPage(ctx context.Context, server *web.Server, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
+func (a *App) runOnPage(ctx context.Context, server *browser.Server, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
 	runCtx, stop := context.WithCancel(ctx)
 	defer stop()
 	server.SetInterrupt(stop, func() { runner.KillRunningStep() })

@@ -8,13 +8,13 @@
 // renumbering anything here. The trivia slot must stay in step with
 // internal/app/demo.yml.
 //
-// The Browser view runs the same scripts behind hobnob's own --web page,
-// internal/web/page.html, in a frame. A shim stands in for its events stream
+// The Browser view runs the same scripts behind hobnob's own --browser page,
+// internal/browser/page.html, in a frame. A shim stands in for its events stream
 // and its button actions: the run's state goes in as the snapshots of
-// internal/web/snapshot.go, and the page's answers come back as the actions
-// of internal/web/server.go.
+// internal/browser/snapshot.go, and the page's answers come back as the actions
+// of internal/browser/server.go.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import PAGE_HTML from '../../../../internal/web/page.html?raw'
+import PAGE_HTML from '../../../../internal/browser/page.html?raw'
 
 type Seg = { t: string; c?: string; click?: () => void }
 type Line = Seg[]
@@ -953,7 +953,7 @@ const SHIM = `<script>
 <` + `/script>`
 const PAGE = PAGE_HTML.replace('@media (prefers-color-scheme: light)', '@media not all').replace('<script>', SHIM + '<script>')
 
-const webCommand = computed(() => demo.value.command.replace(/^hobnob /, 'hobnob --web '))
+const browserCommand = computed(() => demo.value.command.replace(/^hobnob /, 'hobnob --browser '))
 const ADDRESS = '127.0.0.1:52814/?token=3f9c…'
 
 // A folder the picker lists, after ListDir in internal/tui/prompt_path.go.
@@ -967,7 +967,7 @@ function listDir(dir: string, match: (name: string) => boolean) {
 }
 
 // The columns from the home folder (or / when open isn't under it) down to
-// open, after view in internal/web/picker.go.
+// open, after view in internal/browser/picker.go.
 function pickerView(open: string, match: (name: string) => boolean) {
   const root = open === HOME || open.startsWith(HOME + '/') ? HOME : '/'
   const chain = [open]
@@ -982,7 +982,7 @@ function pickerView(open: string, match: (name: string) => boolean) {
   return { type: 'file', open, columns, selected: [] }
 }
 
-function webPrompt(p: Prompt) {
+function browserPrompt(p: Prompt) {
   const base = { id: promptId, ...(refusal.value ? { refusal: refusal.value } : {}) }
   if (p.kind === 'select') return { ...base, kind: 'menu', varName: p.varName, info: p.info, options: p.items, multi: p.multi }
   if (p.kind === 'text') return { ...base, kind: 'text', varName: p.varName, info: p.info, secret: p.secret }
@@ -1000,7 +1000,7 @@ const snapshot = computed(() => {
   const base = { task: { name: task, info: INFO[task] ?? '' }, rail: { answers: [], setup: [] } }
   const o = outcome.value
   if (o) return { ...base, screen: o.outcome === 'done' ? 'done' : 'failed', result: { ...o, log: runLog(), home: false } }
-  if (prompt.value) return { ...base, screen: 'prompt', prompt: webPrompt(prompt.value) }
+  if (prompt.value) return { ...base, screen: 'prompt', prompt: browserPrompt(prompt.value) }
   return { ...base, screen: 'progress', progress: { label: label(running.value[running.value.length - 1] ?? task), lastLine: lastLine.value, elapsedMs: 0, cancelling: false } }
 })
 let snapTask = ''
@@ -1015,7 +1015,7 @@ function sendSnapshot() {
 }
 watch(() => JSON.stringify(snapshot.value), sendSnapshot)
 
-// An answer goes through the rules of internal/web/prompt.go: a refusal
+// An answer goes through the rules of internal/browser/prompt.go: a refusal
 // keeps the prompt open with the reason under it.
 function answer(value: unknown) {
   const p = prompt.value
@@ -1101,12 +1101,12 @@ async function start() {
   fitColumns()
   state.value = 'running'
   const id = runId
-  const web = view.value === 'browser'
-  if (web) frameKey.value++
+  const inBrowser = view.value === 'browser'
+  if (inBrowser) frameKey.value++
   let ended: Outcome['outcome'] = 'done'
   try {
-    const command = web ? webCommand.value : demo.value.command
-    if (!web) {
+    const command = inBrowser ? browserCommand.value : demo.value.command
+    if (!inBrowser) {
       for (const ch of command) {
         typed.value += ch
         await sleep(28)
@@ -1115,7 +1115,7 @@ async function start() {
     }
     print({ t: '$ ', c: 'prompt' }, { t: command })
     typed.value = ''
-    if (web) hobnobNote(`Browser mode: http://${ADDRESS}`)
+    if (inBrowser) hobnobNote(`Browser mode: http://${ADDRESS}`)
     await RUNS[active.value]()
   } catch (err) {
     if (err instanceof Cancelled || id !== runId) return
@@ -1172,7 +1172,7 @@ async function start() {
           </div>
           <iframe ref="frame" :key="frameKey" class="page" :srcdoc="PAGE" title="hobnob's browser page" allow="clipboard-write" />
           <div v-if="state === 'idle'" class="cover">
-            <button class="run" @click="start">▶ Run {{ webCommand }}</button>
+            <button class="run" @click="start">▶ Run {{ browserCommand }}</button>
           </div>
         </div>
         <div v-show="view === 'terminal'" ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">

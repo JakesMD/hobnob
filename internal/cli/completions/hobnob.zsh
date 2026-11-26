@@ -14,7 +14,7 @@ _hobnob() {
   fi
 
   if [[ "$cur" == --* ]]; then
-    compadd -- --file --demo --list --select --help --no-input --quiet -q --web --port --version --upgrade
+    compadd -- --file --demo --list --select --help --no-input --quiet -q --browser --port --version --upgrade
     return
   fi
 

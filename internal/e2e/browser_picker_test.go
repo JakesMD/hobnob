@@ -5,15 +5,15 @@ import (
 	"path/filepath"
 	"testing"
 
-	"hobnob/internal/web"
+	"hobnob/internal/browser"
 )
 
 // lastColumn is the open folder's listing, the picker's final column.
-func lastColumn(p *web.Prompt) web.Column {
+func lastColumn(p *browser.Prompt) browser.Column {
 	return p.Picker.Columns[len(p.Picker.Columns)-1]
 }
 
-func entryNames(column web.Column) []string {
+func entryNames(column browser.Column) []string {
 	names := make([]string, len(column.Entries))
 	for i, entry := range column.Entries {
 		names[i] = entry.Name
@@ -33,7 +33,7 @@ func equalStrings(got, want []string) bool {
 	return true
 }
 
-func TestE2E_Web_PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes(t *testing.T) {
+func TestE2E_Browser_PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes(t *testing.T) {
 	// given a file get: whose default: is a folder and whose match: allows
 	// only .txt and excludes secret.txt, when the page opens it, then the
 	// snapshot opens that folder and lists the folders and the allowed files
@@ -52,12 +52,12 @@ func TestE2E_Web_PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes(t *test
 		      - run: echo conf={{.CONF}}
 	`
 	files := Files{"hobnob.yml": yml, "sub/f.txt": "x", "sub/g.md": "x", "sub/secret.txt": "x", "sub/inner/h.txt": "x"}
-	var asked web.Snapshot
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked browser.Snapshot
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir, "sub", "f.txt")})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -66,7 +66,7 @@ func TestE2E_Web_PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes(t *test
 	// Assert
 	res.OK(t)
 	p := asked.Prompt
-	if p.Kind != web.KindPath || p.Picker.Type != "file" || p.Picker.Open != filepath.Join(res.Dir, "sub") {
+	if p.Kind != browser.KindPath || p.Picker.Type != "file" || p.Picker.Open != filepath.Join(res.Dir, "sub") {
 		t.Errorf("kind = %s, type = %s, open = %s", p.Kind, p.Picker.Type, p.Picker.Open)
 	}
 	if got := entryNames(lastColumn(p)); !equalStrings(got, []string{"inner", "f.txt"}) {
@@ -75,7 +75,7 @@ func TestE2E_Web_PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes(t *test
 	res.Out(t, "conf="+filepath.Join(res.Dir, "sub", "f.txt"))
 }
 
-func TestE2E_Web_OpeningAFolderByPostChangesTheListing(t *testing.T) {
+func TestE2E_Browser_OpeningAFolderByPostChangesTheListing(t *testing.T) {
 	// given a file picker open at the working folder, when the page opens a
 	// subfolder, then the next snapshot has a column more, listing that
 	// folder, and a path that isn't a folder is refused (why: the page
@@ -91,21 +91,21 @@ func TestE2E_Web_OpeningAFolderByPostChangesTheListing(t *testing.T) {
 		      - run: echo conf={{.CONF}}
 	`
 	files := Files{"hobnob.yml": yml, "sub/f.txt": "x", "sub/deep/g.txt": "x"}
-	var before, after web.Snapshot
+	var before, after browser.Snapshot
 	var refused int
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		before = tab.Screen(web.ScreenPrompt)
+		before = tab.Screen(browser.ScreenPrompt)
 		id := before.Prompt.ID
 		refused = b.Post("open", map[string]any{"id": id, "path": filepath.Join(b.dir, "sub", "f.txt")})
 		if status := b.Post("open", map[string]any{"id": id, "path": filepath.Join(b.dir, "sub")}); status != http.StatusNoContent {
 			b.Fail("open status = %d", status)
 		}
-		after = tab.Until(func(s web.Snapshot) bool {
+		after = tab.Until(func(s browser.Snapshot) bool {
 			return s.Prompt != nil && s.Prompt.Picker.Open == filepath.Join(b.dir, "sub")
 		})
 		b.Post("answer", map[string]any{"id": id, "value": filepath.Join(b.dir, "sub", "f.txt")})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -124,7 +124,7 @@ func TestE2E_Web_OpeningAFolderByPostChangesTheListing(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce(t *testing.T) {
+func TestE2E_Browser_FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce(t *testing.T) {
 	// given a dir get: with a folder default:, when the page answers with
 	// the folder the snapshot started with, then the run gets it (why: a
 	// folder picker's answer starts as its default)
@@ -140,15 +140,15 @@ func TestE2E_Web_FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce(t *tes
 		      - run: echo out={{.OUT}}
 	`
 	files := Files{"hobnob.yml": yml, "build/a.txt": "x", "other/b.txt": "x"}
-	var asked web.Snapshot
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked browser.Snapshot
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		if len(asked.Prompt.Picker.Selected) != 1 {
 			b.Fail("selected = %v", asked.Prompt.Picker.Selected)
 		}
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": asked.Prompt.Picker.Selected[0]})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -163,7 +163,7 @@ func TestE2E_Web_FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce(t *tes
 	res.Out(t, "out="+want)
 }
 
-func TestE2E_Web_MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes(t *testing.T) {
+func TestE2E_Browser_MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes(t *testing.T) {
 	// given a multi: file get: with match:, when the page answers with a file
 	// match: excludes and then with two good files, then the first is refused
 	// with a reason and the second becomes the list (why: the same rules as
@@ -183,14 +183,14 @@ func TestE2E_Web_MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes(t *testing.
 	`
 	files := Files{"hobnob.yml": yml, "sub/a.txt": "x", "sub/b.txt": "x", "sub/c.md": "x"}
 	var refusal string
-	var done web.Snapshot
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var done browser.Snapshot
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{filepath.Join(b.dir, "sub", "c.md")}})
-		refusal = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
+		refusal = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{filepath.Join(b.dir, "sub", "a.txt"), filepath.Join(b.dir, "sub", "b.txt")}})
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -207,7 +207,7 @@ func TestE2E_Web_MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes(t *testing.
 	}
 }
 
-func TestE2E_Web_OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer(t *testing.T) {
+func TestE2E_Browser_OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer(t *testing.T) {
 	// given an optional file get: and a required one, when the page skips the
 	// first and answers the second with nothing, then the run goes on without
 	// the first and the second is refused (why: required and optional work as
@@ -227,15 +227,15 @@ func TestE2E_Web_OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer(t
 	`
 	files := Files{"hobnob.yml": yml, "f.txt": "x"}
 	var refusal string
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		first := tab.Screen(web.ScreenPrompt)
+		first := tab.Screen(browser.ScreenPrompt)
 		b.Post("skip", map[string]any{"id": first.Prompt.ID})
-		second := tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "B" })
+		second := tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "B" })
 		b.Post("answer", map[string]any{"id": second.Prompt.ID, "value": ""})
-		refusal = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
+		refusal = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
 		b.Post("answer", map[string]any{"id": second.Prompt.ID, "value": filepath.Join(b.dir, "f.txt")})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -249,7 +249,7 @@ func TestE2E_Web_OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer(t
 	}
 }
 
-func TestE2E_Web_JunkNamedPathPostedToAFilePickerIsRefused(t *testing.T) {
+func TestE2E_Browser_JunkNamedPathPostedToAFilePickerIsRefused(t *testing.T) {
 	// given a file get:, when the page answers with a junk-named file, then
 	// it is refused and the picker stays open (why: the same rules as the
 	// terminal, which never lists or picks junk)
@@ -265,13 +265,13 @@ func TestE2E_Web_JunkNamedPathPostedToAFilePickerIsRefused(t *testing.T) {
 	`
 	files := Files{"hobnob.yml": yml, ".DS_Store": "x", "f.txt": "x"}
 	var refusal string
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir, ".DS_Store")})
-		refusal = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
+		refusal = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" }).Prompt.Refusal
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir, "f.txt")})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -285,7 +285,7 @@ func TestE2E_Web_JunkNamedPathPostedToAFilePickerIsRefused(t *testing.T) {
 	res.Out(t, "conf="+filepath.Join(res.Dir, "f.txt"))
 }
 
-func TestE2E_Web_FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected(t *testing.T) {
+func TestE2E_Browser_FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected(t *testing.T) {
 	// given a dir get: whose default: folder is missing, when the picker
 	// opens, then it shows the nearest existing folder with nothing selected
 	// (why: Continue must not answer an ancestor the person never chose)
@@ -301,12 +301,12 @@ func TestE2E_Web_FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected(t
 		      - run: echo out={{.OUT}}
 	`
 	files := Files{"hobnob.yml": yml}
-	var asked web.Snapshot
-	c := Case{Files: files, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked browser.Snapshot
+	c := Case{Files: files, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": filepath.Join(b.dir)})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act

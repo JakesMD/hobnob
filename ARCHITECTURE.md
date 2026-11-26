@@ -57,15 +57,15 @@ Every change must preserve these. Each is explained in the section named.
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
   path, say) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
-  or the page's prompts (`browserPrompts`) under `--web`.
+  or the page's prompts (`browserPrompts`) under `--browser`.
   Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path, say)
   (restore func())`, never by reassigning a package variable.
-- **Web stays a front end.** `internal/web` implements `tui.RunListener` and
+- **The browser stays a front end.** `internal/browser` implements `tui.RunListener` and
   imports `value`, and `tui` only for path prompts (`PathPrompt` and its
   shared rules), never `eval`,
   `runner` or `config`;
   it observes a run through `RunLog` and never changes
-  what the runner does. ([web](#internalweb-the-browser-front-end))
+  what the runner does. ([browser](#internalbrowser-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
   `keys`, `join` and accessors error on a String, naming `| json`, rather
@@ -84,7 +84,7 @@ internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
 internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
-internal/web/     the --web front end: local page, SSE snapshots, the run listener's state
+internal/browser/ the --browser front end: local page, SSE snapshots, the run listener's state
 internal/config/  YAML into typed structs, the step-level load-time check
 internal/literal/ references, literals and argv: parsed at load, evaluated at run time
 internal/eval/    template rendering, accessor rewriting, shell evaluation
@@ -106,7 +106,7 @@ flowchart TD
     app --> scope
     app --> config
     app --> tui
-    app --> web
+    app --> browser
     cli --> scope
     cli --> config
     cli --> tui
@@ -137,7 +137,7 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `web` imports `value`, and `tui` only for path prompts (`PathPrompt`, its
+- `browser` imports `value`, and `tui` only for path prompts (`PathPrompt`, its
   `Included`/`Excluded` predicates, and the picker rules `IsJunk`,
   `ResolvePath`, `ListDir`, `NearestFolder` and `PathPrompt.Allows` that
   the terminal and the page share); it implements `tui.RunListener`
@@ -743,21 +743,23 @@ line; a prompt model's `View` supplies only its body), `list.go` (what menus, th
 log line is built from, and `SecretMask`). The runner calls `PromptText`,
 `PromptSelect`, `PromptPath` and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
-### `internal/web`: the browser front end
+### `internal/browser`: the browser front end
 
-`hobnob --web <task>` (`app/web.go`, `execWebTask`) runs the task as usual
-and has `web.Server` watch it. `hobnob --web` with no task (`execWebHome`,
+`hobnob --browser <task>` (`app/browser.go`, `execBrowserTask`) runs the task as usual
+and has `browser.Server` watch it. `hobnob --browser` with no task (`execBrowserHome`,
 reached from `selectAndRun`, so a `default` task never short-circuits it) shows
 the task picker: `Server.PickTask` clears the last run's state and blocks until
 the `choose` action names a task the picker offered; `runOnPage` runs it with a
 fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
 `home` action (only accepted on a finished run when no task was named) or
 until ctx ends or the grace timer gives up. The exit code is
-the last run's. `web.Listen` binds `--port`, or a random port, on 127.0.0.1
+the last run's. `browser.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
-the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says,
-asked through the page's prompts (`browserPrompts` in `app/web.go`), even in tests.
+the URL beside the run log. With `--port`, `Listen` binds that port as a
+`fixed` server: no token, no grace timer, and `app` only prints the URL.
+`--browser` runs with prompts on whatever `IsTerminal` says,
+asked through the page's prompts (`browserPrompts` in `app/browser.go`), even in tests.
 
 **The run listener.** `tui.RunListener` is how a front end observes a run. A
 `RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
@@ -772,7 +774,7 @@ ends), each variable line, and the run ending (`RunSucceeded`,
 `RunFailed`, `RunCancelled`, called by `app`; `RunFailed` carries the first
 failed step's task and reason, except that a soft-failed step is forgiven). Terminal output is unchanged.
 
-**State and snapshots.** `web.state` turns those events into a `Snapshot`
+**State and snapshots.** `browser.state` turns those events into a `Snapshot`
 (`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
 (answers and setup entries), progress (the innermost running task's label, the last line, empty for a held step) and the result (outcome, label,
 last line, duration and the masked log). The page keeps the masked log it receives with the result, which is what Copy details copies; the clock runs on the page from `progress.elapsedMs`. Every SSE event on `GET /events` is
@@ -780,7 +782,7 @@ a whole snapshot; a stream that is behind gets only the latest. To add a
 screen or field, extend `Snapshot`, set it from `state`, and draw it in
 `page.html`.
 
-**Prompts.** `web.state.ask` (`prompt.go`) shows a `Prompt` (kind, info,
+**Prompts.** `browser.state.ask` (`prompt.go`) shows a `Prompt` (kind, info,
 default, `secret:`, `optional:`, the refusal of the last answer) as the
 `prompt` screen and blocks until it is answered, skipped or its context ends.
 Each asking has an ID; `POST /actions/answer` and `POST /actions/skip` carry
@@ -818,7 +820,7 @@ outlive hobnob. A terminal CTRL+C ends that wait at once, as it ends
 The newest wins: a new connection closes the previous one's `replaced`
 channel, whose handler sends an `another-tab` snapshot and returns. While no
 tab is open and hobnob waits on the person (task picker, an open prompt, or
-an end screen: Done, Failed or Cancelled), `Server.watchGrace` keeps a `grace` timer (60s; `web.SetGrace`
+an end screen: Done, Failed or Cancelled), `Server.watchGrace` keeps a `grace` timer (60s; `browser.SetGrace`
 shortens it) running; it re-evaluates on every state change and tab
 connect or disconnect, and never runs while steps run. When it fires,
 `giveUp` calls `Cancel` if a prompt is open, then closes `abandoned`, which
@@ -853,7 +855,7 @@ never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 
 `Run`, in order:
 
-1. Extract `--file <path>`, `--demo` and `--web`; `--file` with `--demo` is an error, and `--web` is checked by `checkWebFlag`.
+1. Extract `--file <path>`, `--demo` and `--browser`; `--file` with `--demo` is an error, and `--browser` is checked by `checkBrowserFlag`.
 2. Answer `--version`, `--upgrade` and `completion <shell>` before looking for
    a taskfile, so they work anywhere. Reject a `_`-prefixed task name.
 3. Pick a source: the embedded demo (`demo.go`, `//go:embed demo.yml`, parsed
@@ -921,4 +923,4 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
 Production code exposes exactly seven test seams: `runner.SetPrompts` (text, select, path and say prompts together),
-`runner.SetLeftoverGrace`, `web.SetGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.
+`runner.SetLeftoverGrace`, `browser.SetGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.

@@ -142,15 +142,15 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 	return noPrompts, cliVars, nil
 }
 
-// checkWebFlag rejects --web where the page has nothing to do: on Windows,
+// checkBrowserFlag rejects --browser where the page has nothing to do: on Windows,
 // and beside --no-input, --list, --select and --help.
-func checkWebFlag(goos string, args []string) error {
+func checkBrowserFlag(goos string, args []string) error {
 	if goos == "windows" {
-		return fmt.Errorf("--web is not yet supported on Windows")
+		return fmt.Errorf("--browser is not yet supported on Windows")
 	}
 	for _, arg := range args {
 		if arg == "--no-input" || isListingFlag(arg) {
-			return fmt.Errorf("--web can't be combined with %s", arg)
+			return fmt.Errorf("--browser can't be combined with %s", arg)
 		}
 	}
 	return nil

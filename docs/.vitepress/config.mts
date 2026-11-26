@@ -13,7 +13,7 @@ export default defineConfig({
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   srcExclude: ['adr/**', 'agents/**'],
 
-  // The homepage demo loads hobnob's --web page from internal/web.
+  // The homepage demo loads hobnob's --browser page from internal/browser.
   vite: { server: { fs: { allow: ['..'] } } },
 
   rewrites: {

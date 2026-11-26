@@ -348,16 +348,16 @@ func TestExtractFileFlag(t *testing.T) {
 	}
 }
 
-func TestWebFlagFailsOnWindows(t *testing.T) {
-	// given --web with a task, when checked on Windows, then it fails saying
+func TestBrowserFlagFailsOnWindows(t *testing.T) {
+	// given --browser with a task, when checked on Windows, then it fails saying
 	// it is not yet supported there, and elsewhere it passes (why: browser
 	// mode has no Windows support yet)
 	// Arrange
 	args := []string{"deploy"}
 
 	// Act
-	windows := checkWebFlag("windows", args)
-	linux := checkWebFlag("linux", args)
+	windows := checkBrowserFlag("windows", args)
+	linux := checkBrowserFlag("linux", args)
 
 	// Assert
 	if windows == nil || !strings.Contains(windows.Error(), "not yet supported on Windows") {

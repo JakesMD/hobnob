@@ -175,76 +175,80 @@
 // 151. drop the empty-answer refusal on enter in tui.textModel.Update -> tui/prompt_text_test.go (Update_Answers, required prompt on an empty field)
 // 152. drop the empty-picks refusal in tui.selectModel.confirm -> tui/prompt_select_test.go (MultiEnter_NoSelections)
 //
-// 153. drop the token compare in web.Server.guard                       -> web_test.go (RequestsNeedTheToken)
-// 154. bind web.Listen to all interfaces instead of 127.0.0.1           -> web_test.go (TaskWithoutPromptsEndsOnDone)
-// 155. show a held step's last line in web.state.snapshot (drop the held check) -> web_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 156. pass an identity mask instead of scope.Mask to tui.RunLog.Tap in runner.execRun -> web_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 157. report no output lines to the listener when the log is quiet, in tui.RunLog.Tap -> web_test.go (QuietChangesOnlyTheTerminal)
-// 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
-// 159. never mark a task failed in tui.RunLog.TaskFailed                -> web_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
-// 160. label a task by its name even when it has an info: in web.label  -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
-// 161. drop the server.AwaitDelivery call from app.execWebTask         -> web_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
-// 162. accept --web beside --no-input in app.checkWebFlag               -> web_test.go (FlagsThatCannotCombine)
-// 163. call app.checkWebFlag before --quiet is stripped, in app.run       -> web_test.go (FlagsThatCannotCombine, quiet cases)
-// 164. drop the runner.CheckTask call from app.execWebTask               -> web_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
-// 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> web_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
-// 166. drop the Flush calls after the copiers finish in runner.execRun    -> web_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
-// 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> web_test.go (LastLineHasNoColourCodes)
-// 168. leave elapsed time out of web.state.snapshot -> web_test.go (ProgressSnapshotsCarryElapsedTime)
-// 169. never mark a rail entry done in web.state.TaskLeft -> web_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
-// 170. drop the r.Host check in web.Server.guard                         -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
-// 171. drop the Origin check in web.Server.guard                          -> web_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
-// 172. accept --web on Windows in app.checkWebFlag                        -> internal/app/args_test.go (WebFlagFailsOnWindows)
-// 173. skip the validate call in web.state.PromptText                    -> web_prompt_test.go (RefusedAnswerKeepsThePromptWithTheReason)
-// 174. let web.state.skip skip a required prompt                         -> web_prompt_test.go (SkipContinuesAnOptionalPromptWithoutAnAnswer)
-// 175. send a secret prompt's default to the page in web.state.PromptText -> web_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
-// 176. put a secret answer on the rail unmasked in web.state.PromptText   -> web_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
-// 177. drop the prompt id check in web.state.openPrompt                   -> web_prompt_test.go (AnswerToAPromptThatIsNotOpenIsRefused)
-// 178. pass runner.TerminalPrompts() instead of browserPrompts in app.execWebTask -> web_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
-// 179. drop the stop call for the first press in web.Server.Cancel -> web_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
-// 180. drop the kill call for a later press in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
-// 181. never set cancelling in web.Server.Cancel -> web_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
-// 182. run a default task in app.run when --web names no task          -> web_test.go (WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault)
-// 183. keep the last run's setup entries in web.state.startPick           -> web_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
-// 184. keep the last run's log in web.state.startPick                     -> web_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
-// 185. offer Home on every finished run in web.state.snapshot             -> web_test.go (HomeIsOnlyOfferedWhenHobnobHadNoTask)
-// 186. accept any task name in web.state.choose                           -> web_test.go (PickerRefusesATaskItDidNotOffer)
-// 187. drop the isOpen re-check once web.state.answer holds the prompt's busy lock -> web_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
-// 188. treat an untouched secret default as a skip in web.state.PromptText -> web_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
-// 189. drop the required-answer refusal in web.state.PromptText            -> web_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
-// 190. drop the check: judgement from web.state.PromptSelect's judge   -> web_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
-// 191. take every option a multi menu is answered with, offered or not, in web.menuPicks -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 192. drop the multi menu's ticked defaults from web.state.PromptSelect -> web_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
-// 193. let a required multi menu go through with nothing ticked in web.state.PromptSelect -> web_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 194. show what match: excludes in tui.ListDir (drop the Excluded check) -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 195. list files that match: doesn't include in tui.ListDir -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 196. open a file's folder instead of the default folder in web.pickerRules.start -> web_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
-// 197. leave a folder picker's default unselected in web.pickerRules.start -> web_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
-// 198. open a path that is not a folder in web.state.askPicker -> web_picker_test.go (OpeningAFolderByPostChangesTheListing)
-// 199. accept a path match: excludes in web.pickerRules.pick -> web_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
-// 200. let a required picker go through with no pick in web.state.PromptPath -> web_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
-// 201. never close the previous tab's replaced channel in web.Server.serveEvents -> web_lifecycle_test.go (NewestTabWinsAndTheOldOneIsToldAndClosed)
-// 202. keep the timer running while steps run in web.Server.waitingOnPerson -> web_lifecycle_test.go (NothingExitsWhileStepsRunAndTheTimerStartsWhenTheRunEnds)
-// 203. ignore open tabs in web.Server.watchGrace -> web_lifecycle_test.go (AReconnectingTabStopsTheTimer)
-// 204. skip the Cancel at a prompt in web.Server.giveUp -> web_lifecycle_test.go (NoTabAtAPromptCancelsTheRunAfterTheGraceAsInterrupted)
-// 205. drop the abandoned case from web.Server.AwaitDelivery -> web_lifecycle_test.go (NoTabAtDoneExitsAfterTheGrace)
-// 206. drop the abandoned case from web.Server.AwaitHome -> web_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
-// 207. drop the watchGrace call when a tab closes in web.Server.serveEvents -> web_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
-// 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
-// 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
-// 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
-// 211. let web.Server.Cancel act without a live run (drop the stop != nil check) -> web_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
-// 212. leave the label blank when RunFailed names no task in web.state.labelOf -> internal/web/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), web_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
-// 213. pass task.Info to log.Enter unfilled in runner.executeTask -> web_test.go (LabelFillsInTheVariablesItCan)
-// 214. skip the prompt in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt), web_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
+// 153. drop the token compare in browser.Server.guard                       -> browser_test.go (RequestsNeedTheToken)
+// 154. bind browser.Listen to all interfaces instead of 127.0.0.1           -> browser_test.go (TaskWithoutPromptsEndsOnDone)
+// 155. show a held step's last line in browser.state.snapshot (drop the held check) -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 156. pass an identity mask instead of scope.Mask to tui.RunLog.Tap in runner.execRun -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 157. report no output lines to the listener when the log is quiet, in tui.RunLog.Tap -> browser_test.go (QuietChangesOnlyTheTerminal)
+// 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 159. never mark a task failed in tui.RunLog.TaskFailed                -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 160. label a task by its name even when it has an info: in browser.label  -> browser_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 161. drop the server.AwaitDelivery call from app.execBrowserTask         -> browser_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
+// 162. accept --browser beside --no-input in app.checkBrowserFlag               -> browser_test.go (FlagsThatCannotCombine)
+// 163. call app.checkBrowserFlag before --quiet is stripped, in app.run       -> browser_test.go (FlagsThatCannotCombine, quiet cases)
+// 164. drop the runner.CheckTask call from app.execBrowserTask               -> browser_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
+// 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> browser_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
+// 166. drop the Flush calls after the copiers finish in runner.execRun    -> browser_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
+// 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> browser_test.go (LastLineHasNoColourCodes)
+// 168. leave elapsed time out of browser.state.snapshot -> browser_test.go (ProgressSnapshotsCarryElapsedTime)
+// 169. never mark a rail entry done in browser.state.TaskLeft -> browser_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
+// 170. drop the r.Host check in browser.Server.guard                         -> browser_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 171. drop the Origin check in browser.Server.guard                          -> browser_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
+// 172. accept --browser on Windows in app.checkBrowserFlag                        -> internal/app/args_test.go (BrowserFlagFailsOnWindows)
+// 173. skip the validate call in browser.state.PromptText                    -> browser_prompt_test.go (RefusedAnswerKeepsThePromptWithTheReason)
+// 174. let browser.state.skip skip a required prompt                         -> browser_prompt_test.go (SkipContinuesAnOptionalPromptWithoutAnAnswer)
+// 175. send a secret prompt's default to the page in browser.state.PromptText -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 176. put a secret answer on the rail unmasked in browser.state.PromptText   -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 177. drop the prompt id check in browser.state.openPrompt                   -> browser_prompt_test.go (AnswerToAPromptThatIsNotOpenIsRefused)
+// 178. pass runner.TerminalPrompts() instead of browserPrompts in app.execBrowserTask -> browser_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
+// 179. drop the stop call for the first press in browser.Server.Cancel -> browser_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 180. drop the kill call for a later press in browser.Server.Cancel -> browser_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 181. never set cancelling in browser.Server.Cancel -> browser_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
+// 182. run a default task in app.run when --browser names no task          -> browser_test.go (WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault)
+// 183. keep the last run's setup entries in browser.state.startPick           -> browser_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
+// 184. keep the last run's log in browser.state.startPick                     -> browser_test.go (ChoosingATaskRunsItAndHomeLeadsToAFreshSecondRun)
+// 185. offer Home on every finished run in browser.state.snapshot             -> browser_test.go (HomeIsOnlyOfferedWhenHobnobHadNoTask)
+// 186. accept any task name in browser.state.choose                           -> browser_test.go (PickerRefusesATaskItDidNotOffer)
+// 187. drop the isOpen re-check once browser.state.answer holds the prompt's busy lock -> browser_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
+// 188. treat an untouched secret default as a skip in browser.state.PromptText -> browser_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
+// 189. drop the required-answer refusal in browser.state.PromptText            -> browser_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
+// 190. drop the check: judgement from browser.state.PromptSelect's judge   -> browser_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
+// 191. take every option a multi menu is answered with, offered or not, in browser.menuPicks -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 192. drop the multi menu's ticked defaults from browser.state.PromptSelect -> browser_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
+// 193. let a required multi menu go through with nothing ticked in browser.state.PromptSelect -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 194. show what match: excludes in tui.ListDir (drop the Excluded check) -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 195. list files that match: doesn't include in tui.ListDir -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 196. open a file's folder instead of the default folder in browser.pickerRules.start -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 197. leave a folder picker's default unselected in browser.pickerRules.start -> browser_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 198. open a path that is not a folder in browser.state.askPicker -> browser_picker_test.go (OpeningAFolderByPostChangesTheListing)
+// 199. accept a path match: excludes in browser.pickerRules.pick -> browser_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
+// 200. let a required picker go through with no pick in browser.state.PromptPath -> browser_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
+// 201. never close the previous tab's replaced channel in browser.Server.serveEvents -> browser_lifecycle_test.go (NewestTabWinsAndTheOldOneIsToldAndClosed)
+// 202. keep the timer running while steps run in browser.Server.waitingOnPerson -> browser_lifecycle_test.go (NothingExitsWhileStepsRunAndTheTimerStartsWhenTheRunEnds)
+// 203. ignore open tabs in browser.Server.watchGrace -> browser_lifecycle_test.go (AReconnectingTabStopsTheTimer)
+// 204. skip the Cancel at a prompt in browser.Server.giveUp -> browser_lifecycle_test.go (NoTabAtAPromptCancelsTheRunAfterTheGraceAsInterrupted)
+// 205. drop the abandoned case from browser.Server.AwaitDelivery -> browser_lifecycle_test.go (NoTabAtDoneExitsAfterTheGrace)
+// 206. drop the abandoned case from browser.Server.AwaitHome -> browser_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
+// 207. drop the watchGrace call when a tab closes in browser.Server.serveEvents -> browser_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
+// 208. drop the abandoned case from browser.Server.PickTask -> browser_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
+// 209. let tui.PathPrompt.Allows accept a junk-named path -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
+// 210. pre-select the nearest existing folder when a folder picker's default is missing in browser.pickerRules.start -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
+// 211. let browser.Server.Cancel act without a live run (drop the stop != nil check) -> browser_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
+// 212. leave the label blank when RunFailed names no task in browser.state.labelOf -> internal/browser/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
+// 213. pass task.Info to log.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
+// 214. skip the prompt in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt), browser_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
 // 215. drop scope.Mask in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt)
 // 216. prompt even when prompts are off in runner.execSay -> say_test.go (WithoutPromptsOnlyLogsTheMessage)
 // 217. return early under quiet in tui.RunLog.Say -> say_test.go (ShowsUnderQuiet)
 // 218. accept an empty or non-scalar say: in config.parseStepNode -> say_test.go (RejectsWhatIsNotAMessage)
-// 219. add the say answer to the rail in web.state.PromptSay -> web_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
-// 220. listen on port 0 whatever the port in web.Listen -> web_test.go (PortServesThePageOnThatPort)
-// 221. drop the --port needs --web check in app.run -> web_test.go (PortRefusals)
-// 222. accept a port outside 1 to 65535 in app.extractPortFlag -> web_test.go (PortRefusals)
+// 219. add the say answer to the rail in browser.state.PromptSay -> browser_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
+// 220. listen on port 0 whatever the port in browser.Listen -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
+// 221. drop the --port needs --browser check in app.run -> browser_test.go (PortRefusals)
+// 222. accept a port outside 1 to 65535 in app.extractPortFlag -> browser_test.go (PortRefusals)
+// 223. open the browser under --port in app.openPage -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
+// 224. check the token on a fixed server in browser.Server.guard -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
+// 225. keep the token in a fixed server's browser.Server.URL -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
+// 226. start the grace timer on a fixed server in browser.Server.watchGrace -> browser_test.go (PortWaitsForATabPastTheGrace)
 package e2e
 
 import (
@@ -301,7 +305,7 @@ type Case struct {
 	// by letting the run finish (a command waiting for a file, say).
 	WhileRunning func(rows func() []string)
 
-	// Browser plays the page when a --web run opens it. It runs alongside the
+	// Browser plays the page when a --browser run opens it. It runs alongside the
 	// run; a failed check in it ends it, which cancels the run.
 	Browser func(b *Browser)
 }
@@ -366,7 +370,7 @@ type Result struct {
 	ExitCode int
 	Prompts  []PromptCall
 	Dir      string
-	URL      string // what --web opened in the browser, empty if it didn't
+	URL      string // what --browser opened in the browser, empty if it didn't
 
 	// runErr is unexported so it can't be compared directly (app.ErrSilent's
 	// empty message makes that a footgun) — go through .OK/.Fails/.Err.
@@ -500,13 +504,7 @@ func Run(t *testing.T, c Case) *Result {
 	runCtx, cancelRun := context.WithCancel(t.Context())
 	defer cancelRun()
 	var browsers sync.WaitGroup
-	a.OpenBrowser = func(url string) error {
-		res.URL = url
-		if c.Browser == nil {
-			t.Errorf("unexpected OpenBrowser(%s) — Case.Browser not set", url)
-			cancelRun()
-			return nil
-		}
+	playBrowser := func(url string) {
 		browsers.Add(1)
 		go func() {
 			defer browsers.Done()
@@ -521,7 +519,28 @@ func Run(t *testing.T, c Case) *Result {
 			c.Browser(browser)
 			finished = true
 		}()
+	}
+	a.OpenBrowser = func(url string) error {
+		res.URL = url
+		if c.Browser == nil {
+			t.Errorf("unexpected OpenBrowser(%s) — Case.Browser not set", url)
+			cancelRun()
+			return nil
+		}
+		playBrowser(url)
 		return nil
+	}
+	ran := make(chan struct{})
+	if port := portArg(args); port != "" && c.Browser != nil {
+		// --port opens no browser, so the played browser goes to the port
+		// once it answers.
+		browsers.Add(1)
+		go func() {
+			defer browsers.Done()
+			if awaitPort(port, ran) {
+				playBrowser("http://127.0.0.1:" + port + "/")
+			}
+		}()
 	}
 	stdout, stderr, combined := captureOutput(t, func(stdoutNow func() string) {
 		var watcher sync.WaitGroup
@@ -533,6 +552,7 @@ func Run(t *testing.T, c Case) *Result {
 			}()
 		}
 		res.runErr = a.Run(runCtx, args)
+		close(ran)
 		watcher.Wait()
 		browsers.Wait()
 	})

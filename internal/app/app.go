@@ -37,12 +37,12 @@ type App struct {
 	// piped. A nil func means piped.
 	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
-	// OpenBrowser opens url in the default browser for --web.
+	// OpenBrowser opens url in the default browser for --browser.
 	OpenBrowser func(url string) error
 
-	quiet bool
-	web   bool
-	port  int
+	quiet       bool
+	browserMode bool
+	port        int
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -74,8 +74,8 @@ func loadConfig(ctx context.Context, path string, cliVars map[string]string, inv
 }
 
 func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
-	if a.web {
-		return a.execWebHome(ctx, cli.CollectSelectableTasks(cfg, scope), scope, fileScopes, cfg)
+	if a.browserMode {
+		return a.execBrowserHome(ctx, cli.CollectSelectableTasks(cfg, scope), scope, fileScopes, cfg)
 	}
 	if noPrompts || !a.IsTerminal() {
 		if showUsage {
@@ -99,8 +99,8 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 }
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if a.web {
-		return a.execWebTask(ctx, taskName, scope, fileScopes, cfg, dir)
+	if a.browserMode {
+		return a.execBrowserTask(ctx, taskName, scope, fileScopes, cfg, dir)
 	}
 	log := a.newRunLog()
 	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()))
@@ -147,16 +147,16 @@ func (a *App) run(ctx context.Context, args []string) error {
 	}
 	useDemo, args := extractDemoFlag(args)
 	flagQuiet, args := extractFlag(args, "--quiet", "-q")
-	a.web, args = extractFlag(args, "--web")
+	a.browserMode, args = extractFlag(args, "--browser")
 	a.port, args, err = extractPortFlag(args)
 	if err != nil {
 		return err
 	}
-	if a.port != 0 && !a.web {
-		return fmt.Errorf("--port needs --web")
+	if a.port != 0 && !a.browserMode {
+		return fmt.Errorf("--port needs --browser")
 	}
-	if a.web {
-		if err := checkWebFlag(runtime.GOOS, args); err != nil {
+	if a.browserMode {
+		if err := checkBrowserFlag(runtime.GOOS, args); err != nil {
 			return err
 		}
 	}
@@ -209,7 +209,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			noPrompts := a.defaultNoPrompts()
-			if _, ok := cfg.Tasks["default"]; ok && !a.web {
+			if _, ok := cfg.Tasks["default"]; ok && !a.browserMode {
 				return a.execTask(ctx, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 			}
 			return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, true)

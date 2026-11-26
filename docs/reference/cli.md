@@ -1,7 +1,7 @@
 # CLI
 
 ```
-hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q] [--web [--port <number>]]
+hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q] [--browser [--port <number>]]
 hobnob [--file <path> | --demo] (--list | --select | --help)
 hobnob (--version | --upgrade | completion <shell>)
 ```
@@ -60,9 +60,9 @@ deploy $ go build ./...
 deploy ✓ done after 2.1s
 ```
 
-## `--web`
+## `--browser`
 
-Runs the task behind a local web page and opens it in the default browser.
+Runs the task behind a local page and opens it in the default browser.
 The terminal keeps the usual run log, plus the page's address. Without a task
 the page opens a task picker, even when the taskfile has a `default` task.
 It combines with `--file`, `--demo`, `KEY=VALUE` and `--quiet`, is an error
@@ -70,18 +70,19 @@ with `--no-input`, `--list`, `--select` and `--help`, and is not yet supported
 on Windows. See [Browser mode](../guide/browser-mode.md).
 
 ```bash
-hobnob --web setup
-hobnob --web
+hobnob --browser setup
+hobnob --browser
 ```
 
 ## `--port <number>`
 
-Serves the `--web` page on this port of `127.0.0.1` instead of a random free
-one. It is an error without `--web`, with a number outside 1 to 65535, and when
+Serves the `--browser` page on this port of `127.0.0.1` instead of a random free
+one, at an address with no token, and doesn't open the browser or give up on a
+closed tab. It is an error without `--browser`, with a number outside 1 to 65535, and when
 the port is already in use. See [Browser mode](../guide/browser-mode.md).
 
 ```bash
-hobnob --web --port 8080 setup
+hobnob --browser --port 8080 setup
 ```
 
 ## `--file <path>`

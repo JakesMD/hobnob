@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"hobnob/internal/web"
+	"hobnob/internal/browser"
 )
 
-func TestE2E_Web_TextPromptShowsInfoAndDefaultAndTakesTheAnswer(t *testing.T) {
+func TestE2E_Browser_TextPromptShowsInfoAndDefaultAndTakesTheAnswer(t *testing.T) {
 	// given a text get: with info: and default:, when the page answers it,
 	// then the snapshot carries both, the run uses the answer and the rail
 	// lists it under the info (why: the page is the person answering)
@@ -25,14 +25,14 @@ func TestE2E_Web_TextPromptShowsInfoAndDefaultAndTakesTheAnswer(t *testing.T) {
 		              default: Ada
 		      - run: echo hello={{.NAME}}
 	`
-	var asked, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		if status := b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "Grace"}); status != http.StatusNoContent {
 			b.Fail("answer status = %d", status)
 		}
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -41,15 +41,15 @@ func TestE2E_Web_TextPromptShowsInfoAndDefaultAndTakesTheAnswer(t *testing.T) {
 	// Assert
 	res.OK(t)
 	res.Out(t, "t │ hello=Grace")
-	if p := asked.Prompt; p.Kind != web.KindText || p.Info != "What is your name?" || p.Default != "Ada" || p.Secret || p.Optional {
+	if p := asked.Prompt; p.Kind != browser.KindText || p.Info != "What is your name?" || p.Default != "Ada" || p.Secret || p.Optional {
 		t.Errorf("prompt = %+v", p)
 	}
-	if want := []web.RailEntry{{Label: "What is your name?", Value: "Grace"}}; !equalRail(done.Rail.Answers, want) {
+	if want := []browser.RailEntry{{Label: "What is your name?", Value: "Grace"}}; !equalRail(done.Rail.Answers, want) {
 		t.Errorf("answers = %+v", done.Rail.Answers)
 	}
 }
 
-func TestE2E_Web_SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog(t *testing.T) {
+func TestE2E_Browser_SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog(t *testing.T) {
 	// given a secret: get: with a default, when the page answers it, then the
 	// snapshot marks it secret without the default, and the rail and the log
 	// show the answer masked (why: a password must not leak into the page)
@@ -64,12 +64,12 @@ func TestE2E_Web_SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog(t *testing.T)
 		              default: hunter2default
 		      - run: echo using {{.TOKEN}}
 	`
-	var asked, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "s3cretvalue"})
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -88,7 +88,7 @@ func TestE2E_Web_SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog(t *testing.T)
 	}
 }
 
-func TestE2E_Web_RefusedAnswerKeepsThePromptWithTheReason(t *testing.T) {
+func TestE2E_Browser_RefusedAnswerKeepsThePromptWithTheReason(t *testing.T) {
 	// given a get: with match: and a shell check:, when the page sends an
 	// answer that fails each in turn, then the next snapshot is the same
 	// prompt with the reason, and a good answer continues (why: the same
@@ -105,16 +105,16 @@ func TestE2E_Web_RefusedAnswerKeepsThePromptWithTheReason(t *testing.T) {
 		              check: '[ "{{.CODE}}" != "abx" ]'
 		      - run: echo code={{.CODE}}
 	`
-	var byMatch, byCheck web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var byMatch, byCheck browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "zzz"})
-		byMatch = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
+		byMatch = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "abx"})
-		byCheck = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && strings.Contains(s.Prompt.Refusal, "!=") })
+		byCheck = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && strings.Contains(s.Prompt.Refusal, "!=") })
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "abc"})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -123,15 +123,15 @@ func TestE2E_Web_RefusedAnswerKeepsThePromptWithTheReason(t *testing.T) {
 	// Assert
 	res.OK(t)
 	res.Out(t, "t │ code=abc")
-	if byMatch.Screen != web.ScreenPrompt || !strings.Contains(byMatch.Prompt.Refusal, "must match ab*") {
+	if byMatch.Screen != browser.ScreenPrompt || !strings.Contains(byMatch.Prompt.Refusal, "must match ab*") {
 		t.Errorf("match refusal = %+v", byMatch.Prompt)
 	}
-	if byCheck.Screen != web.ScreenPrompt || len(byCheck.Rail.Answers) != 0 {
+	if byCheck.Screen != browser.ScreenPrompt || len(byCheck.Rail.Answers) != 0 {
 		t.Errorf("check refusal = %+v", byCheck)
 	}
 }
 
-func TestE2E_Web_SkipContinuesAnOptionalPromptWithoutAnAnswer(t *testing.T) {
+func TestE2E_Browser_SkipContinuesAnOptionalPromptWithoutAnAnswer(t *testing.T) {
 	// given an optional: get:, when the page skips it, then the run goes on
 	// with the variable empty and the rail has no answer for it; skipping a
 	// required prompt is refused (why: only optional prompts may be skipped)
@@ -146,16 +146,16 @@ func TestE2E_Web_SkipContinuesAnOptionalPromptWithoutAnAnswer(t *testing.T) {
 		          - NAME: {}
 		      - run: echo nick=[{{.NICK}}] name={{.NAME}}
 	`
-	var optional, required, done web.Snapshot
+	var optional, required, done browser.Snapshot
 	var refused int
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		optional = tab.Screen(web.ScreenPrompt)
+		optional = tab.Screen(browser.ScreenPrompt)
 		b.Post("skip", map[string]any{"id": optional.Prompt.ID})
-		required = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "NAME" })
+		required = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "NAME" })
 		refused = b.Post("skip", map[string]any{"id": required.Prompt.ID})
 		b.Post("answer", map[string]any{"id": required.Prompt.ID, "value": "Ada"})
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -172,7 +172,7 @@ func TestE2E_Web_SkipContinuesAnOptionalPromptWithoutAnAnswer(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_AnswerToAPromptThatIsNotOpenIsRefused(t *testing.T) {
+func TestE2E_Browser_AnswerToAPromptThatIsNotOpenIsRefused(t *testing.T) {
 	// given a prompt that was answered, when the page answers its old id
 	// again, then the POST is refused and the next prompt stays open (why: a
 	// double click must not answer the following prompt)
@@ -186,14 +186,14 @@ func TestE2E_Web_AnswerToAPromptThatIsNotOpenIsRefused(t *testing.T) {
 		          - B: {}
 	`
 	var stale int
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		first := tab.Screen(web.ScreenPrompt)
+		first := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": first.Prompt.ID, "value": "1"})
-		second := tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "B" })
+		second := tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.VarName == "B" })
 		stale = b.Post("answer", map[string]any{"id": first.Prompt.ID, "value": "oops"})
 		b.Post("answer", map[string]any{"id": second.Prompt.ID, "value": "2"})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -206,8 +206,8 @@ func TestE2E_Web_AnswerToAPromptThatIsNotOpenIsRefused(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_PresetSkipsItsPrompt(t *testing.T) {
-	// given a KEY=VALUE preset for a get:, when the run starts with --web,
+func TestE2E_Browser_PresetSkipsItsPrompt(t *testing.T) {
+	// given a KEY=VALUE preset for a get:, when the run starts with --browser,
 	// then no prompt is shown and the rail has no answer for it (why: presets
 	// skip their prompts as in the terminal)
 	// Arrange
@@ -219,13 +219,13 @@ func TestE2E_Web_PresetSkipsItsPrompt(t *testing.T) {
 		          - NAME: {}
 		      - run: echo name={{.NAME}}
 	`
-	var done web.Snapshot
+	var done browser.Snapshot
 	prompted := false
-	c := Case{Yml: yml, Args: []string{"--web", "t", "NAME=preset"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t", "NAME=preset"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		done = tab.Until(func(s web.Snapshot) bool {
+		done = tab.Until(func(s browser.Snapshot) bool {
 			prompted = prompted || s.Prompt != nil
-			return s.Screen == web.ScreenDone
+			return s.Screen == browser.ScreenDone
 		})
 	}}
 
@@ -242,7 +242,7 @@ func TestE2E_Web_PresetSkipsItsPrompt(t *testing.T) {
 
 const slowCheck = `check: 'touch started; while [ ! -e go ]; do :; done; echo run >> checks; true'`
 
-func TestE2E_Web_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *testing.T) {
+func TestE2E_Browser_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *testing.T) {
 	// given a prompt whose check: is slow, when the page sends two answers
 	// for it at once, then the second is refused as stale without running
 	// the check and the run keeps the first answer (why: a double click must
@@ -258,9 +258,9 @@ func TestE2E_Web_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *test
 		      - run: echo got={{.A}} checks=$(wc -l < checks | tr -d ' ')
 	`
 	var first, second int
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		var posts sync.WaitGroup
 		posts.Add(1)
 		go func() {
@@ -276,7 +276,7 @@ func TestE2E_Web_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *test
 		time.Sleep(100 * time.Millisecond)
 		b.Release("go")
 		posts.Wait()
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -290,7 +290,7 @@ func TestE2E_Web_SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck(t *test
 	}
 }
 
-func TestE2E_Web_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
+func TestE2E_Browser_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
 	// given an optional prompt whose check: is slow, when the page answers
 	// and then skips it while the check runs, then the answer settles it and
 	// the skip is refused (why: a prompt settles exactly once)
@@ -306,9 +306,9 @@ func TestE2E_Web_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
 		      - run: echo got={{.A}}
 	`
 	var answered, skipped int
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		var posts sync.WaitGroup
 		posts.Add(1)
 		go func() {
@@ -324,7 +324,7 @@ func TestE2E_Web_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		b.Release("go")
 		posts.Wait()
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -338,7 +338,7 @@ func TestE2E_Web_SkipRacingAnAnswerSettlesTheOptionalPromptOnce(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone(t *testing.T) {
+func TestE2E_Browser_ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone(t *testing.T) {
 	// given an optional secret: get: with a default:, when the page answers
 	// with the field left as the masked default, then the default is the
 	// answer and never appears in a snapshot, and skipping gives no value
@@ -355,23 +355,23 @@ func TestE2E_Web_ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone(t *tes
 		              default: abcdefault
 		      - run: if [ -n "{{.TOKEN}}" ]; then echo token=set; else echo token=none; fi
 	`
-	var used, skippedRun web.Snapshot
+	var used, skippedRun browser.Snapshot
 	var usedRes, skippedRes *Result
-	run := func(act func(b *Browser, asked web.Snapshot)) (*Result, web.Snapshot) {
-		var done web.Snapshot
-		res := Run(t, Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	run := func(act func(b *Browser, asked browser.Snapshot)) (*Result, browser.Snapshot) {
+		var done browser.Snapshot
+		res := Run(t, Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 			tab := b.Open()
-			act(b, tab.Screen(web.ScreenPrompt))
-			done = tab.Screen(web.ScreenDone)
+			act(b, tab.Screen(browser.ScreenPrompt))
+			done = tab.Screen(browser.ScreenDone)
 		}})
 		return res, done
 	}
 
 	// Act
-	usedRes, used = run(func(b *Browser, asked web.Snapshot) {
+	usedRes, used = run(func(b *Browser, asked browser.Snapshot) {
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": nil})
 	})
-	skippedRes, skippedRun = run(func(b *Browser, asked web.Snapshot) {
+	skippedRes, skippedRun = run(func(b *Browser, asked browser.Snapshot) {
 		b.Post("skip", map[string]any{"id": asked.Prompt.ID})
 	})
 
@@ -385,7 +385,7 @@ func TestE2E_Web_ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone(t *tes
 	}
 }
 
-func TestE2E_Web_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
+func TestE2E_Browser_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
 	// given a required get: without a default:, when the page sends an empty
 	// answer, then the next snapshot is the same prompt saying an answer is
 	// required, and a later answer goes through (why: the person must answer
@@ -399,14 +399,14 @@ func TestE2E_Web_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
 		          - A: {}
 		      - run: echo got={{.A}}
 	`
-	var refused web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var refused browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": ""})
-		refused = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
+		refused = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "ok"})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -420,7 +420,7 @@ func TestE2E_Web_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
 	}
 }
 
-func TestE2E_Web_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
+func TestE2E_Browser_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
 	// given a say: naming a variable, when the page shows it and the person
 	// continues, then the run goes on and the rail lists no answer for it
 	// (why: a message asks nothing, so there is nothing to record)
@@ -432,14 +432,14 @@ func TestE2E_Web_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
 		      - say: "Hello {{.WHO}}"
 		      - run: echo after
 	`
-	var asked, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t", "WHO=Ada"}, Browser: func(b *Browser) {
+	var asked, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t", "WHO=Ada"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		if status := b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": nil}); status != http.StatusNoContent {
 			b.Fail("answer status = %d", status)
 		}
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -449,7 +449,7 @@ func TestE2E_Web_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
 	res.OK(t)
 	res.Out(t, "t » Hello Ada")
 	res.Out(t, "t │ after")
-	if p := asked.Prompt; p.Kind != web.KindSay || p.Info != "Hello Ada" {
+	if p := asked.Prompt; p.Kind != browser.KindSay || p.Info != "Hello Ada" {
 		t.Errorf("prompt = %+v", p)
 	}
 	if len(done.Rail.Answers) != 0 {

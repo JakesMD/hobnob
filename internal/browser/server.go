@@ -1,6 +1,6 @@
-// Package web is the browser front end: a local page that observes a run. It sits
+// Package browser is the browser front end: a local page that observes a run. It sits
 // beside tui, and like tui it never imports eval, runner or config.
-package web
+package browser
 
 import (
 	"context"
@@ -33,6 +33,9 @@ type action func(body json.RawMessage) error
 type Server struct {
 	*state
 
+	// fixed is a page on a port the person chose: it has no token and no
+	// grace, so a bookmark of its address works and it waits for a tab.
+	fixed    bool
 	token    string
 	listener net.Listener
 	http     *http.Server
@@ -63,8 +66,8 @@ type tab struct {
 	replaced chan struct{}
 }
 
-// Listen binds port on 127.0.0.1, or a random free port when port is 0, and
-// makes a random token.
+// Listen binds port on 127.0.0.1, or a random free port with a random token
+// when port is 0.
 func Listen(port int) (*Server, error) {
 	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
@@ -73,14 +76,19 @@ func Listen(port int) (*Server, error) {
 		}
 		return nil, err
 	}
-	raw := make([]byte, 16)
-	if _, err := rand.Read(raw); err != nil {
-		_ = listener.Close()
-		return nil, err
+	token := ""
+	if port == 0 {
+		raw := make([]byte, 16)
+		if _, err := rand.Read(raw); err != nil {
+			_ = listener.Close()
+			return nil, err
+		}
+		token = hex.EncodeToString(raw)
 	}
 	server := &Server{
 		state:     &state{},
-		token:     hex.EncodeToString(raw),
+		fixed:     port != 0,
+		token:     token,
 		listener:  listener,
 		actions:   map[string]action{},
 		choice:    make(chan string, 1),
@@ -107,6 +115,9 @@ func Listen(port int) (*Server, error) {
 
 // URL is the address that opens the page.
 func (s *Server) URL() string {
+	if s.fixed {
+		return fmt.Sprintf("http://%s/", s.listener.Addr())
+	}
 	return fmt.Sprintf("http://%s/?token=%s", s.listener.Addr(), s.token)
 }
 
@@ -201,7 +212,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}
-		if subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(s.token)) != 1 {
+		if !s.fixed && subtle.ConstantTimeCompare([]byte(r.URL.Query().Get("token")), []byte(s.token)) != 1 {
 			http.Error(w, "forbidden", http.StatusForbidden)
 			return
 		}

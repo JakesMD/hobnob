@@ -1,4 +1,4 @@
-package web
+package browser
 
 import (
 	"encoding/json"
@@ -61,12 +61,12 @@ func (s *Server) initCancel() {
 
 // watchGrace starts or stops the grace timer to match the state: it runs
 // while no page is open and hobnob waits on the person (the task picker, a
-// prompt, Done or Failed), never while steps run.
+// prompt, Done or Failed), never while steps run, and never on a fixed port.
 func (s *Server) watchGrace() {
 	s.graceMu.Lock()
 	defer s.graceMu.Unlock()
 	waiting := s.waitingOnPerson()
-	if waiting && !s.hasStreams() {
+	if waiting && !s.fixed && !s.hasStreams() {
 		if s.graceTimer == nil {
 			s.graceRun++
 			run := s.graceRun

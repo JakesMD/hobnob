@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"hobnob/internal/web"
+	"hobnob/internal/browser"
 )
 
-func TestE2E_Web_MenuShowsItsOptionsAndDefaultAndTakesOneChoice(t *testing.T) {
+func TestE2E_Browser_MenuShowsItsOptionsAndDefaultAndTakesOneChoice(t *testing.T) {
 	// given a single-choice menu with a default:, when the page answers with
 	// another option, then the snapshot carries the options and default, the
 	// run uses the choice and the rail lists it (why: the page is the person
@@ -26,14 +26,14 @@ func TestE2E_Web_MenuShowsItsOptionsAndDefaultAndTakesOneChoice(t *testing.T) {
 		              default: green
 		      - run: echo colour={{.COLOR}}
 	`
-	var asked, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		if status := b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "blue"}); status != http.StatusNoContent {
 			b.Fail("answer status = %d", status)
 		}
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -42,15 +42,15 @@ func TestE2E_Web_MenuShowsItsOptionsAndDefaultAndTakesOneChoice(t *testing.T) {
 	// Assert
 	res.OK(t)
 	res.Out(t, "t │ colour=blue")
-	if p := asked.Prompt; p.Kind != web.KindMenu || p.Multi || !slices.Equal(p.Options, []string{"red", "green", "blue"}) || p.Default != "green" || !p.HasDefault {
+	if p := asked.Prompt; p.Kind != browser.KindMenu || p.Multi || !slices.Equal(p.Options, []string{"red", "green", "blue"}) || p.Default != "green" || !p.HasDefault {
 		t.Errorf("prompt = %+v", p)
 	}
-	if want := []web.RailEntry{{Label: "Favourite colour?", Value: "blue"}}; !equalRail(done.Rail.Answers, want) {
+	if want := []browser.RailEntry{{Label: "Favourite colour?", Value: "blue"}}; !equalRail(done.Rail.Answers, want) {
 		t.Errorf("answers = %+v", done.Rail.Answers)
 	}
 }
 
-func TestE2E_Web_MultiMenuHasItsDefaultTickedAndTakesSeveralChoices(t *testing.T) {
+func TestE2E_Browser_MultiMenuHasItsDefaultTickedAndTakesSeveralChoices(t *testing.T) {
 	// given a multi: menu with a default: list, when the page answers
 	// with two options, then the snapshot lists the ticked defaults and the
 	// run gets both choices in the options' order (why: several choices make
@@ -67,12 +67,12 @@ func TestE2E_Web_MultiMenuHasItsDefaultTickedAndTakesSeveralChoices(t *testing.T
 		              default: '["Zoom"]'
 		      - run: echo apps={{.APPS | join ","}}
 	`
-	var asked, done web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var asked, done browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked = tab.Screen(web.ScreenPrompt)
+		asked = tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{"Notion", "Slack"}})
-		done = tab.Screen(web.ScreenDone)
+		done = tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -89,7 +89,7 @@ func TestE2E_Web_MultiMenuHasItsDefaultTickedAndTakesSeveralChoices(t *testing.T
 	}
 }
 
-func TestE2E_Web_MenuChoiceThatFailsItsCheckIsRefusedWithTheReason(t *testing.T) {
+func TestE2E_Browser_MenuChoiceThatFailsItsCheckIsRefusedWithTheReason(t *testing.T) {
 	// given a menu with a check:, when the page picks an option that fails it
 	// and then one that passes, then the next snapshot is the same prompt with
 	// the reason and the second choice goes through (why: the terminal's
@@ -105,14 +105,14 @@ func TestE2E_Web_MenuChoiceThatFailsItsCheckIsRefusedWithTheReason(t *testing.T)
 		              check: '[ "{{.SIZE}}" = large ]'
 		      - run: echo size={{.SIZE}}
 	`
-	var refused web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var refused browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "small"})
-		refused = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
+		refused = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "large"})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -126,7 +126,7 @@ func TestE2E_Web_MenuChoiceThatFailsItsCheckIsRefusedWithTheReason(t *testing.T)
 	}
 }
 
-func TestE2E_Web_MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice(t *testing.T) {
+func TestE2E_Browser_MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice(t *testing.T) {
 	// given a required multi: menu, when the page answers with an option that
 	// isn't offered and then with nothing, then each is refused and the
 	// prompt stays open (why: only offered options can be answered)
@@ -141,18 +141,18 @@ func TestE2E_Web_MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice(t *testi
 		              multi: true
 		      - run: echo ok
 	`
-	var unknown, empty web.Snapshot
-	c := Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	var unknown, empty browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 		tab := b.Open()
-		asked := tab.Screen(web.ScreenPrompt)
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{"Teams"}})
-		unknown = tab.Until(func(s web.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
+		unknown = tab.Until(func(s browser.Snapshot) bool { return s.Prompt != nil && s.Prompt.Refusal != "" })
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{}})
-		empty = tab.Until(func(s web.Snapshot) bool {
+		empty = tab.Until(func(s browser.Snapshot) bool {
 			return s.Prompt != nil && strings.Contains(s.Prompt.Refusal, "at least one")
 		})
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": []string{"Zoom"}})
-		tab.Screen(web.ScreenDone)
+		tab.Screen(browser.ScreenDone)
 	}}
 
 	// Act
@@ -160,12 +160,12 @@ func TestE2E_Web_MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice(t *testi
 
 	// Assert
 	res.OK(t)
-	if !strings.Contains(unknown.Prompt.Refusal, "Teams") || empty.Screen != web.ScreenPrompt {
+	if !strings.Contains(unknown.Prompt.Refusal, "Teams") || empty.Screen != browser.ScreenPrompt {
 		t.Errorf("unknown = %+v, empty = %+v", unknown.Prompt, empty.Prompt)
 	}
 }
 
-func TestE2E_Web_OptionalMenuCanBeSkippedAndContinueOnItsDefaultTakesIt(t *testing.T) {
+func TestE2E_Browser_OptionalMenuCanBeSkippedAndContinueOnItsDefaultTakesIt(t *testing.T) {
 	// given an optional menu with a default:, when the page skips it, then
 	// the variable is empty, and when it answers null, then the default is
 	// the answer (why: Continue on an untouched menu takes the default)
@@ -181,17 +181,17 @@ func TestE2E_Web_OptionalMenuCanBeSkippedAndContinueOnItsDefaultTakesIt(t *testi
 		              optional: true
 		      - run: echo colour=[{{.COLOR}}]
 	`
-	run := func(act func(b *Browser, asked web.Snapshot)) *Result {
-		return Run(t, Case{Yml: yml, Args: []string{"--web", "t"}, Browser: func(b *Browser) {
+	run := func(act func(b *Browser, asked browser.Snapshot)) *Result {
+		return Run(t, Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
 			tab := b.Open()
-			act(b, tab.Screen(web.ScreenPrompt))
-			tab.Screen(web.ScreenDone)
+			act(b, tab.Screen(browser.ScreenPrompt))
+			tab.Screen(browser.ScreenDone)
 		}})
 	}
 
 	// Act
-	skipped := run(func(b *Browser, asked web.Snapshot) { b.Post("skip", map[string]any{"id": asked.Prompt.ID}) })
-	taken := run(func(b *Browser, asked web.Snapshot) {
+	skipped := run(func(b *Browser, asked browser.Snapshot) { b.Post("skip", map[string]any{"id": asked.Prompt.ID}) })
+	taken := run(func(b *Browser, asked browser.Snapshot) {
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": nil})
 	})
 
