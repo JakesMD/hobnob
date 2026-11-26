@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"hobnob/internal/runevents"
 	"hobnob/internal/tui"
 )
 
@@ -64,8 +65,9 @@ func TestConPTYFilter_Write_OpeningSequencesLeaveTheOutputPrefixedOnBothStreams(
 		Size:     func() (int, int) { return 80, 24 },
 		OnResize: func(func()) func() { return func() {} },
 	})
-	log.Enter("t", "")
-	log.Run("t", "cmd")
+	events := runevents.New(log)
+	events.Enter("t", "")
+	events.StepStarted("t", "cmd")
 	stdout, stderr := log.Output("t")
 	filter := newConPTYFilter(stdout)
 

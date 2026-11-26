@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"hobnob/internal/runevents"
 	"strings"
 	"testing"
 	"time"
@@ -20,16 +21,16 @@ func TestRunLogWritesEachKindOfLineToItsStream(t *testing.T) {
 		wantStdout string
 		wantStderr string
 	}{
-		{"run", func(l *RunLog) { l.Run("t", "echo hi") }, "echo hi", ""},
-		{"call", func(l *RunLog) { l.Call("t", "other") }, "other", ""},
-		{"done earlier", func(l *RunLog) { l.DoneEarlier("t") }, "earlier", ""},
-		{"task skipped", func(l *RunLog) { l.TaskSkipped("t") }, "skipped", ""},
-		{"run skipped", func(l *RunLog) { l.RunSkipped("t", "go vet") }, "go vet", ""},
-		{"step done", func(l *RunLog) { l.StepDone("t", time.Second) }, "1.0s", ""},
-		{"step soft failed", func(l *RunLog) { l.StepSoftFailed("t", time.Second, "go vet", "exit status 1") }, "exit status 1", ""},
-		{"step failed", func(l *RunLog) { l.StepFailed("t", time.Second, "go vet", "exit status 1") }, "", "exit status 1"},
-		{"task done", func(l *RunLog) { l.TaskDone("t", time.Second, 0) }, "done", ""},
-		{"task failed", func(l *RunLog) { l.TaskFailed("t", time.Second, false) }, "", "failed"},
+		{"run", func(l *RunLog) { events(l).StepStarted("t", "echo hi") }, "echo hi", ""},
+		{"call", func(l *RunLog) { events(l).Call("t", "other") }, "other", ""},
+		{"done earlier", func(l *RunLog) { events(l).DoneEarlier("t") }, "earlier", ""},
+		{"task skipped", func(l *RunLog) { events(l).TaskSkipped("t") }, "skipped", ""},
+		{"run skipped", func(l *RunLog) { events(l).StepSkipped("t", "go vet") }, "go vet", ""},
+		{"step done", func(l *RunLog) { events(l).StepDone("t", time.Second) }, "1.0s", ""},
+		{"step soft failed", func(l *RunLog) { events(l).StepSoftFailed("t", time.Second, "go vet", "exit status 1") }, "exit status 1", ""},
+		{"step failed", func(l *RunLog) { events(l).StepFailed("t", time.Second, "go vet", "exit status 1") }, "", "exit status 1"},
+		{"task done", func(l *RunLog) { events(l).TaskDone("t", time.Second, 0) }, "done", ""},
+		{"task failed", func(l *RunLog) { events(l).TaskFailed("t", time.Second, false) }, "", "failed"},
 		{"command stdout", func(l *RunLog) { o, _ := l.Output("t"); o.Write([]byte("a\n")) }, "a\n", ""},
 		{"command stderr", func(l *RunLog) { _, e := l.Output("t"); e.Write([]byte("b\n")) }, "", "b\n"},
 	}
@@ -63,16 +64,16 @@ func TestRunLogLines(t *testing.T) {
 		log  func(l *RunLog)
 		want string
 	}{
-		{"run", func(l *RunLog) { l.Run("deploy", "go build") }, "deploy $ go build\n"},
-		{"run with notes", func(l *RunLog) { l.Run("deploy", "rsync .", "in ./deploy/", "output hidden") }, "deploy $ rsync . # in ./deploy/ # output hidden\n"},
-		{"multi-line run", func(l *RunLog) { l.Run("deploy", "a \\\n  b\nc") }, "deploy $ a \\\n           b\n         c\n"},
-		{"call", func(l *RunLog) { l.Call("deploy", "setup") }, "deploy → setup\n"},
-		{"variable", func(l *RunLog) { l.Var("deploy", "ENV", "prod", "") }, "deploy » ENV=prod\n"},
-		{"variable with a source", func(l *RunLog) { l.Var("deploy", "ENV", "prod", "from the environment") }, "deploy » ENV=prod # from the environment\n"},
-		{"skipped variable", func(l *RunLog) { l.VarSkipped("deploy", "REPLICAS") }, "deploy ⊘ REPLICAS\n"},
-		{"step skip", func(l *RunLog) { l.RunSkipped("deploy", "go vet ./...") }, "deploy ⊘ go vet ./...\n"},
-		{"task skip", func(l *RunLog) { l.TaskSkipped("lint") }, "lint ⊘ skipped\n"},
-		{"done earlier", func(l *RunLog) { l.DoneEarlier("setup") }, "setup ✓ done earlier\n"},
+		{"run", func(l *RunLog) { events(l).StepStarted("deploy", "go build") }, "deploy $ go build\n"},
+		{"run with notes", func(l *RunLog) { events(l).StepStarted("deploy", "rsync .", "in ./deploy/", "output hidden") }, "deploy $ rsync . # in ./deploy/ # output hidden\n"},
+		{"multi-line run", func(l *RunLog) { events(l).StepStarted("deploy", "a \\\n  b\nc") }, "deploy $ a \\\n           b\n         c\n"},
+		{"call", func(l *RunLog) { events(l).Call("deploy", "setup") }, "deploy → setup\n"},
+		{"variable", func(l *RunLog) { events(l).Var("deploy", "ENV", "prod", "") }, "deploy » ENV=prod\n"},
+		{"variable with a source", func(l *RunLog) { events(l).Var("deploy", "ENV", "prod", "from the environment") }, "deploy » ENV=prod # from the environment\n"},
+		{"skipped variable", func(l *RunLog) { events(l).VarSkipped("deploy", "REPLICAS") }, "deploy ⊘ REPLICAS\n"},
+		{"step skip", func(l *RunLog) { events(l).StepSkipped("deploy", "go vet ./...") }, "deploy ⊘ go vet ./...\n"},
+		{"task skip", func(l *RunLog) { events(l).TaskSkipped("lint") }, "lint ⊘ skipped\n"},
+		{"done earlier", func(l *RunLog) { events(l).DoneEarlier("setup") }, "setup ✓ done earlier\n"},
 		{"output", func(l *RunLog) {
 			o, _ := l.Output("deploy")
 			o.Write([]byte("hi\n"))
@@ -106,18 +107,20 @@ func TestRunLogEndLines(t *testing.T) {
 		wantOut string
 		wantErr string
 	}{
-		{"step done", func(l *RunLog) { l.StepDone("deploy", 1600*time.Millisecond) }, "deploy ✓ 1.6s\n", ""},
-		{"step failed", func(l *RunLog) { l.StepFailed("deploy", 500*time.Millisecond, "go test -v ./...", "exit status 1") }, "", "deploy ✗ 0.5s go test -v ./...: exit status 1\n"},
+		{"step done", func(l *RunLog) { events(l).StepDone("deploy", 1600*time.Millisecond) }, "deploy ✓ 1.6s\n", ""},
+		{"step failed", func(l *RunLog) {
+			events(l).StepFailed("deploy", 500*time.Millisecond, "go test -v ./...", "exit status 1")
+		}, "", "deploy ✗ 0.5s go test -v ./...: exit status 1\n"},
 		{"step soft failed", func(l *RunLog) {
-			l.StepSoftFailed("deploy", 600*time.Millisecond, "golangci-lint run", "exit status 1")
+			events(l).StepSoftFailed("deploy", 600*time.Millisecond, "golangci-lint run", "exit status 1")
 		}, "deploy ! 0.6s golangci-lint run: exit status 1\n", ""},
-		{"step error without a time", func(l *RunLog) { l.StepError("deploy", false, "no task \"nope\"") }, "", "deploy ✗ no task \"nope\"\n"},
-		{"task done", func(l *RunLog) { l.TaskDone("setup", 1600*time.Millisecond, 0) }, "setup ✓ done after 1.6s\n", ""},
-		{"task done with one soft failure", func(l *RunLog) { l.TaskDone("deploy", 8200*time.Millisecond, 1) }, "deploy ✓ done after 8.2s • 1 soft failure\n", ""},
-		{"task done with soft failures", func(l *RunLog) { l.TaskDone("deploy", 8200*time.Millisecond, 2) }, "deploy ✓ done after 8.2s • 2 soft failures\n", ""},
-		{"task failed", func(l *RunLog) { l.TaskFailed("test", 1900*time.Millisecond, false) }, "", "test ✗ failed after 1.9s\n"},
-		{"task stopped", func(l *RunLog) { l.TaskFailed("test", 1900*time.Millisecond, true) }, "", "test ✗ stopped after 1.9s\n"},
-		{"minutes", func(l *RunLog) { l.TaskDone("t", 75*time.Second, 0) }, "t ✓ done after 1m15s\n", ""},
+		{"step error without a time", func(l *RunLog) { events(l).StepError("deploy", false, "no task \"nope\"") }, "", "deploy ✗ no task \"nope\"\n"},
+		{"task done", func(l *RunLog) { events(l).TaskDone("setup", 1600*time.Millisecond, 0) }, "setup ✓ done after 1.6s\n", ""},
+		{"task done with one soft failure", func(l *RunLog) { events(l).TaskDone("deploy", 8200*time.Millisecond, 1) }, "deploy ✓ done after 8.2s • 1 soft failure\n", ""},
+		{"task done with soft failures", func(l *RunLog) { events(l).TaskDone("deploy", 8200*time.Millisecond, 2) }, "deploy ✓ done after 8.2s • 2 soft failures\n", ""},
+		{"task failed", func(l *RunLog) { events(l).TaskFailed("test", 1900*time.Millisecond, false) }, "", "test ✗ failed after 1.9s\n"},
+		{"task stopped", func(l *RunLog) { events(l).TaskFailed("test", 1900*time.Millisecond, true) }, "", "test ✗ stopped after 1.9s\n"},
+		{"minutes", func(l *RunLog) { events(l).TaskDone("t", 75*time.Second, 0) }, "t ✓ done after 1m15s\n", ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -143,9 +146,10 @@ func TestRunLog_RunWithTrailingNewlineEndsWithoutAnEmptyContinuationLine(t *test
 	// Arrange
 	var out bytes.Buffer
 	log := NewRunLog(&out, &out)
+	events := runevents.New(log)
 
 	// Act
-	log.Run("t", "echo one\necho two\n")
+	events.StepStarted("t", "echo one\necho two\n")
 
 	// Assert
 	if got := out.String(); strings.HasSuffix(got, "\n\n") || strings.Count(got, "\n") != 2 {
@@ -162,10 +166,11 @@ func TestRunLog_FailureLinesColourOnlyTheMark(t *testing.T) {
 	t.Cleanup(func() { lipgloss.SetColorProfile(termenv.Ascii) })
 	var stdout, stderr bytes.Buffer
 	log := NewRunLog(&stdout, &stderr)
+	events := runevents.New(log)
 
 	// Act
-	log.StepFailed("t", time.Second, "go vet", "exit status 1")
-	log.StepSoftFailed("t", time.Second, "go vet", "exit status 1")
+	events.StepFailed("t", time.Second, "go vet", "exit status 1")
+	events.StepSoftFailed("t", time.Second, "go vet", "exit status 1")
 
 	// Assert
 	for name, got := range map[string]string{"failed": stderr.String(), "soft failed": stdout.String()} {
@@ -182,12 +187,13 @@ func TestRunLog_Stopping_NamesTheInnermostTaskAndPrintsOnce(t *testing.T) {
 	// Arrange
 	var out, errOut bytes.Buffer
 	log := NewRunLog(&out, &errOut)
-	defer log.Enter("deploy", "")()
-	defer log.Enter("test", "")()
+	events := runevents.New(log)
+	defer events.Enter("deploy", "")()
+	defer events.Enter("test", "")()
 
 	// Act
-	log.Stopping()
-	log.Stopping()
+	events.Stopping()
+	events.Stopping()
 
 	// Assert
 	want := "test ! stopping, ctrl+c again to force\n"
@@ -195,3 +201,5 @@ func TestRunLog_Stopping_NamesTheInnermostTaskAndPrintsOnce(t *testing.T) {
 		t.Errorf("got out %q err %q, want out %q", out.String(), errOut.String(), want)
 	}
 }
+
+func events(l *RunLog) *runevents.Stream { return runevents.New(l) }

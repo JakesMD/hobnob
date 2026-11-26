@@ -16,6 +16,7 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
+	"hobnob/internal/runevents"
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
@@ -103,7 +104,7 @@ func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope,
 		return a.execBrowserTask(ctx, taskName, scope, fileScopes, cfg, dir)
 	}
 	log := a.newRunLog()
-	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()))
+	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, runevents.New(log), log, runner.TerminalPrompts()))
 }
 
 // newRunLog is the run's log on this terminal, quiet if asked.

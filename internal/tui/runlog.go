@@ -8,11 +8,17 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+
+	"hobnob/internal/runevents"
 )
 
-// RunLog is the one writer for the lines the runner and app print during a
-// run, and for the output of the commands it starts.
+// RunLog is the terminal's listener on a run's events: it prints each as a
+// line, and writes the output of the commands the runner starts. It also owns
+// what the terminal needs while a run is on screen: the live area, the PTY
+// size and Pause.
 type RunLog struct {
+	runevents.Nop
+
 	stdout io.Writer
 	stderr io.Writer
 
@@ -21,13 +27,9 @@ type RunLog struct {
 	logOut io.Writer
 	logErr io.Writer
 
-	mu       sync.Mutex
-	running  []runningTask
-	stopping bool
-	quiet    bool
-
-	listener RunListener
-	failed   *taskFailure
+	mu    sync.Mutex
+	depth int
+	quiet bool
 
 	screen *Screen
 	live   *liveArea
@@ -46,57 +48,38 @@ func (l *RunLog) SetQuiet(quiet bool) { l.quiet = quiet }
 // Quiet reports whether the log is quiet, so the runner holds a step's output.
 func (l *RunLog) Quiet() bool { return l.quiet }
 
-// Enter marks task as the one now running and returns the func that leaves it,
-// so Stopping can name the innermost task.
-func (l *RunLog) Enter(task, info string) (leave func()) {
+// TaskEntered starts the live area with the run's first task.
+func (l *RunLog) TaskEntered(string, string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.running = append(l.running, runningTask{name: task})
-	if l.listener != nil {
-		l.listener.TaskEntered(task, info)
-	}
-	if len(l.running) == 1 && l.live != nil {
+	l.depth++
+	if l.depth == 1 && l.live != nil {
 		l.live.begin()
-	}
-	return func() {
-		l.mu.Lock()
-		defer l.mu.Unlock()
-		left := l.running[len(l.running)-1]
-		l.running = l.running[:len(l.running)-1]
-		if l.listener != nil {
-			l.listener.TaskLeft(left.name, left.failed)
-		}
-		if len(l.running) == 0 && l.live != nil {
-			l.live.end()
-		}
 	}
 }
 
-// Stopping logs the first CTRL+C on the innermost running task. Later calls
-// print nothing, so every path that notices the interrupt can call it.
-func (l *RunLog) Stopping() {
+// TaskLeft ends the live area with the run's first task.
+func (l *RunLog) TaskLeft(string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if l.stopping || len(l.running) == 0 {
-		return
+	l.depth--
+	if l.depth == 0 && l.live != nil {
+		l.live.end()
 	}
-	l.stopping = true
-	task := l.running[len(l.running)-1].name
+}
+
+// Stopping logs the first CTRL+C on task.
+func (l *RunLog) Stopping(task string) {
 	if l.live != nil {
 		l.live.setNote(stoppingNote)
 	}
 	fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SStep.Render(stoppingNote))
 }
 
-// Run logs a run: step's command, which the caller passes already masked. The first line carries the notes,
+// StepStarted logs a run: step's command. The first line carries the notes,
 // each as a grey "# …"; continuation lines of a multi-line command sit under
 // it, indented to the command's start.
-func (l *RunLog) Run(task, cmd string, notes ...string) {
-	l.mu.Lock()
-	if l.listener != nil {
-		l.listener.StepStarted(task, cmd)
-	}
-	l.mu.Unlock()
+func (l *RunLog) StepStarted(task, cmd string, notes []string) {
 	if l.quiet {
 		notes = nil
 	}
@@ -123,14 +106,8 @@ func (l *RunLog) Call(task, calledTask string) {
 	fmt.Fprintln(l.logOut, lead(task, taskMark(task, "→"))+TaskStyle(calledTask).Render(calledTask))
 }
 
-// Var logs a get: value used, display already masked when it is a secret.
-// note says where a value nobody typed came from.
+// Var logs a get: value used. note says where a value nobody typed came from.
 func (l *RunLog) Var(task, name, display, note string) {
-	l.mu.Lock()
-	if l.listener != nil {
-		l.listener.Var(task, name, display)
-	}
-	l.mu.Unlock()
 	if l.quiet {
 		return
 	}
@@ -154,7 +131,7 @@ func (l *RunLog) Say(task, message string) {
 
 // VarSkipped logs an optional get: that got no value.
 func (l *RunLog) VarSkipped(task, name string) {
-	l.RunSkipped(task, name)
+	l.StepSkipped(task, name)
 }
 
 // DoneEarlier logs the end of a once: task a call: found already run.
@@ -164,11 +141,11 @@ func (l *RunLog) DoneEarlier(task string) {
 
 // TaskSkipped logs a task whose if: was false.
 func (l *RunLog) TaskSkipped(task string) {
-	l.RunSkipped(task, "skipped")
+	l.StepSkipped(task, "skipped")
 }
 
-// RunSkipped logs a skipped step, naming what it would have run.
-func (l *RunLog) RunSkipped(task, what string) {
+// StepSkipped logs a skipped step, naming what it would have run.
+func (l *RunLog) StepSkipped(task, what string) {
 	if l.quiet {
 		return
 	}
@@ -181,22 +158,20 @@ func (l *RunLog) StepDone(task string, elapsed time.Duration) {
 	if l.quiet {
 		return
 	}
-	fmt.Fprintln(l.logOut, lead(task, SChecked.Render("✓"))+SInfo.Render(formatElapsed(elapsed)))
+	fmt.Fprintln(l.logOut, lead(task, SChecked.Render("✓"))+SInfo.Render(runevents.FormatElapsed(elapsed)))
 }
 
 // StepFailed logs the end of a step that failed, with the command as written
 // and why it failed.
 func (l *RunLog) StepFailed(task string, elapsed time.Duration, cmd, reason string) {
 	l.endStep()
-	l.recordFailure(task, reason)
-	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
+	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SInfo.Render(runevents.FormatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 
 // StepSoftFailed logs the end of a soft: step that failed; the task carries on.
 func (l *RunLog) StepSoftFailed(task string, elapsed time.Duration, cmd, reason string) {
 	l.endStep()
-	l.forgiveFailure()
-	fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SInfo.Render(formatElapsed(elapsed))+" "+cmd+": "+reason)
+	fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SInfo.Render(runevents.FormatElapsed(elapsed))+" "+cmd+": "+reason)
 }
 
 // StepError logs a step that failed with a message but no run to time, soft
@@ -207,19 +182,14 @@ func (l *RunLog) StepError(task string, soft bool, message string) {
 		fmt.Fprintln(l.logOut, lead(task, SStep.Render("!"))+SStep.Render(message))
 		return
 	}
-	l.recordFailure(task, message)
 	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SError.Render(message))
 }
 
 // TaskDone logs the end of a task that succeeded, counting its soft failures.
 func (l *RunLog) TaskDone(task string, elapsed time.Duration, softFailures int) {
-	line := lead(task, SChecked.Render("✓")) + SChecked.Render("done") + " " + SInfo.Render("after "+formatElapsed(elapsed))
+	line := lead(task, SChecked.Render("✓")) + SChecked.Render("done") + " " + SInfo.Render("after "+runevents.FormatElapsed(elapsed))
 	if softFailures > 0 {
-		noun := "soft failures"
-		if softFailures == 1 {
-			noun = "soft failure"
-		}
-		line += SInfo.Render(fmt.Sprintf(" • %d %s", softFailures, noun))
+		line += SInfo.Render(" • " + runevents.SoftFailureCount(softFailures))
 	}
 	fmt.Fprintln(l.logOut, line)
 }
@@ -227,25 +197,17 @@ func (l *RunLog) TaskDone(task string, elapsed time.Duration, softFailures int) 
 // TaskFailed logs the end of a task that failed, or stopped when it was
 // interrupted.
 func (l *RunLog) TaskFailed(task string, elapsed time.Duration, stopped bool) {
-	l.markFailed()
 	word := "failed"
 	if stopped {
 		word = "stopped"
 	}
-	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SError.Render(word)+" "+SInfo.Render("after "+formatElapsed(elapsed)))
+	fmt.Fprintln(l.logErr, lead(task, SError.Render("✗"))+SError.Render(word)+" "+SInfo.Render("after "+runevents.FormatElapsed(elapsed)))
 }
 
 func (l *RunLog) endStep() {
 	if l.live != nil {
 		l.live.stepEnd()
 	}
-}
-
-func formatElapsed(d time.Duration) string {
-	if d >= time.Minute {
-		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
-	}
-	return fmt.Sprintf("%.1fs", d.Seconds())
 }
 
 // Watch tells the log a person watches on screen: command output is then

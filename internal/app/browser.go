@@ -9,6 +9,7 @@ import (
 
 	"hobnob/internal/browser"
 	"hobnob/internal/config"
+	"hobnob/internal/runevents"
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
@@ -108,15 +109,7 @@ func (a *App) runOnPage(ctx context.Context, server *browser.Server, taskName st
 	defer server.ClearInterrupt()
 
 	log := a.newRunLog()
-	log.Listen(server)
-	runErr := runner.ExecuteTask(runCtx, taskName, scope, fileScopes, cfg, false, dir, log, browserPrompts(server))
-	switch {
-	case runErr == nil:
-		log.RunSucceeded()
-	case errors.Is(runErr, runner.ErrInterrupted):
-		log.RunCancelled()
-	default:
-		log.RunFailed(runErr.Error())
-	}
+	events := runevents.New(log, server)
+	runErr := runner.ExecuteTask(runCtx, taskName, scope, fileScopes, cfg, false, dir, events, log, browserPrompts(server))
 	return failSilently(runErr)
 }

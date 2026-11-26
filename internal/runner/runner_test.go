@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"hobnob/internal/runevents"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 )
@@ -80,7 +81,7 @@ func TestExecuteSteps_CtxCancelledBetweenSteps_ReturnsErrInterrupted(t *testing.
 	cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), runevents.New(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

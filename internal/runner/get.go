@@ -181,10 +181,10 @@ func getSource(scope *scope.Scope, name string) string {
 func logVar(execState execCtx, getEntry config.GetEntry, scope *scope.Scope, source string) {
 	val := scope.Vars()[getEntry.VarName]
 	if getEntry.Optional && (val.IsEmpty() || emptyList(val)) {
-		execState.log.VarSkipped(execState.task, getEntry.VarName)
+		execState.events.VarSkipped(execState.task, getEntry.VarName)
 		return
 	}
-	execState.log.Var(execState.task, getEntry.VarName, scope.Display(getEntry.VarName), source)
+	execState.events.Var(execState.task, getEntry.VarName, scope.Display(getEntry.VarName), source)
 }
 
 // resolveMatch renders getEntry's match: patterns and compiles them. patterns
