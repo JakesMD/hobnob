@@ -103,7 +103,7 @@
 // 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
 // 84. print no call line in runner.execCall                          -> log_lines_test.go (CallPrintsTheCallLine, CallToASkippedTaskPrintsTheCallThenTheSkip)
 // 85. skip DoneEarlier on a once: cache hit                          -> log_lines_test.go (CallToAnAlreadyRunOnceTaskIsDoneEarlier)
-// 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
+// 86. drop the continuation indent in tui.RunLog.StepStarted       -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
 // 88a. print an unrenderable skipped run: step as "skipped" in runner.skippedRunText -> run_into_test.go (SkippedStepWhoseCommandCannotRenderPrintsItAsWritten)
@@ -138,7 +138,7 @@
 // 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
 // 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
 // 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
-// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.StepStarted -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
 // 120. drop the HOBNOB_QUIET=1 check in app.run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
 // 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
 //
@@ -152,9 +152,9 @@
 // 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
 // 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
 // 130. write the rule to a piped stdout (create the live area without a Screen in tui.RunLog.Watch) -> log_status_test.go (NeverAppearsInPipedOutput), live_test.go (NeverReachesAPipe)
-// 131. drop the live.begin call from tui.RunLog.Enter                 -> log_status_test.go (RuleShowsUnderTheRunningCommandAndIsGoneAfter), live_test.go
-// 132. drop the live.end call from the leave func of tui.RunLog.Enter -> live_test.go (IsGoneWhenTheRunEnds), log_status_test.go
-// 133. drop the step clock (live.stepBegin in tui.RunLog.Run)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
+// 131. drop the live.begin call from tui.RunLog.TaskEntered        -> log_status_test.go (RuleShowsUnderTheRunningCommandAndIsGoneAfter), live_test.go
+// 132. drop the live.end call from tui.RunLog.TaskLeft -> live_test.go (IsGoneWhenTheRunEnds), log_status_test.go
+// 133. drop the step clock (live.stepBegin in tui.RunLog.StepStarted)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
 // 134. drop the note from tui.RunLog.Stopping                         -> live_test.go (SaysStoppingOnItsLeftAfterCtrlC)
 // 135. drop the clear in tui.liveArea.pause                          -> live_test.go (IsClearedWhileACardPromptIsOpen)
 // 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
@@ -178,16 +178,16 @@
 // 153. drop the token compare in browser.Server.guard                       -> browser_test.go (RequestsNeedTheToken)
 // 154. bind browser.Listen to all interfaces instead of 127.0.0.1           -> browser_test.go (TaskWithoutPromptsEndsOnDone)
 // 155. show a held step's last line in browser.state.snapshot (drop the held check) -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 156. pass an identity mask instead of scope.Mask to tui.RunLog.Tap in runner.execRun -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 157. report no output lines to the listener when the log is quiet, in tui.RunLog.Tap -> browser_test.go (QuietChangesOnlyTheTerminal)
-// 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
-// 159. never mark a task failed in tui.RunLog.TaskFailed                -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 156. pass an identity mask instead of scope.Mask to runevents.Stream.Tap in runner.execRun -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 157. drop the OutputLine report from runevents.Stream.Tap -> runevents/stream_test.go (TapPassesOutputOnAndReportsEachMaskedLine), browser_test.go (QuietChangesOnlyTheTerminal)
+// 158. record the outermost running task instead of the step's task in runevents.Stream.recordFailure -> runevents/stream_test.go (FinishNamesTheStepThatFailed), runner/outcome_test.go (RunOutcomeNamesTheCalledTaskWhoseStepFailed), browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 159. never mark a task failed in runevents.Stream.TaskFailed -> runevents/stream_test.go (TaskLeftSaysWhetherItsTaskFailed), browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 160. label a task by its name even when it has an info: in browser.label  -> browser_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
 // 161. drop the server.AwaitDelivery call from app.execBrowserTask         -> browser_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
 // 162. accept --browser beside --no-input in app.checkBrowserFlag               -> browser_test.go (FlagsThatCannotCombine)
 // 163. call app.checkBrowserFlag before --quiet is stripped, in app.run       -> browser_test.go (FlagsThatCannotCombine, quiet cases)
 // 164. drop the runner.CheckTask call from app.execBrowserTask               -> browser_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
-// 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> browser_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
+// 165. drop the forgiven-failure reset from runevents.Stream.StepSoftFailed -> runevents/stream_test.go (FinishIgnoresAFailureASoftStepForgave), runner/outcome_test.go (RunOutcomeIgnoresASoftFailedStep), browser_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
 // 166. drop the Flush calls after the copiers finish in runner.execRun    -> browser_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
 // 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> browser_test.go (LastLineHasNoColourCodes)
 // 168. leave elapsed time out of browser.state.snapshot -> browser_test.go (ProgressSnapshotsCarryElapsedTime)
@@ -234,8 +234,8 @@
 // 209. let tui.PathPrompt.Allows accept a junk-named path -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
 // 210. pre-select the nearest existing folder when a folder picker's default is missing in browser.pickerRules.start -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 // 211. let browser.Server.Cancel act without a live run (drop the stop != nil check) -> browser_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
-// 212. leave the label blank when RunFailed names no task in browser.state.labelOf -> internal/browser/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
-// 213. pass task.Info to log.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
+// 212. leave the task blank when a run fails outside a step in runevents.Stream.innermost -> runevents/stream_test.go (FinishOutsideAStepNamesTheInnermostTaskStillRunning, FinishFallsBackToTheRunsTaskOnceEverythingLeftCleanly), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
+// 213. pass task.Info to events.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
 // 214. skip the prompt in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt), browser_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
 // 215. drop scope.Mask in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt)
 // 216. prompt even when prompts are off in runner.execSay -> say_test.go (WithoutPromptsOnlyLogsTheMessage)
@@ -254,6 +254,11 @@
 // 229. skip the default fallback for an empty text answer in ask.Question.judgeText -> runner/get_test.go (TextJudge_AppliesDefaultRequiredAndSkipRules)
 // 230. leave match: out of the text Check in runner.checkCandidate -> runner/get_test.go (TextJudge_RefusesWithMatchAndCheckWording)
 // 231. take menu picks in the order given, not the options', in ask.Question.judgeMenu -> runner/get_test.go (MenuJudge_AppliesPickRules)
+// 232. emit Stopping on every call, not just the first, in runevents.Stream.Stopping -> runevents/stream_test.go (StoppingReportsOnlyTheFirstInterruptOnTheInnermostTask), live_test.go
+// 233. drop the Call line from browser.state's log (leave Call to runevents.Nop) -> browser/state_test.go (DetailsLogCarriesEveryEventTheTerminalShows)
+// 234. log the failure line twice, from StepFailed and again from Finished, in browser.state.Finished (drop the failureLogged check) -> browser/state_test.go (FailedResultIsLabelledWithTheNamedTaskAndLogsTheFailureOnce)
+// 235. classify an interrupt as Failed in runner.ExecuteTask's Finish call -> browser_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 236. skip Finish when ExecuteTask fails before entering a task (resolveTask error) -> runner/outcome_test.go (RunOutcomeForAnUnknownTaskCarriesOnlyTheReason)
 package e2e
 
 import (

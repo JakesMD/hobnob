@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"hobnob/internal/runevents"
 	"strings"
 	"testing"
 	"time"
@@ -13,10 +14,11 @@ import (
 )
 
 type liveRig struct {
-	log  *RunLog
-	out  bytes.Buffer
-	errs bytes.Buffer
-	now  time.Time
+	log    *RunLog
+	events *runevents.Stream
+	out    bytes.Buffer
+	errs   bytes.Buffer
+	now    time.Time
 }
 
 func newLiveRig(t *testing.T, cols int) *liveRig {
@@ -24,6 +26,7 @@ func newLiveRig(t *testing.T, cols int) *liveRig {
 	lipgloss.SetColorProfile(termenv.Ascii)
 	rig := &liveRig{now: time.Unix(1000, 0)}
 	rig.log = NewRunLog(&rig.out, &rig.errs)
+	rig.events = runevents.New(rig.log)
 	rig.log.Watch(&Screen{
 		Size:     func() (int, int) { return cols, 24 },
 		OnResize: func(func()) func() { return func() {} },
@@ -48,8 +51,8 @@ func TestLiveStatusLineSitsUnderTheLogWithTheStepAndTotalClocks(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 60)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "sleep 1")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "sleep 1")
 	stdout, _ := rig.log.Output("t")
 
 	// Act
@@ -76,12 +79,12 @@ func TestLiveStatusLineBetweenStepsHasOnlyTheTotal(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "true")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "true")
 
 	// Act
 	rig.advance(time.Second)
-	rig.log.StepDone("t", time.Second)
+	rig.events.StepDone("t", time.Second)
 	rig.advance(500 * time.Millisecond)
 
 	// Assert
@@ -101,11 +104,11 @@ func TestLiveStatusLineSaysStoppingOnItsLeftAfterCtrlC(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 70)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "sleep 9")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "sleep 9")
 
 	// Act
-	rig.log.Stopping()
+	rig.events.Stopping()
 
 	// Assert
 	got := rig.screen()
@@ -123,8 +126,8 @@ func TestLiveStatusLineIsGoneWhenTheRunEnds(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	leave := rig.log.Enter("t", "")
-	rig.log.TaskDone("t", time.Second, 0)
+	leave := rig.events.Enter("t", "")
+	rig.events.TaskDone("t", time.Second, 0)
 
 	// Act
 	leave()
@@ -144,7 +147,7 @@ func TestLiveStatusLineIsClearedWhileACardPromptIsOpen(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
+	rig.events.Enter("t", "")
 
 	// Act
 	resume := rig.log.Pause()
@@ -168,8 +171,8 @@ func TestLiveStatusLineStaysUnderAPromptWaitingForInputWithItsClockFrozen(t *tes
 
 	// Arrange
 	rig := newLiveRig(t, 50)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "read n")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "read n")
 	stdout, _ := rig.log.Output("t")
 	stdout.Write([]byte("name? "))
 
@@ -206,8 +209,8 @@ func TestLiveStatusLineHidesWhileAToolRedrawsRowsAndReturnsWhenItStops(t *testin
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "tool")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "tool")
 	stdout, _ := rig.log.Output("t")
 
 	// Act
@@ -238,8 +241,8 @@ func TestLiveStatusLineComesBackOnItsOwnWhenAToolGoesQuiet(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "tool")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "tool")
 	stdout, _ := rig.log.Output("t")
 	stdout.Write([]byte("a\n\x1b[1Ab\n"))
 
@@ -263,13 +266,14 @@ func TestLiveWatchedOutputCostsAFewTimesItsSizeInTerminalWrites(t *testing.T) {
 	var out countingWriter
 	var errs bytes.Buffer
 	log := NewRunLog(&out, &errs)
+	events := runevents.New(log)
 	log.Watch(&Screen{
 		Size:     func() (int, int) { return 100, 24 },
 		OnResize: func(func()) func() { return func() {} },
 	})
 	log.live.tick = 0
-	log.Enter("t", "")
-	log.Run("t", "tool")
+	events.Enter("t", "")
+	events.StepStarted("t", "tool")
 	stdout, _ := log.Output("t")
 	chunk := []byte(strings.Repeat(strings.Repeat("a", 80)+"\n", 50))
 	before := out.bytes
@@ -294,12 +298,12 @@ func TestLiveLateWriteFromAnEarlierStepUsesItsOwnPrefix(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 60)
-	rig.log.Enter("a", "")
-	rig.log.Run("a", "bg")
+	rig.events.Enter("a", "")
+	rig.events.StepStarted("a", "bg")
 	lateOut, _ := rig.log.Output("a")
 	lateOut.Write([]byte("early"))
-	rig.log.StepDone("a", time.Second)
-	rig.log.Run("b", "next")
+	rig.events.StepDone("a", time.Second)
+	rig.events.StepStarted("b", "next")
 
 	// Act
 	done := make(chan struct{})
@@ -322,9 +326,9 @@ func TestClearStatusLineLeavesNoRuleBehind(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "sleep 9")
-	rig.log.Stopping()
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "sleep 9")
+	rig.events.Stopping()
 
 	// Act
 	ClearStatusLine()
@@ -345,13 +349,14 @@ func TestLiveStatusLineNeverReachesAPipe(t *testing.T) {
 	// Arrange
 	var out, errs bytes.Buffer
 	log := NewRunLog(&out, &errs)
+	events := runevents.New(log)
 
 	// Act
-	leave := log.Enter("t", "")
-	log.Run("t", "echo hi")
+	leave := events.Enter("t", "")
+	events.StepStarted("t", "echo hi")
 	stdout, _ := log.Output("t")
 	stdout.Write([]byte("hi\n"))
-	log.StepDone("t", time.Second)
+	events.StepDone("t", time.Second)
 	leave()
 
 	// Assert
@@ -368,8 +373,8 @@ func TestLiveRestartingTheOtherStreamsWriterIsRaceFree(t *testing.T) {
 
 	// Arrange
 	rig := newLiveRig(t, 40)
-	rig.log.Enter("t", "")
-	rig.log.Run("t", "tool")
+	rig.events.Enter("t", "")
+	rig.events.StepStarted("t", "tool")
 	stdout, stderr := rig.log.Output("t")
 	done := make(chan struct{})
 
@@ -381,7 +386,7 @@ func TestLiveRestartingTheOtherStreamsWriterIsRaceFree(t *testing.T) {
 		}
 	}()
 	for range 300 {
-		rig.log.Var("t", "X", "1", "")
+		rig.events.Var("t", "X", "1", "")
 		stderr.Write([]byte("b"))
 	}
 	<-done

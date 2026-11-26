@@ -64,11 +64,16 @@ Every change must preserve these. Each is explained in the section named.
   `ask.Answer`, never re-deriving those rules.
   Tests swap those terminal prompts with `runner.SetPrompts(ask, path, say)
   (restore func())`, never by reassigning a package variable.
-- **The browser stays a front end.** `internal/browser` implements `tui.RunListener` and
-  imports `value`, and `tui` only for path prompts (`PathPrompt` and its
+- **One event stream.** The runner reports a run only to the `runevents.Stream`
+  it is given, and never to a front end directly. The terminal `RunLog` and the
+  browser `state` are listeners on it. Which failure ended a run, and the task
+  it names, is decided in the stream (`Finish`), not in a listener.
+  ([runevents](#internalrunevents-the-run-event-stream))
+- **The browser stays a front end.** `internal/browser` is a `runevents.Listener` and
+  imports `value`, `ask`, `runevents`, and `tui` only for path prompts (`PathPrompt` and its
   shared rules), never `eval`,
   `runner` or `config`;
-  it observes a run through `RunLog` and never changes
+  it observes a run through the stream and never changes
   what the runner does. ([browser](#internalbrowser-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
@@ -88,6 +93,7 @@ internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
 internal/ask/     the question a text or menu get: entry puts to a front end, and the judge of its answer
+internal/runevents/ the run's event stream: every event, the failure bookkeeping and the outcome
 internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
 internal/browser/ the --browser front end: local page, SSE snapshots, the run listener's state
 internal/config/  YAML into typed structs, the step-level load-time check
@@ -118,6 +124,7 @@ flowchart TD
     runner --> scope
     runner --> config
     runner --> tui
+    runner --> runevents
     runner --> literal
     runner --> glob
     runner --> ask
@@ -125,6 +132,9 @@ flowchart TD
     ask --> value
     scope --> config
     scope --> tui
+    app --> runevents
+    tui --> runevents
+    browser --> runevents
     config --> literal
     literal --> eval
     eval --> value
@@ -147,11 +157,13 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `browser` imports `value` and `ask`, and `tui` only for path prompts (`PathPrompt`, its
+- `runevents` imports only the stdlib (and `ansi`, to strip output lines);
+  `runner`, `tui`, `browser` and `app` import it, so a front end hears a run
+  without importing `runner`.
+- `browser` imports `value`, `ask`, `runevents`, and `tui` only for path prompts (`PathPrompt`, its
   `Included`/`Excluded` predicates, and the picker rules `IsJunk`,
   `ResolvePath`, `ListDir`, `NearestFolder` and `PathPrompt.Allows` that
-  the terminal and the page share); it implements `tui.RunListener`
-  structurally, so it needs no `tui` import for that. `app` imports it.
+  the terminal and the page share). `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -495,7 +507,7 @@ flowchart TD
     start["run: step (its if: already passed)"] --> form{"YAML sequence?"}
     form -- yes --> argv["Step.Argv.Resolve<br/>exec argv directly, no shell"]
     form -- no --> sh["Step.Command.Text<br/>sh -c"]
-    argv --> show["RunLog.Run: the command, masked by the caller"]
+    argv --> show["Stream.StepStarted: the command, masked by the caller"]
     sh --> show
     show --> out{"output mode"}
     out -- "quiet: or --quiet" --> quiet["buffers only, into: included<br/>(RunLog.Quiet() or Step.Quiet)<br/>quiet: adds a note on the run line"]
@@ -591,7 +603,7 @@ The memo is load-bearing in three ways:
    (or the task's `results:`) projects what it wants, which a delta would
    have to guess in advance.
 3. **A hit is announced.** `execCall` logs every call (`task → called`); a hit
-   then logs `called ✓ done earlier` (`RunLog.DoneEarlier`) in place of the
+   then logs `called ✓ done earlier` (`Stream.DoneEarlier`) in place of the
    task's own lines.
 
 A failed first run is not stored, so under `soft: true` the next call retries.
@@ -619,7 +631,7 @@ prompt is checked by `validateGetValue`, per item under `multi:`, before
 
 **`say:` (`say.go`)** renders its message with `EvalTemplate`, masks it, and
 with prompts on waits on `execCtx.prompts.Say` (`tui.PromptSay`, or the page's
-`KindSay` prompt, answered by Continue with no rail entry); then `RunLog.Say`
+`KindSay` prompt, answered by Continue with no rail entry); then `Stream.Say`
 logs it, under `--quiet` too. With prompts off it only logs.
 
 A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
@@ -648,9 +660,9 @@ values on exit.
 `runner_unix.go`/`runner_windows.go` manage process groups. The first CTRL+C
 signals the whole group, catching children a single-PID signal would miss, and
 waits; a `context.AfterFunc` in `ExecuteTask` (`termLeftovers`) SIGTERMs every
-leftover group at the same moment, and another calls `RunLog.Stopping`, which
+leftover group at the same moment, and another calls `Stream.Stopping`, which
 logs `stopping, ctrl+c again to force` once, on the innermost task (`executeTask`
-tracks it with `RunLog.Enter`). The paths that end an interrupted step or task
+tracks it with `Stream.Enter`). The paths that end an interrupted step or task
 call it too, so it always comes before the first `stopped` line. The second force-kills via `KillRunningStep`, which
 also SIGKILLs every leftover group. A mutex guards the running PID, and on
 Linux and macOS it is cleared before the process is reaped, so a racing
@@ -747,7 +759,7 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry; `Say` for a `say:` message), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
+`runlog.go` (`RunLog`: the terminal's `runevents.Listener`, which prints a line per event; in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); `Say` shows under quiet. It also owns what the screen needs: the command output writers (`Output`), the live area, `PTYSize`, `OnResize` and `Pause`. `app` creates it, puts it on the stream (`runevents.New(log)`) and hands it to `ExecuteTask`, which holds it on `execCtx` beside the stream. It keeps no failure bookkeeping: that is the stream's), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`/`prompt_say.go`
@@ -775,18 +787,13 @@ refuses a named task, so the page is always the picker.
 `--browser` runs with prompts on whatever `IsTerminal` says,
 asked through the page's prompts (`browserPrompts` in `app/browser.go`), even in tests.
 
-**The run listener.** `tui.RunListener` is how a front end observes a run. A
-`RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
-(`Enter(task, label)`, where `runner.executeTask` applies the file scope first
-so `taskLabel` can fill the `info:`'s variables in and mask secrets; the leave
-func carries whether the task failed), a step
-started and whether it is held (`quiet:`), each line of a command's output
-(`RunLog.Tap`, wrapped around the step's destination writers in `execRun`, so
+**The run listener.** `runevents.Listener` is how a front end observes a run; see
+[runevents](#internalrunevents-the-run-event-stream). `app` builds the run's
+stream with the terminal `RunLog` and the `Server` as listeners, so the page hears
+the same events the terminal prints, plus each line of a command's output (`Stream.Tap`, wrapped around the step's destination writers in `execRun`, so
 `--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
-and ANSI-stripped; an unfinished last line is flushed when the step's output
-ends), each variable line, and the run ending (`RunSucceeded`,
-`RunFailed`, `RunCancelled`, called by `app`; `RunFailed` carries the first
-failed step's task and reason, except that a soft-failed step is forgiven). Terminal output is unchanged.
+and ANSI-stripped). `Server` is a listener through its embedded `state`, which logs every event as a
+`task mark text` line (the Copy details log) and turns the outcome into the result. Terminal output is unchanged.
 
 **State and snapshots.** `browser.state` turns those events into a `Snapshot`
 (`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
@@ -848,7 +855,27 @@ the server `SetInterrupt(stop, kill)` (and `ClearInterrupt` when the run ends): 
 CTRL+C) and `kill` is `runner.KillRunningStep` (a second). `Server.Cancel`, also
 behind `POST /actions/cancel`, calls `stop` once and sets
 `Progress.Cancelling`, then `kill` on every later call; it does nothing unless a run is
-live: not at the task picker, not between runs, not after the run has ended. A run that ends with `runner.ErrInterrupted` is `RunCancelled`.
+live: not at the task picker, not between runs, not after the run has ended. A run that ends with `runner.ErrInterrupted` finishes as `runevents.Cancelled`.
+
+### `internal/runevents`: the run event stream
+
+`runner.ExecuteTask` gets a `*runevents.Stream` and reports everything through it;
+the stream sends each event, in order and one at a time, to its `Listener`s
+(`runevents.New(listeners...)`, `Listen`). A listener embeds `runevents.Nop`
+and overrides the events it shows. Every string is already masked.
+
+- **Events.** `TaskEntered`/`TaskLeft` (`Stream.Enter` returns the leave func), `TaskSkipped`, `TaskDone`,
+  `TaskFailed`, `Stopping` (the first CTRL+C, once, on the innermost task), `StepStarted` (command and notes),
+  `StepHeld`, `OutputLine` (from `Stream.Tap`), `StepSkipped`, `StepDone`, `StepFailed`,
+  `StepSoftFailed`, `StepError`, `Call`, `DoneEarlier`, `Var`, `VarSkipped`, `Say`, and last `Finished(Outcome)`.
+- **Failure bookkeeping lives here.** A non-soft `StepFailed`/`StepError` records the
+  first, innermost failure with its task's label; `StepSoftFailed` forgives it;
+  `TaskFailed` flags the innermost running task so its `TaskLeft` says `failed`.
+- **The outcome.** `ExecuteTask` ends the stream with `Finish(err, errors.Is(err, ErrInterrupted))`,
+  which sends `Outcome{Kind, Task, Label, Reason}`: `Succeeded`, `Cancelled`, or `Failed` naming the
+  recorded step failure, else (a failure outside a step) the innermost task that failed or was
+  still running, else the run's first task, else only the reason (the run failed before any
+  task). It is tested with a recording listener and no HTTP.
 
 ### `internal/app`: the CLI body
 

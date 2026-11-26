@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"hobnob/internal/runevents"
 )
 
 const (
@@ -407,10 +409,10 @@ func (a *liveArea) drawBelow() {
 
 func (a *liveArea) rule() string {
 	now := a.now()
-	total := formatElapsed(now.Sub(a.runStart))
+	total := runevents.FormatElapsed(now.Sub(a.runStart))
 	right := "total " + total
 	if a.inStep {
-		right = "step " + formatElapsed(now.Sub(a.stepStart)) + " · " + right
+		right = "step " + runevents.FormatElapsed(now.Sub(a.stepStart)) + " · " + right
 	}
 	var left string
 	if a.note != "" {

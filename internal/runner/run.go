@@ -94,7 +94,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 		}
 		notes = append(notes, hint)
 	}
-	execState.log.Run(execState.task, displayCmd, notes...)
+	execState.events.StepStarted(execState.task, displayCmd, notes...)
 	began := time.Now()
 	end := func(err error) error { return endRunStep(execState, step, displayCmd, began, err) }
 	stdoutLineWriter, stderrLineWriter := execState.log.Output(execState.task)
@@ -125,7 +125,7 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	var stdoutDest, stderrDest io.Writer
 	holdOutput := step.Quiet || execState.log.Quiet()
 	if step.Quiet {
-		execState.log.StepHeld(execState.task)
+		execState.events.StepHeld(execState.task)
 	}
 	switch {
 	case holdOutput:
@@ -143,8 +143,8 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 	default:
 		stdoutDest, stderrDest = stdoutLineWriter, stderrLineWriter
 	}
-	stdoutTap := execState.log.Tap(execState.task, stdoutDest, scope.Mask)
-	stderrTap := execState.log.Tap(execState.task, stderrDest, scope.Mask)
+	stdoutTap := execState.events.Tap(execState.task, stdoutDest, scope.Mask)
+	stderrTap := execState.events.Tap(execState.task, stderrDest, scope.Mask)
 	stdoutDest, stderrDest = stdoutTap, stderrTap
 	shellCmd.Env = envWithScopeOverrides(scope.Vars())
 
@@ -238,19 +238,19 @@ func execRun(execState execCtx, step config.Step, scope *scope.Scope) error {
 func endRunStep(execState execCtx, step config.Step, cmd string, began time.Time, err error) error {
 	elapsed := time.Since(began)
 	if err == nil {
-		execState.log.StepDone(execState.task, elapsed)
+		execState.events.StepDone(execState.task, elapsed)
 		return nil
 	}
 	firstLine, _, _ := strings.Cut(cmd, "\n")
 	reason := strings.ReplaceAll(err.Error(), "\n", "; ")
 	switch {
 	case errors.Is(err, ErrInterrupted):
-		execState.log.Stopping()
-		execState.log.StepFailed(execState.task, elapsed, firstLine, "stopped")
+		execState.events.Stopping()
+		execState.events.StepFailed(execState.task, elapsed, firstLine, "stopped")
 	case step.Soft:
-		execState.log.StepSoftFailed(execState.task, elapsed, firstLine, reason)
+		execState.events.StepSoftFailed(execState.task, elapsed, firstLine, reason)
 	default:
-		execState.log.StepFailed(execState.task, elapsed, firstLine, reason)
+		execState.events.StepFailed(execState.task, elapsed, firstLine, reason)
 	}
 	return reportedError{err}
 }

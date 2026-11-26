@@ -24,6 +24,6 @@ func execSay(execState execCtx, step config.Step, scope *scope.Scope) error {
 			return wrapPromptErr("say", err)
 		}
 	}
-	execState.log.Say(execState.task, message)
+	execState.events.Say(execState.task, message)
 	return nil
 }

@@ -9,6 +9,7 @@ import (
 	"hobnob/internal/ask"
 	"hobnob/internal/config"
 	"hobnob/internal/literal"
+	"hobnob/internal/runevents"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 	"hobnob/internal/value"
@@ -44,7 +45,7 @@ func getWith(t *testing.T, entry config.GetEntry, answers ...ask.Answer) asked {
 		return value.Value{}, nil
 	}}
 	sc := scope.New()
-	got.err = ExecuteTask(context.Background(), "t", sc, nil, cfg, false, t.TempDir(), tui.NewRunLog(io.Discard, io.Discard), prompts)
+	got.err = ExecuteTask(context.Background(), "t", sc, nil, cfg, false, t.TempDir(), runevents.New(), tui.NewRunLog(io.Discard, io.Discard), prompts)
 	got.vars = sc.Vars()
 	return got
 }
