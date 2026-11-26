@@ -215,3 +215,38 @@ func TestPathRules_ListShowsWhatCanBeBrowsed(t *testing.T) {
 		t.Errorf("dirs = %v", open)
 	}
 }
+
+func TestPathRules_DefaultTargetIsTheFirstDefaultOfTheKindWhetherOrNotMatchAllowsIt(t *testing.T) {
+	// given defaults, when the picker looks for what to point at, then it is the first default if it exists and is of the picker's kind, even when match: filters it out
+	// (why: the person sees where the default is)
+
+	// Arrange
+	root := tree(t, "sub/a.txt", "sub/b.md")
+	at := func(parts ...string) string { return filepath.Join(append([]string{root}, parts...)...) }
+	tests := []struct {
+		name  string
+		rules PathRules
+		want  string
+	}{
+		{"no default", PathRules{}, ""},
+		{"file default", PathRules{Defaults: []string{"sub/a.txt"}}, at("sub", "a.txt")},
+		{"filtered file default", PathRules{Defaults: []string{"sub/b.md"}, Included: notTxt}, at("sub", "b.md")},
+		{"filtered dir default", PathRules{Dir: true, Defaults: []string{"sub"}, Included: func(string, bool) bool { return false }}, at("sub")},
+		{"wrong kind", PathRules{Dir: true, Defaults: []string{"sub/a.txt"}}, ""},
+		{"missing", PathRules{Defaults: []string{"sub/none.txt"}}, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rules := tt.rules
+			rules.Invoke = root
+
+			// Act
+			got := rules.DefaultTarget()
+
+			// Assert
+			if got != tt.want {
+				t.Errorf("DefaultTarget() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

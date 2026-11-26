@@ -778,3 +778,21 @@ func TestPathModel_RefusalFromTheJudgeShowsOnTheErrorLineAndKeepsThePickerOpen(t
 		t.Errorf("done=%v err=%q, want an open picker showing the refusal", m.done, m.errMsg)
 	}
 }
+
+func TestPathModel_Open_DirDefaultFailingMatchIsStillHighlighted(t *testing.T) {
+	// given a directory default that exists but fails match:, when the picker opens, then it lists the parent with that directory highlighted though it can't be picked
+	// (why: the person sees where the default is)
+
+	// Arrange
+	root := tree(t, "x/", "y/")
+	onlyX := func(abs string, _ bool) bool { return filepath.Base(abs) == "x" }
+
+	// Act
+	m := newPickerModel(pathCase{Type: "dir", VarName: "X", Invoke: root, Default: []string{"y"}, Included: onlyX})
+
+	// Assert
+	row, ok := m.highlighted()
+	if m.dir() != root || !ok || row.name != "y" {
+		t.Errorf("cwd=%s row=%v, want root with y highlighted", m.dir(), row.name)
+	}
+}

@@ -158,6 +158,23 @@ func (r PathRules) Opening(multi bool) (open string, picks []string) {
 	return NearestFolder(open), picks
 }
 
+// DefaultTarget is the first default when it exists and is of the picker's
+// kind, allowed or not: the entry a picker points at, or "" when there is
+// none.
+func (r PathRules) DefaultTarget() string {
+	if len(r.Defaults) == 0 {
+		return ""
+	}
+	abs, err := r.Resolve(r.Defaults[0], r.workDir())
+	if err != nil {
+		return ""
+	}
+	if info, err := os.Stat(abs); err != nil || info.IsDir() != r.Dir {
+		return ""
+	}
+	return abs
+}
+
 // NearestFolder is dir, or its nearest ancestor that exists as a folder.
 func NearestFolder(dir string) string {
 	for {

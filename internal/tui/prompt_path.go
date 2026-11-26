@@ -47,8 +47,8 @@ func newPathModel(q ask.Question) pathModel {
 	if q.Multi {
 		m.picks = picks
 	}
-	if len(picks) > 0 {
-		m.highlight(picks[0])
+	if target := m.rules.DefaultTarget(); target != "" {
+		m.highlight(target)
 	}
 	return m
 }

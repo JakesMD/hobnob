@@ -96,12 +96,12 @@ func pickerType(rules ask.PathRules) string {
 }
 
 // start is the folder the page opens and what it starts with picked. A
-// folder picker opens the folder it starts with picked, as picking one
-// opens it on the page.
+// folder picker opens the folder its default names, as picking one opens it
+// on the page, even when match: keeps it from starting picked.
 func (r pickerView) start(multi bool) (open string, selected []string) {
 	open, selected = r.rules.Opening(multi)
-	if r.rules.Dir && len(selected) > 0 {
-		open = selected[0]
+	if target := r.rules.DefaultTarget(); r.rules.Dir && target != "" {
+		open = target
 	}
 	return open, selected
 }
