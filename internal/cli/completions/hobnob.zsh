@@ -14,7 +14,7 @@ _hobnob() {
   fi
 
   if [[ "$cur" == --* ]]; then
-    compadd -- --file --demo --list --select --help --no-input --quiet -q --version --upgrade
+    compadd -- --file --demo --list --select --help --no-input --quiet -q --web --port --version --upgrade
     return
   fi
 
@@ -22,6 +22,8 @@ _hobnob() {
   for (( i=2; i<CURRENT; i++ )); do
     if [[ "${words[i]}" == "--file" ]]; then
       file_arg="${words[i+1]}"
+      (( i++ ))
+    elif [[ "${words[i]}" == "--port" ]]; then
       (( i++ ))
     elif [[ "${words[i]}" != --* && "${words[i]}" != *=* ]]; then
       (( positional++ ))

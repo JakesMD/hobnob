@@ -42,6 +42,7 @@ type App struct {
 
 	quiet bool
 	web   bool
+	port  int
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -147,6 +148,13 @@ func (a *App) run(ctx context.Context, args []string) error {
 	useDemo, args := extractDemoFlag(args)
 	flagQuiet, args := extractFlag(args, "--quiet", "-q")
 	a.web, args = extractFlag(args, "--web")
+	a.port, args, err = extractPortFlag(args)
+	if err != nil {
+		return err
+	}
+	if a.port != 0 && !a.web {
+		return fmt.Errorf("--port needs --web")
+	}
 	if a.web {
 		if err := checkWebFlag(runtime.GOOS, args); err != nil {
 			return err

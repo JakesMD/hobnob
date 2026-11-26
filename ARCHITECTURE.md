@@ -753,7 +753,7 @@ the `choose` action names a task the picker offered; `runOnPage` runs it with a
 fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
 `home` action (only accepted on a finished run when no task was named) or
 until ctx ends or the grace timer gives up. The exit code is
-the last run's. `web.Listen` binds a random port on 127.0.0.1
+the last run's. `web.Listen` binds `--port`, or a random port, on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
 the URL beside the run log. `--web` runs with prompts on whatever `IsTerminal` says,

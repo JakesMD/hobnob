@@ -15,7 +15,7 @@ _hobnob_completion() {
   fi
 
   if [[ "$cur" == --* ]]; then
-    COMPREPLY=($(compgen -W "--file --demo --list --select --help --no-input --quiet -q --version --upgrade" -- "$cur"))
+    COMPREPLY=($(compgen -W "--file --demo --list --select --help --no-input --quiet -q --web --port --version --upgrade" -- "$cur"))
     return
   fi
 
@@ -23,6 +23,8 @@ _hobnob_completion() {
   for (( i=1; i<COMP_CWORD; i++ )); do
     if [[ "${COMP_WORDS[i]}" == "--file" ]]; then
       file_arg="${COMP_WORDS[i+1]}"
+      (( i++ ))
+    elif [[ "${COMP_WORDS[i]}" == "--port" ]]; then
       (( i++ ))
     elif [[ "${COMP_WORDS[i]}" != --* && "${COMP_WORDS[i]}" != *=* ]]; then
       (( positional++ ))

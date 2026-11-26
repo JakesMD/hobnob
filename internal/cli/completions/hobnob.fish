@@ -15,7 +15,7 @@ function __fish_hobnob_no_task_given
     set -l positional 0
     set -l i 2
     while test $i -le (count $cmd)
-        if test "$cmd[$i]" = "--file"
+        if contains -- "$cmd[$i]" --file --port
             set i (math $i + 2)
         else if not string match -qr '^--' "$cmd[$i]"; and not string match -qr '=' "$cmd[$i]"
             set positional (math $positional + 1)
@@ -41,6 +41,8 @@ complete -c hobnob -f -l select -d 'Interactively select a task to run'
 complete -c hobnob -f -l help -d 'Show help'
 complete -c hobnob -f -l no-input -d 'Skip interactive prompts'
 complete -c hobnob -f -s q -l quiet -d 'Print only commands and task ends'
+complete -c hobnob -f -l web -d 'Run on a page in the browser'
+complete -c hobnob -x -l port -d 'Port for the --web page'
 complete -c hobnob -f -l version -d 'Print version and exit'
 complete -c hobnob -f -l upgrade -d 'Upgrade to latest release'
 complete -c hobnob -f -n "__fish_hobnob_no_task_given" -a "(__fish_hobnob_tasks)"

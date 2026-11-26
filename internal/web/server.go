@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -62,10 +63,14 @@ type tab struct {
 	replaced chan struct{}
 }
 
-// Listen binds a random free port on 127.0.0.1 and makes a random token.
-func Listen() (*Server, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+// Listen binds port on 127.0.0.1, or a random free port when port is 0, and
+// makes a random token.
+func Listen(port int) (*Server, error) {
+	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
+		if port != 0 {
+			return nil, fmt.Errorf("can't serve the page on port %d: %w", port, err)
+		}
 		return nil, err
 	}
 	raw := make([]byte, 16)

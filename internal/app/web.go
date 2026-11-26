@@ -80,7 +80,7 @@ func (a *App) execWebHome(ctx context.Context, tasks []tui.TaskItem, scope *scop
 
 // openPage serves the page and opens it in the browser.
 func (a *App) openPage() (*web.Server, error) {
-	server, err := web.Listen()
+	server, err := web.Listen(a.port)
 	if err != nil {
 		return nil, err
 	}

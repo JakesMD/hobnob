@@ -1,7 +1,7 @@
 # CLI
 
 ```
-hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q] [--web]
+hobnob [--file <path> | --demo] [<task>] [KEY=VALUE ...] [--no-input] [--quiet | -q] [--web [--port <number>]]
 hobnob [--file <path> | --demo] (--list | --select | --help)
 hobnob (--version | --upgrade | completion <shell>)
 ```
@@ -72,6 +72,16 @@ on Windows. See [Browser mode](../guide/browser-mode.md).
 ```bash
 hobnob --web setup
 hobnob --web
+```
+
+## `--port <number>`
+
+Serves the `--web` page on this port of `127.0.0.1` instead of a random free
+one. It is an error without `--web`, with a number outside 1 to 65535, and when
+the port is already in use. See [Browser mode](../guide/browser-mode.md).
+
+```bash
+hobnob --web --port 8080 setup
 ```
 
 ## `--file <path>`

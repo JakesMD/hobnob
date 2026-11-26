@@ -1,7 +1,9 @@
 package e2e
 
 import (
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -906,4 +908,73 @@ func TestE2E_Web_DemoWithoutATaskOpensThePicker(t *testing.T) {
 	if len(picker.Tasks) == 0 || picker.Tasks[0].Name != "ask-trivia" {
 		t.Errorf("picker tasks = %+v", picker.Tasks)
 	}
+}
+
+func TestE2E_Web_PortServesThePageOnThatPort(t *testing.T) {
+	// given --port with a free port, when run with --web, then the page is
+	// served on that port with a token (why: a fixed port can be
+	// forwarded, and the token still guards it)
+	// Arrange
+	port := freePort(t)
+	var address string
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: echo hi\n", Args: []string{"--web", "--port", port, "t"}, Browser: func(b *Browser) {
+		address = b.Address()
+		b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	if address != "127.0.0.1:"+port || !strings.HasPrefix(res.URL, "http://127.0.0.1:"+port+"/?token=") {
+		t.Errorf("served on %s at %q, want port %s", address, res.URL, port)
+	}
+}
+
+func TestE2E_Web_PortRefusals(t *testing.T) {
+	// given --port without --web, with a value that isn't a port, or with a
+	// port already taken, when run, then it fails saying why and no page
+	// opens (why: a page on another port than asked for would be lost)
+	// Arrange
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = taken.Close() }()
+	takenPort := strconv.Itoa(taken.Addr().(*net.TCPAddr).Port)
+	for name, tc := range map[string]struct {
+		args []string
+		err  string
+	}{
+		"without web": {[]string{"--port", "8080", "t"}, "--port needs --web"},
+		"no value":    {[]string{"--web", "t", "--port"}, "--port requires an argument"},
+		"not a port":  {[]string{"--web", "--port", "http", "t"}, `--port takes a port number from 1 to 65535, not "http"`},
+		"zero":        {[]string{"--web", "--port", "0", "t"}, `from 1 to 65535, not "0"`},
+		"too high":    {[]string{"--web", "--port", "70000", "t"}, "from 1 to 65535"},
+		"taken":       {[]string{"--web", "--port", takenPort, "t"}, "can't serve the page on port " + takenPort},
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Act
+			res := Yml(t, "tasks:\n  t:\n    steps:\n      - run: echo hi\n", tc.args...)
+
+			// Assert
+			res.Fails(t)
+			res.Err(t, tc.err)
+			if res.URL != "" {
+				t.Errorf("opened %s", res.URL)
+			}
+		})
+	}
+}
+
+// freePort returns a port that was free a moment ago.
+func freePort(t *testing.T) string {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = listener.Close() }()
+	return strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)
 }

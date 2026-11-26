@@ -20,23 +20,39 @@ setup ✓ done after 1.1s
 
 The terminal shows the usual run log, plus the page's address.
 
+## Choosing the port
+
+The page gets a random free port each run. `--port` fixes it, so you can
+forward that port from another machine over SSH and open the page there:
+
+```bash
+hobnob --web --port 8080 setup
+```
+
+Forward it to the same port number, and open the address hobnob prints: the
+page answers only to `127.0.0.1` on that port. The address still carries a
+fresh token each run, so a bookmark of an old
+address won't open. A fixed port is easier to guess than a random one, but
+the token still guards it.
+
 ## What the page shows
 
 The page never shows a command. While a task runs it shows the task's
 [`info:`](./tasks.md) (or its name when it has none) and the last line of
 output, with [secrets](./secrets.md) masked. Variables in `info:` are filled in
 as the task starts, so `info: Installing {{.APP}}` reads as it would to the
-person. A step with [`quiet:`](./commands.md) shows no output line.
+person; one naming a variable that isn't set yet shows as written. A step with [`quiet:`](./commands.md) shows no output line.
 
 So write tasks for the person watching: give each task an `info:` that says
 what it is doing, and have a failing step print why. The failure screen names
-the task that failed and its last line of output.
+the task that failed and its last line of output, or the reason it failed when
+it printed nothing.
 
 ## Offering several tasks
 
 `--web` with no task opens a picker listing every task `hobnob --list` shows,
 titled by its `info:`. Choosing one runs it, and the end screen offers **Home**
-to pick another.
+to pick another. A task named on the command line ends with no Home.
 
 ```bash
 hobnob --web
@@ -69,6 +85,9 @@ tasks:
 
 - **Commands can't read from the terminal.** The browser is the person, so
   don't write `run:` commands that `read` or ask `[y/N]`; use a prompt instead.
+- **There is no admin password prompt.** A `sudo` step would wait for a
+  password in the terminal, which the person isn't watching, so run the wizard
+  where it already has the rights it needs.
 - **Cancel on the page is CTRL+C.** The first press asks the running step to
   stop, the second kills it. A cancelled run exits with 1.
 - **hobnob waits 60 seconds for a closed tab.** The wait only counts while
@@ -78,9 +97,13 @@ tasks:
 - **The exit code is the last run's**: 0 on success, 1 on failure, 0 when no
   run happened. With a task, hobnob exits once the run ends; without one, it
   stays for Home until CTRL+C or the wait runs out.
-- **`--web` combines with** `--file`, `--demo`, `KEY=VALUE` and `--quiet`
-  (which changes only the terminal). It is an error with `--no-input`,
+- **`--web` combines with** `--file`, `--demo`, `KEY=VALUE`, `--port` and
+  `--quiet` (which changes only the terminal). It is an error with `--no-input`,
   `--list`, `--select` and `--help`, and not yet supported on Windows.
-- **The page is local and guarded.** It is served on `127.0.0.1` on a random
-  port, and its address carries a random token. Anyone who can read your
+- **`--port` needs `--web`** and a number from 1 to 65535. A port already in
+  use is an error; hobnob doesn't fall back to another.
+- **The page is local and guarded.** It is served on `127.0.0.1` only, and its
+  address carries a random token. hobnob refuses a request without the token,
+  or whose `Host` or `Origin` isn't that address and port, so another web
+  page can't reach it. Anyone who can read your
   terminal can open it, so treat the address like a password while hobnob runs.

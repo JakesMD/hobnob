@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 
 	"hobnob/internal/eval"
 )
@@ -71,10 +72,31 @@ func extractFlag(args []string, names ...string) (bool, []string) {
 // returns the value alongside the remaining args. Returns ("", args, nil) if
 // the flag is absent.
 func extractFileFlag(args []string) (string, []string, error) {
+	return extractValueFlag(args, "--file")
+}
+
+// extractPortFlag scans args for --port <number>, removes both tokens, and
+// returns the port alongside the remaining args. Returns (0, args, nil) if
+// the flag is absent.
+func extractPortFlag(args []string) (int, []string, error) {
+	value, remaining, err := extractValueFlag(args, "--port")
+	if err != nil || value == "" {
+		return 0, remaining, err
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, nil, fmt.Errorf("--port takes a port number from 1 to 65535, not %q", value)
+	}
+	return port, remaining, nil
+}
+
+// extractValueFlag scans args for name <value>, removes both tokens, and
+// returns the value alongside the remaining args.
+func extractValueFlag(args []string, name string) (string, []string, error) {
 	for i, arg := range args {
-		if arg == "--file" {
+		if arg == name {
 			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("flag --file requires an argument")
+				return "", nil, fmt.Errorf("flag %s requires an argument", name)
 			}
 			remaining := make([]string, 0, len(args)-2)
 			remaining = append(remaining, args[:i]...)

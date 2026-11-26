@@ -287,8 +287,13 @@ function menu(s) {
 }
 
 function linked(text) {
-  return text.split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'\]])/).map((part, i) =>
-    i % 2 ? el('a', { href: part, target: '_blank', rel: 'noopener noreferrer' }, part) : part);
+  return text.split(/(?<!\w)(https?:\/\/[^\s<>"]+)/i).flatMap((part, i) => {
+    if (i % 2 === 0) return [part];
+    let url = part;
+    // A closing bracket ends the URL unless it closes one the URL opened.
+    while (/[.,;:!?'\]]$/.test(url) || (url.endsWith(')') && url.split('(').length < url.split(')').length)) url = url.slice(0, -1);
+    return [el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url), part.slice(url.length)];
+  });
 }
 
 function say(s) {
