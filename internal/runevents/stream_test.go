@@ -79,6 +79,27 @@ func TestFinishIgnoresAFailureASoftStepForgave(t *testing.T) {
 	}
 }
 
+func TestFinishKeepsAFailureASoftStepErrorDidNotForgive(t *testing.T) {
+	// given a failed step followed by a soft step error, when the run ends
+	// in error, then the outcome still names the failed step
+	// (why: only a soft-failed run: step forgives, as before)
+	// Arrange
+	r := &recorder{}
+	s := New(r)
+	leave := s.Enter("t", "")
+	s.StepFailed("t", time.Second, "a", "boom")
+	s.StepError("t", true, "meh")
+	leave()
+
+	// Act
+	got := finish(t, s, r, errors.New("late"), false)
+
+	// Assert
+	if got.Reason != "boom" || got.Task != "t" {
+		t.Errorf("outcome = %+v, want reason %q on task t", got, "boom")
+	}
+}
+
 func TestFinishOutsideAStepNamesTheInnermostTaskStillRunning(t *testing.T) {
 	// given two nested tasks and an error logged against no step, when the
 	// run ends in error, then the outcome names the inner task
