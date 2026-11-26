@@ -188,6 +188,9 @@ func (s *state) settle(open *openPrompt, change func()) error {
 // what the person did into an ask.Answer; q's judge rules on it. A secret
 // is masked on the rail, and its default never reaches the page.
 func (s *state) PromptAsk(ctx context.Context, q ask.Question) (value.Value, error) {
+	if q.Path != nil {
+		return s.promptPath(ctx, q)
+	}
 	prompt := Prompt{VarName: q.VarName, Info: q.Info, Secret: q.Secret, Optional: q.Optional, Multi: q.Multi}
 	read := readText
 	if q.IsMenu() {

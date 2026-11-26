@@ -164,7 +164,7 @@ func TestE2E_GetPath_SymlinkToDirectoryFailsAsAFile(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get CONF:", "link is a directory; CONF needs a file")
+	res.Err(t, "get CONF:", "link is a directory, not a file")
 }
 
 func TestE2E_GetPath_FilePresetThatIsADirectoryFails(t *testing.T) {
@@ -186,7 +186,7 @@ func TestE2E_GetPath_FilePresetThatIsADirectoryFails(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get CONF: "+filepath.Join(res.Dir, "sub")+" is a directory; CONF needs a file")
+	res.Err(t, "get CONF: "+filepath.Join(res.Dir, "sub")+" is a directory, not a file")
 }
 
 func TestE2E_GetPath_DirPresetThatIsAFileFails(t *testing.T) {
@@ -207,7 +207,7 @@ func TestE2E_GetPath_DirPresetThatIsAFileFails(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get OUT:", "is a file; OUT needs a directory")
+	res.Err(t, "get OUT:", "is a file, not a directory")
 }
 
 func TestE2E_GetPath_MissingPresetFails(t *testing.T) {
@@ -598,10 +598,11 @@ func TestE2E_GetPath_PickerAnswerIsStoredAbsolute(t *testing.T) {
 	}
 }
 
-func TestE2E_GetPath_FailingCheckReopensThePicker(t *testing.T) {
+func TestE2E_GetPath_FailingCheckRefusesThePick(t *testing.T) {
 	// given a type: file entry with a check: the first pick fails, when the
-	// second pick passes, then the picker was opened twice and the second
-	// pick is stored (why: check: re-opens a picker the way it re-opens a menu)
+	// second pick passes, then the first is refused inside the one picker and
+	// the second is stored (why: a picker is judged like a menu: a failed
+	// check: is a refusal, not a reopen)
 	// Arrange
 	yml := `
 		tasks:
@@ -620,7 +621,10 @@ func TestE2E_GetPath_FailingCheckReopensThePicker(t *testing.T) {
 
 	// Assert
 	res.OK(t)
-	res.Prompted(t, "CONF", "CONF")
+	res.Prompted(t, "CONF")
+	if got := res.Prompts[0].Refusals; len(got) != 1 || !strings.HasPrefix(got[0], "validation failed:") {
+		t.Errorf("refusals = %q, want the one failed check", got)
+	}
 	res.Lines(t, "conf="+filepath.Join(res.Dir, "sub", "g.md"))
 }
 
@@ -723,8 +727,8 @@ func TestE2E_GetPath_PickerGetsMatchAsPredicates(t *testing.T) {
 	}
 }
 
-func TestE2E_GetPath_ErroringCheckReopensThePickerShowingItsError(t *testing.T) {
-	// given a type: file entry whose check: cannot be evaluated, when a path is picked, then the picker reopens with the evaluation error on its error line
+func TestE2E_GetPath_ErroringCheckRefusesThePickShowingItsError(t *testing.T) {
+	// given a type: file entry whose check: cannot be evaluated, when a path is picked, then the pick is refused with the evaluation error
 	// (why: a broken check must explain itself instead of looping silently)
 	// Arrange
 	yml := `
@@ -743,7 +747,7 @@ func TestE2E_GetPath_ErroringCheckReopensThePickerShowingItsError(t *testing.T) 
 		Answers: map[string][]string{"CONF": {"sub/f.txt", ""}}})
 
 	// Assert
-	if len(res.Prompts) < 2 || !strings.HasPrefix(res.Prompts[1].Error, "check failed:") {
-		t.Errorf("prompts %+v, want the second picker opened with a check failed error", res.Prompts)
+	if len(res.Prompts) != 1 || len(res.Prompts[0].Refusals) != 1 || !strings.HasPrefix(res.Prompts[0].Refusals[0], "check failed:") {
+		t.Errorf("prompts %+v, want the pick refused with a check failed error", res.Prompts)
 	}
 }
