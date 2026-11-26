@@ -284,7 +284,9 @@ func (s *Stream) Finish(err error, cancelled bool) {
 	s.emit(func(l Listener) { l.Finished(outcome) })
 }
 
-// FormatElapsed writes d as "1.6s", or "2m05s" from a minute up.
+// FormatElapsed writes d as "1.6s", or "2m05s" from a minute up. tui and
+// browser both show the elapsed times and soft-failure counts the events
+// carry, and browser can't import tui, so the wording lives here once.
 func FormatElapsed(d time.Duration) string {
 	if d >= time.Minute {
 		return fmt.Sprintf("%dm%02ds", int(d.Minutes()), int(d.Seconds())%60)
