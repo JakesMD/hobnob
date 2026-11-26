@@ -3,6 +3,7 @@ package app
 import (
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -344,5 +345,25 @@ func TestExtractFileFlag(t *testing.T) {
 				t.Errorf("args: got %v, want %v", gotArgs, test.wantArgs)
 			}
 		})
+	}
+}
+
+func TestBrowserFlagFailsOnWindows(t *testing.T) {
+	// given --browser with a task, when checked on Windows, then it fails saying
+	// it is not yet supported there, and elsewhere it passes (why: browser
+	// mode has no Windows support yet)
+	// Arrange
+	args := []string{"deploy"}
+
+	// Act
+	windows := checkBrowserFlag("windows", args)
+	linux := checkBrowserFlag("linux", args)
+
+	// Assert
+	if windows == nil || !strings.Contains(windows.Error(), "not yet supported on Windows") {
+		t.Errorf("windows error = %v", windows)
+	}
+	if linux != nil {
+		t.Errorf("linux error = %v", linux)
 	}
 }

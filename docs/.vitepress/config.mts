@@ -13,6 +13,9 @@ export default defineConfig({
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   srcExclude: ['adr/**', 'agents/**'],
 
+  // The homepage demo loads hobnob's --browser page from internal/browser.
+  vite: { server: { fs: { allow: ['..'] } } },
+
   rewrites: {
     'installation.md': 'docs/installation.md',
     'quick-start.md': 'docs/quick-start.md',
@@ -62,6 +65,7 @@ export default defineConfig({
                 { text: 'Tasks', link: '/docs/guide/tasks' },
                 { text: 'Running tasks', link: '/docs/guide/running-tasks' },
                 { text: 'Running commands', link: '/docs/guide/commands' },
+                { text: 'Browser mode', link: '/docs/guide/browser-mode' },
               ],
             },
             {

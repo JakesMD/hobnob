@@ -60,6 +60,10 @@ var stepKinds = [...]stepKind{
 			return names
 		},
 	},
+	KindSay: {
+		key:    "say",
+		writes: func(Step, map[string]Task) []string { return nil },
+	},
 }
 
 // Writes returns every name step may write, a loop: body's included: the

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 
 	"hobnob/internal/cli"
@@ -36,8 +37,12 @@ type App struct {
 	// piped. A nil func means piped.
 	Screen     func() *tui.Screen
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
+	// OpenBrowser opens url in the default browser for --browser.
+	OpenBrowser func(url string) error
 
-	quiet bool
+	quiet       bool
+	browserMode bool
+	port        int
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -48,8 +53,9 @@ func New(version string) *App {
 		IsTerminal: func() bool {
 			return cterm.IsTerminal(os.Stdin.Fd())
 		},
-		Screen:     tui.StdoutScreen,
-		SelectTask: tui.PromptTaskSelect,
+		Screen:      tui.StdoutScreen,
+		SelectTask:  tui.PromptTaskSelect,
+		OpenBrowser: openBrowser,
 	}
 }
 
@@ -68,6 +74,9 @@ func loadConfig(ctx context.Context, path string, cliVars map[string]string, inv
 }
 
 func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
+	if a.browserMode {
+		return a.execBrowserHome(ctx, cli.CollectSelectableTasks(cfg, scope), scope, fileScopes, cfg)
+	}
 	if noPrompts || !a.IsTerminal() {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, a.Version)
@@ -90,18 +99,33 @@ func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes s
 }
 
 func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
+	if a.browserMode {
+		return a.execBrowserTask(ctx, taskName, scope, fileScopes, cfg, dir)
+	}
+	log := a.newRunLog()
+	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log, runner.TerminalPrompts()))
+}
+
+// newRunLog is the run's log on this terminal, quiet if asked.
+func (a *App) newRunLog() *tui.RunLog {
 	log := tui.NewRunLog(os.Stdout, os.Stderr)
 	log.SetQuiet(a.quiet)
 	if a.Screen != nil {
 		log.Watch(a.Screen())
 	}
-	if err := runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, log); err != nil {
-		if !runner.Reported(err) {
-			tui.HobnobError(os.Stderr, err.Error())
-		}
-		return ErrSilent
+	return log
+}
+
+// failSilently prints a failure the run didn't already log, and turns any
+// failure into ErrSilent.
+func failSilently(err error) error {
+	if err == nil {
+		return nil
 	}
-	return nil
+	if !runner.Reported(err) {
+		tui.HobnobError(os.Stderr, err.Error())
+	}
+	return ErrSilent
 }
 
 // Run is the CLI body: parse args, load the taskfile, dispatch. It never
@@ -122,7 +146,20 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 	useDemo, args := extractDemoFlag(args)
-	flagQuiet, args := extractQuietFlag(args)
+	flagQuiet, args := extractFlag(args, "--quiet", "-q")
+	a.browserMode, args = extractFlag(args, "--browser")
+	a.port, args, err = extractPortFlag(args)
+	if err != nil {
+		return err
+	}
+	if a.port != 0 && !a.browserMode {
+		return fmt.Errorf("--port needs --browser")
+	}
+	if a.browserMode {
+		if err := checkBrowserFlag(runtime.GOOS, args); err != nil {
+			return err
+		}
+	}
 	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")
@@ -172,7 +209,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			noPrompts := a.defaultNoPrompts()
-			if _, ok := cfg.Tasks["default"]; ok {
+			if _, ok := cfg.Tasks["default"]; ok && !a.browserMode {
 				return a.execTask(ctx, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 			}
 			return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, true)

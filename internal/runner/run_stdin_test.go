@@ -57,7 +57,7 @@ func TestExecRun_TerminalStdin_ForwardsKeysToTheCommand(t *testing.T) {
 
 	// Act
 	go func() {
-		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 	}()
 	time.Sleep(200 * time.Millisecond)
 	_, _ = keys.WriteString("bob\n")
@@ -93,7 +93,7 @@ func TestExecRun_TerminalStdin_CtrlCReachesHobnobNotTheCommand(t *testing.T) {
 
 	// Act
 	go func() {
-		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 	}()
 	time.Sleep(200 * time.Millisecond)
 	_, _ = keys.Write([]byte{3})
@@ -128,7 +128,7 @@ func TestExecRun_TerminalStdin_ShowsWhatTheCommandWritesToItsTerminalWhenStdoutI
 
 	// Act
 	go func() {
-		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr))
+		done <- ExecuteTask(context.Background(), "t", scope.New(), nil, cfg, true, dir, tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 	}()
 	seen := make(chan string, 1)
 	go func() {

@@ -37,6 +37,7 @@ func PrintUsage(out io.Writer, version string) {
 
 	fmt.Fprintln(out, heading("Usage"))
 	fmt.Fprintln(out, "  hobnob [--file <path>] <task> [--no-input] [KEY=VALUE ...]")
+	fmt.Fprintln(out, "  hobnob [--file <path>] --browser [<task> | --port <number>] [KEY=VALUE ...]")
 	fmt.Fprintln(out, "  hobnob [--file <path>] --list | --select | --help")
 	fmt.Fprintln(out, "  hobnob --demo | --version | --upgrade")
 
@@ -48,6 +49,8 @@ func PrintUsage(out io.Writer, version string) {
 		{"--select", "Interactively select a task to run"},
 		{"--help", "Show this help"},
 		{"--no-input", "Skip interactive prompts; fail if a required variable is missing"},
+		{"--browser", "Run the task, or pick one, on a page in the browser"},
+		{"--port <number>", "Serve the --browser task picker on this port, with no token, and open no browser"},
 		{"--quiet, -q", "Print only each command and each task's end (or set HOBNOB_QUIET=1)"},
 		{"--version", "Print version and exit"},
 		{"--upgrade", "Upgrade hobnob to the latest release"},

@@ -53,6 +53,11 @@ func parseStepNode(node *yaml.Node) (Step, error) {
 				return Step{}, fmt.Errorf("get: %w", err)
 			}
 			step.GetEntries = entries
+		case "say":
+			if fieldVal.Kind != yaml.ScalarNode || fieldVal.Value == "" {
+				return Step{}, fmt.Errorf("say: expected a message")
+			}
+			step.Message = fieldVal.Value
 		case "call":
 			step.CallTarget = fieldVal.Value
 		case "loop":

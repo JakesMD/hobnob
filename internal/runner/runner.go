@@ -36,16 +36,16 @@ func Reported(err error) bool {
 	return errors.As(err, &reported)
 }
 
-// wrapPromptErr classifies a promptTextFn/promptSelectFn error: one caused by
+// wrapPromptErr classifies the error of a prompt for what: one caused by
 // ctx cancellation (the prompt was torn down mid-input, e.g. a SIGTERM
 // arriving while a get: step is blocked waiting on the user) becomes
 // ErrInterrupted so callers treat it like any other graceful-shutdown exit,
 // rather than an ordinary "aborted" prompt failure.
-func wrapPromptErr(varName string, err error) error {
+func wrapPromptErr(what string, err error) error {
 	if tui.IsInterrupted(err) {
 		return fmt.Errorf("%w: %v", ErrInterrupted, err)
 	}
-	return fmt.Errorf("get %s: %w", varName, err)
+	return fmt.Errorf("%s: %w", what, err)
 }
 
 // runningStepMu guards runningStepPID. execRun clears the PID before reaping
@@ -130,6 +130,7 @@ type execCtx struct {
 	dir        string
 	memo       *callMemo
 	log        *tui.RunLog
+	prompts    Prompts
 	softs      *int
 }
 
@@ -145,6 +146,12 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 	return task, execCfg, nil
 }
 
+// CheckTask reports whether cfg has a task taskName, as ExecuteTask would.
+func CheckTask(taskName string, cfg *config.ConfigFile) error {
+	_, _, err := resolveTask(taskName, cfg)
+	return err
+}
+
 // ExecuteTask runs taskName using parentDir as the inherited working directory.
 // If the task defines a top-level dir:, that overrides parentDir (Priority B).
 // For CLI invocations pass invocationDir; call: goes through executeTask.
@@ -152,7 +159,7 @@ func resolveTask(taskName string, cfg *config.ConfigFile) (config.Task, *config.
 // which lives for the lifetime of this call (and everything it recursively
 // executes) and no longer, and the jobs its run: steps leave running, which
 // get SIGTERM as soon as ctx is cancelled and are stopped before it returns.
-func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog) error {
+func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, parentDir string, log *tui.RunLog, prompts Prompts) error {
 	if _, _, err := resolveTask(taskName, cfg); err != nil {
 		return err
 	}
@@ -161,7 +168,7 @@ func ExecuteTask(ctx context.Context, taskName string, scope *scope.Scope, fileS
 	defer stopTerm()
 	stopSay := context.AfterFunc(ctx, log.Stopping)
 	defer stopSay()
-	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log}, taskName, literal.Expr{}, scope)
+	return executeTask(execCtx{ctx: ctx, cfg: cfg, fileScopes: fileScopes, noPrompts: noPrompts, dir: parentDir, memo: newCallMemo(), log: log, prompts: prompts}, taskName, literal.Expr{}, scope)
 }
 
 // executeTask is the one task-invocation path, shared by the CLI entry point
@@ -178,7 +185,10 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	if err != nil {
 		return err
 	}
-	defer execState.log.Enter(taskName)()
+	if task.Cfg != nil {
+		execState.fileScopes.Apply(scope, task.Cfg)
+	}
+	defer execState.log.Enter(taskName, taskLabel(task.Info, scope))()
 	began := time.Now()
 	softs := 0
 	skipped, err := runTask(execState, task, execCfg, taskName, callDirTmpl, scope, &softs)
@@ -199,12 +209,21 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	return nil
 }
 
-// runTask does everything executeTask does except end the task in the log;
+// taskLabel is info with its variables filled in from scope and secrets
+// masked, or info as written when a variable it names is unset.
+func taskLabel(info string, scope *scope.Scope) string {
+	filled, err := eval.EvalTemplate(info, scope.Vars())
+	// text/template renders an unset variable as "<no value>" rather than failing.
+	if err != nil || strings.Count(filled, "<no value>") > strings.Count(info, "<no value>") {
+		return info
+	}
+	return scope.Mask(filled)
+}
+
+// runTask does everything executeTask does after applying the file scope,
+// except end the task in the log;
 // skipped is true when the task's own if: was false.
 func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, taskName string, callDirTmpl literal.Expr, scope *scope.Scope, softs *int) (skipped bool, err error) {
-	if task.Cfg != nil {
-		execState.fileScopes.Apply(scope, task.Cfg)
-	}
 	currentDir := execState.dir
 	switch {
 	case !callDirTmpl.IsZero():
@@ -230,7 +249,7 @@ func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, ta
 			return true, nil
 		}
 	}
-	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, softs: softs}, task.Steps, scope)
+	return false, executeSteps(execCtx{ctx: execState.ctx, cfg: execCfg, fileScopes: execState.fileScopes, task: taskName, noPrompts: execState.noPrompts, dir: currentDir, memo: execState.memo, log: execState.log, prompts: execState.prompts, softs: softs}, task.Steps, scope)
 }
 
 // stepMessage is what a step that can't start reports: the step as written,
@@ -264,6 +283,8 @@ func execStep(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return execFor(execState, step, scope)
 	case config.KindGet:
 		return execGet(execState, step, scope)
+	case config.KindSay:
+		return execSay(execState, step, scope)
 	}
 	return nil
 }

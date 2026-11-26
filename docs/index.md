@@ -90,9 +90,10 @@ tasks:
               info: "{{ .TRIVIA.question.text }}"
               options: .ANSWERS
 
-      - run: echo "Correct!"
+      # Show the result and wait for Enter.
+      - say: Correct!
         if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
-      - run: 'echo "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."'
+      - say: "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."
         if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
 ```
 

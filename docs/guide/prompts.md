@@ -129,6 +129,45 @@ Typing `99` keeps the prompt open with the error shown:
  enter confirm
 ```
 
+## Showing a message
+
+`say:` shows a message and waits until you press enter. Use it for anything
+the person should read before the task goes on, such as whether their answer
+was right:
+
+```yaml
+tasks:
+  ask-trivia:
+    steps:
+      - get:
+          - GUESS:
+              info: What is the capital of Australia?
+              options: [Sydney, Canberra, Melbourne]
+      - say: Correct!
+        if: "{{ eq .GUESS \"Canberra\" }}"
+      - say: "Not quite. It was Canberra."
+        if: "{{ ne .GUESS \"Canberra\" }}"
+```
+
+Picking `Sydney` shows:
+
+```
+╭─ ask-trivia ─────────────────────────────────────────────────────────────╮
+│                                                                          │
+│  Not quite. It was Canberra.                                             │
+│                                                                          │
+╰──────────────────────────────────────────────────────────────────────────╯
+ enter continue
+```
+
+Once you press enter, the message stays in the log:
+
+```
+ask-trivia » GUESS=Sydney
+ask-trivia » Not quite. It was Canberra.
+ask-trivia ✓ done after 2.1s
+```
+
 ## Picking a file or directory
 
 `type: file` turns the prompt into a picker that browses your files, and
@@ -244,7 +283,8 @@ hobnob ask-trivia CATEGORY=history --no-input    # uses history
 ```
 
 A prompt with no `default:` and no value already set stops the task, and
-tells you which variable to pass.
+tells you which variable to pass. A `say:` prints its message and goes on
+without waiting.
 
 ## Rules
 
@@ -276,6 +316,14 @@ tells you which variable to pass.
 - **With `multi:`, each item must match on its own.**
 - **Put `get:` steps early**, so nobody waits on a slow command before
   they're asked anything.
+
+### Messages
+
+- **A `say:` message is a [template](./templates.md)**, filled in when the step
+  runs. A [secret](./secrets.md) in it shows as `****`.
+- **A `say:` sets no variable** and takes no key but `if:`.
+- **A `say:` message shows even with `--quiet`**, since it was written for
+  the person running the task.
 
 ### Files and directories
 

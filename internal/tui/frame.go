@@ -43,7 +43,11 @@ func (c card) title() string {
 	if c.heading != "" {
 		return SLabel.Render(c.heading)
 	}
-	title := TaskStyle(c.task).Render(c.task) + " " + TaskStyle(c.task).Render("»") + " " + SLabel.Render(c.varName)
+	title := TaskStyle(c.task).Render(c.task)
+	if c.varName == "" {
+		return title
+	}
+	title += " " + TaskStyle(c.task).Render("»") + " " + SLabel.Render(c.varName)
 	if c.optional {
 		title += " " + SHint.Render("(optional)")
 	}
@@ -97,6 +101,10 @@ func wrapLines(text string, width int) []string {
 		lines[i] = strings.TrimRight(line, " ")
 	}
 	return lines
+}
+
+func wrapText(text string, width int) string {
+	return strings.Join(wrapLines(text, width), "\n")
 }
 
 func renderHints(hints []hint) string {

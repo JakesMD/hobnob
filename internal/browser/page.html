@@ -1,0 +1,463 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hobnob</title>
+<style>
+:root {
+  --bg: #1a2029; --bg-alt: #151a22; --bg-soft: #252d38; --term: #0f131a;
+  --divider: #2e3744; --border: #3a4452;
+  --t1: #eef1f5; --t2: #aeb7c3; --t3: #768191;
+  --brand-1: #f6c27a; --brand-2: #e0a050; --brand-3: #d98a35; --brand-soft: rgba(217, 138, 53, 0.16);
+  --btn-text: #1a2029; --alt-bg: #2c3542; --alt-hover: #3a4452;
+  --red: #ff6b6b; --green: #4ec27a;
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.5 3.6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #ffffff; --bg-alt: #f6f6f7; --bg-soft: #f1f1f3; --term: #f6f6f7;
+    --divider: #e2e2e3; --border: #c2c2c4;
+    --t1: #3c3c43; --t2: #67676c; --t3: #929295;
+    --brand-1: #d98a35; --brand-2: #c77a28; --brand-3: #b86a1c; --brand-soft: rgba(217, 138, 53, 0.14);
+    --btn-text: #ffffff; --alt-bg: #ebebef; --alt-hover: #dedee3;
+    --red: #d03a3a; --green: #2f9d5b;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--t1); font: 15px/1.6 var(--sans); }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; padding: 0; }
+.btn { padding: 0 22px; border-radius: 24px; line-height: 40px; font-size: 15px; font-weight: 600; transition: background .2s; }
+.btn.brand { color: var(--btn-text); background: var(--brand-2); }
+.btn.brand:hover { background: var(--brand-1); }
+.btn.alt { color: var(--t1); background: var(--alt-bg); }
+.btn.alt:hover { background: var(--alt-hover); }
+.btn:disabled { opacity: .4; pointer-events: none; }
+.shell { display: grid; grid-template-columns: clamp(200px, 24vw, 280px) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; }
+.rail { background: var(--bg-alt); border-right: 1px solid var(--divider); padding: 28px 24px; display: flex; flex-direction: column; gap: 28px; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--brand-1); font-size: 18px; }
+.message { white-space: pre-line; }
+.message a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
+.logo svg { width: 28px; height: 28px; flex: none; }
+.taskname { font-size: 13px; color: var(--t3); min-width: 0; overflow-wrap: anywhere; }
+.taskname b { display: block; font-size: 16px; color: var(--t1); font-weight: 600; margin-bottom: 2px; }
+.steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.steps li { display: flex; gap: 10px; align-items: baseline; padding: 6px 10px; border-radius: 8px; font-size: 14px; color: var(--t3); }
+.steps .m { width: 16px; text-align: center; flex: none; }
+.steps li.done { color: var(--t2); }
+.steps li.done .m { color: var(--green); }
+.steps li.running { background: var(--brand-soft); color: var(--t1); }
+.steps li.running .m { color: var(--brand-1); }
+.steps li.failed { color: var(--t1); }
+.steps li.failed .m { color: var(--red); }
+.sep { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--t3); padding: 12px 10px 4px; }
+.main { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; min-width: 0; }
+.pagebody { flex: 1; padding: 9vh clamp(20px, 5vw, 56px) 40px; max-width: 900px; width: 100%; }
+h1 { font-size: clamp(24px, 4vw, 32px); overflow-wrap: anywhere; line-height: 1.2; letter-spacing: -.02em; font-weight: 700; margin: 0 0 28px; }
+.bar { position: sticky; bottom: 0; display: flex; justify-content: space-between; align-items: center; gap: 10px 16px; flex-wrap: wrap; padding: 18px clamp(20px, 5vw, 56px); border-top: 1px solid var(--divider); background: var(--bg); }
+.bar .note { font-size: 13px; color: var(--t3); }
+.progress { height: 6px; border-radius: 3px; background: var(--bg-soft); overflow: hidden; max-width: 520px; position: relative; }
+.progress::after { content: ''; position: absolute; inset: 0; width: 35%; border-radius: 3px; background: linear-gradient(90deg, var(--brand-3), var(--brand-1)); animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+.lastbox { margin-top: 18px; max-width: min(520px, 100%); padding: 10px 14px; border-radius: 10px; background: var(--term); border: 1px solid var(--divider); font: 13px var(--mono); color: var(--t3); white-space: pre; overflow: hidden; text-overflow: ellipsis; line-height: 20px; min-height: 42px; }
+.clock { margin-top: 10px; font: 13px var(--mono); color: var(--t3); }
+.icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; margin-bottom: 22px; }
+.icon.ok { background: rgba(78,194,122,.15); color: var(--green); }
+.icon.bad { background: rgba(255,107,107,.12); color: var(--red); }
+.lead { color: var(--t2); max-width: 560px; margin: -14px 0 24px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 14px; }
+.tile { text-align: left; padding: 20px; border-radius: 14px; border: 1px solid var(--divider); background: var(--bg-alt); transition: border-color .15s, transform .15s; }
+.tile:hover, .tile:focus-visible { border-color: var(--brand-2); transform: translateY(-2px); outline: none; }
+.tile b { display: block; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.tile small { font: 12px var(--mono); color: var(--t3); }
+.search { width: 100%; max-width: 360px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--divider); background: var(--bg-alt); color: var(--t1); font: inherit; font-size: 14px; outline: none; margin-bottom: 16px; }
+.search:focus { border-color: var(--brand-3); }
+.search::-webkit-search-cancel-button { display: none; }
+.empty { color: var(--t3); }
+mark { background: none; color: var(--brand-1); font-weight: 700; }
+.ent.sel mark { color: inherit; }
+.field { width: 100%; max-width: 560px; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--t1); }
+.field:focus { outline: 2px solid var(--brand-2); border-color: transparent; }
+.refusal { margin-top: 10px; color: var(--red); font-size: 14px; }
+.search.menu { max-width: 360px; border-radius: 999px; margin-bottom: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 10px; }
+.card { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); text-align: left; transition: border-color .15s, background .15s; }
+.card:hover { border-color: var(--border); background: var(--bg-soft); }
+.card.on { border-color: var(--brand-2); background: var(--brand-soft); }
+.card .dot, .card .box { width: 18px; height: 18px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; }
+.card .dot { border-radius: 50%; }
+.card .box { border-radius: 5px; }
+.card.on .dot { border-color: var(--brand-1); background: radial-gradient(var(--brand-1) 40%, transparent 45%); }
+.card.on .box { border-color: var(--brand-1); background: var(--brand-1); }
+.card.on .box::after { content: ''; width: 12px; height: 12px; background: var(--btn-text); -webkit-mask: var(--tick) center / contain no-repeat; mask: var(--tick) center / contain no-repeat; }
+.actions { display: flex; gap: 10px; }
+.cols { display: flex; border: 1px solid var(--divider); border-radius: 12px; height: min(320px, 50vh); background: var(--bg-alt); overflow-x: auto; }
+.col { flex: none; width: 220px; border-right: 1px solid var(--divider); overflow-y: auto; padding: 6px; }
+.col:last-child { border-right: none; flex: 1; min-width: 220px; }
+.ent { display: flex; width: 100%; justify-content: space-between; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 14px; text-align: left; color: var(--t2); white-space: nowrap; }
+.ent:hover { background: var(--bg-soft); }
+.ent.open { background: var(--alt-hover); color: var(--t1); }
+.ent.sel { background: var(--brand-2); color: var(--btn-text); }
+.ent.empty { color: var(--t3); cursor: default; }
+.ent .chev { color: var(--t3); }
+.ent.sel .chev { color: var(--btn-text); }
+.picked { font-size: 14px; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 200px; }
+.picked code { font-family: var(--mono); color: var(--brand-1); }
+@media (max-width: 760px) {
+  .shell { display: flex; flex-direction: column; }
+  .rail { flex-direction: row; align-items: center; gap: 16px; padding: 12px 20px; border-right: none; border-bottom: 1px solid var(--divider); }
+  .logo { font-size: 0; gap: 0; }
+  .logo svg { width: 26px; height: 26px; }
+  .taskname { font-size: 0; }
+  .taskname b { font-size: 15px; line-height: 1.35; margin-bottom: 0; }
+  .main { flex: 1; min-height: 0; }
+  .pagebody { padding-top: 28px; padding-bottom: 28px; }
+  h1 { margin-bottom: 20px; }
+  .col { width: 170px; }
+  .col:last-child { min-width: 170px; }
+  .btn { padding: 0 18px; }
+  .search, .search.menu { max-width: none; }
+}
+.solo { min-height: 100vh; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--t2); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const token = new URLSearchParams(location.search).get('token');
+const tokenQuery = token === null ? '' : '?token=' + encodeURIComponent(token);
+const app = document.getElementById('app');
+let snap = null;
+let received = 0;
+let clock = null;
+
+function el(tag, attrs, ...kids) {
+  const node = document.createElement(tag);
+  for (const [key, val] of Object.entries(attrs || {})) {
+    if (key === 'class') node.className = val;
+    else if (key.startsWith('on')) node.addEventListener(key.slice(2), val);
+    else node.setAttribute(key, val);
+  }
+  for (const kid of kids.flat()) if (kid != null) node.append(kid);
+  return node;
+}
+
+function duration(ms) {
+  const secs = ms / 1000;
+  if (secs >= 60) return Math.floor(secs / 60) + 'm' + String(Math.floor(secs % 60)).padStart(2, '0') + 's';
+  return secs.toFixed(1) + 's';
+}
+
+function post(name, body) {
+  return fetch('/actions/' + name + tokenQuery, { method: 'POST', body: JSON.stringify(body || {}) });
+}
+
+const logoSVG = '<svg viewBox="0 0 128 128" aria-hidden="true"><defs><linearGradient id="hobnob-t" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="128" y2="128"><stop offset="0" stop-color="#3b4654"/><stop offset="1" stop-color="#1a2029"/></linearGradient><linearGradient id="hobnob-c" gradientUnits="userSpaceOnUse" x1="30" y1="38" x2="64" y2="90"><stop offset="0" stop-color="#f6c27a"/><stop offset="1" stop-color="#e0a050"/></linearGradient><radialGradient id="hobnob-b" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#f6c27a"/><stop offset="1" stop-color="#d98a35"/></radialGradient></defs><rect x="4" y="4" width="120" height="120" rx="22" fill="url(#hobnob-t)"/><path d="M36 44 L58 64 L36 84" fill="none" stroke="url(#hobnob-c)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><circle cx="85" cy="77" r="13" fill="url(#hobnob-b)"/><g fill="#7c2d12" opacity=".6"><circle cx="80.5" cy="72.9" r="2.6"/><circle cx="89.9" cy="76.2" r="2.4"/><circle cx="84.2" cy="83.5" r="2.3"/></g></svg>';
+
+// fuzzy and matchAll mirror the terminal's fuzzyMatch and matchRows, so a
+// search finds the same things in the browser as in the terminal.
+function fuzzy(query, target) {
+  if (!query) return { score: 0, positions: [] };
+  const q = [...query.toLowerCase()], t = [...target.toLowerCase()];
+  const positions = [];
+  let qi = 0, last = -2, score = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] !== q[qi]) continue;
+    positions.push(ti);
+    if (ti === last + 1) score += 5;
+    if (ti === 0 || '_-.'.includes(t[ti - 1])) score += 3;
+    score++;
+    last = ti;
+    qi++;
+  }
+  return qi < q.length ? null : { score: score * 100 - t.length, positions };
+}
+
+function matchAll(items, query, text) {
+  const hits = [];
+  items.forEach(item => { const m = fuzzy(query, text(item)); if (m) hits.push({ item, ...m }); });
+  if (query) hits.sort((a, b) => b.score - a.score);
+  return hits;
+}
+
+function highlight(text, positions) {
+  if (!positions.length) return text;
+  const at = new Set(positions);
+  return el('span', {}, [...text].map((ch, i) => at.has(i) ? el('mark', {}, ch) : ch));
+}
+
+function logo() {
+  const node = el('div', { class: 'logo' }, 'hobnob');
+  node.insertAdjacentHTML('afterbegin', logoSVG);
+  return node;
+}
+
+function rail(s) {
+  return el('aside', { class: 'rail' },
+    logo(),
+    el('div', { class: 'taskname' }, el('b', {}, s.task.info || s.task.name), s.task.info ? s.task.name : ''));
+}
+
+// running is the progress screen on show. Each new line of output patches it
+// in place, since rebuilding it would restart the activity bar.
+let running = null;
+
+function progress(s) {
+  const title = el('h1'), last = el('div', { class: 'lastbox' }), elapsed = el('div', { class: 'clock' });
+  const cancel = el('button', { class: 'btn alt', onclick: () => post('cancel') });
+  const tick = () => { elapsed.textContent = duration(running.s.progress.elapsedMs + Date.now() - received); };
+  running = { s, title, update(s) {
+    running.s = s;
+    title.textContent = s.progress.cancelling ? 'Stopping…' : s.progress.label;
+    last.textContent = s.progress.lastLine;
+    cancel.textContent = s.progress.cancelling ? 'Force stop' : 'Cancel';
+    tick();
+  } };
+  running.update(s);
+  clock = setInterval(tick, 200);
+  return {
+    body: [title, el('div', { class: 'progress' }), last, elapsed],
+    bar: [cancel, el('span', { class: 'note' }, 'Keep this window open while hobnob runs.')],
+  };
+}
+
+function homeButton(s) {
+  return s.result.home ? el('button', { class: 'btn brand', onclick: () => post('home') }, 'Home') : null;
+}
+
+function tasks(s) {
+  const list = el('div', { class: 'tiles' });
+  const search = el('input', { class: 'search', type: 'search', placeholder: 'Search tasks', 'aria-label': 'Search tasks' });
+  const fill = () => {
+    const needle = search.value.trim();
+    const shown = matchAll(s.tasks, needle, t => t.name).map(m => m.item);
+    for (const m of matchAll(s.tasks, needle, t => t.info)) if (!shown.includes(m.item)) shown.push(m.item);
+    list.replaceChildren(...(shown.length ? shown.map(t => el('button', { class: 'tile', onclick: () => post('choose', { task: t.name }) },
+      el('b', {}, t.info || t.name), t.info ? el('small', {}, t.name) : null)) : [el('p', { class: 'empty' }, 'No tasks to show.')]));
+  };
+  search.addEventListener('input', fill);
+  fill();
+  app.replaceChildren(el('div', { class: 'shell' },
+    el('aside', { class: 'rail' }, logo(), el('div', { class: 'taskname' }, el('b', {}, 'Welcome'), 'Pick a task to run')),
+    el('div', { class: 'main' }, el('main', { class: 'pagebody' }, el('h1', {}, 'What would you like to do?'), search, list))));
+  setTimeout(() => search.focus());
+}
+
+let draft = { id: null, text: '', touched: false };
+
+let menuDraft = { id: null, picks: [], filter: '' };
+
+function menu(s) {
+  const p = s.prompt;
+  if (menuDraft.id !== p.id) menuDraft = { id: p.id, picks: p.multi ? [...(p.defaults || [])] : (p.hasDefault ? [p.default] : []), filter: '' };
+  const cards = el('div', { class: 'cards', role: p.multi ? 'group' : 'radiogroup' });
+  const count = el('span', { class: 'note', id: 'count' });
+  const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
+  const fill = () => {
+    const shown = matchAll(p.options, menuDraft.filter.trim(), o => o);
+    cards.replaceChildren(...(shown.length ? shown.map(m => {
+      const o = m.item;
+      const on = menuDraft.picks.includes(o);
+      return el('button', { class: 'card' + (on ? ' on' : ''), role: p.multi ? 'checkbox' : 'radio', 'aria-checked': String(on),
+        onclick: () => {
+          if (!p.multi) menuDraft.picks = [o];
+          else menuDraft.picks = menuDraft.picks.includes(o) ? menuDraft.picks.filter(x => x !== o) : [...menuDraft.picks, o];
+          fill();
+        } }, el('span', { class: p.multi ? 'box' : 'dot' }), highlight(o, m.positions));
+    }) : [el('div', { class: 'empty' }, 'No options match.')]));
+    count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
+    next.disabled = !p.optional && !menuDraft.picks.length;
+  };
+  fill();
+  const body = [el('h1', {}, p.info || p.varName)];
+  if (p.options.length > 6) {
+    const search = el('input', { class: 'search menu', type: 'search', placeholder: 'Search', 'aria-label': 'Search options', autocomplete: 'off' });
+    search.value = menuDraft.filter;
+    search.addEventListener('input', () => { menuDraft.filter = search.value; fill(); });
+    body.push(search);
+    setTimeout(() => search.focus(), 0);
+  }
+  body.push(cards, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null);
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(next);
+  return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
+}
+
+function linked(text) {
+  return text.split(/(?<!\w)(https?:\/\/[^\s<>"]+)/i).flatMap((part, i) => {
+    if (i % 2 === 0) return [part];
+    let url = part;
+    // A closing bracket ends the URL unless it closes one the URL opened.
+    while (/[.,;:!?'\]]$/.test(url) || (url.endsWith(')') && url.split('(').length < url.split(')').length)) url = url.slice(0, -1);
+    return [el('a', { href: url, target: '_blank', rel: 'noopener noreferrer' }, url), part.slice(url.length)];
+  });
+}
+
+function say(s) {
+  const p = s.prompt;
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: () => post('answer', { id: p.id, value: null }) }, 'Continue');
+  setTimeout(() => next.focus(), 0);
+  return { body: [el('h1', { class: 'message' }, linked(p.info))], bar: [el('span'), el('div', { class: 'actions' }, [next])] };
+}
+
+function ask(s) {
+  const p = s.prompt;
+  if (p.kind === 'menu') return menu(s);
+  if (p.kind === 'say') return say(s);
+  if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
+  const send = () => { if (!next.disabled) post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text }); };
+  // Empty text takes the default, so only a required prompt without one waits.
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
+  const ready = () => { next.disabled = !p.optional && !p.hasDefault && draft.text === ''; };
+  const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
+    autocomplete: 'off', spellcheck: 'false', placeholder: p.hasDefault && p.secret ? '••••' : '',
+    onkeydown: (event) => { if (event.key === 'Enter') send(); } });
+  field.value = draft.text;
+  field.addEventListener('input', () => { draft.text = field.value; draft.touched = true; ready(); });
+  ready();
+  setTimeout(() => field.focus(), 0);
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  buttons.push(next);
+  return {
+    body: [el('h1', {}, p.info || p.varName), field, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
+    bar: [el('span'), el('div', { class: 'actions' }, buttons)],
+  };
+}
+
+let pick = { id: null, selected: [], open: null, filter: '' };
+
+function picker(s) {
+  const p = s.prompt, v = p.picker;
+  const multi = p.multi;
+  if (pick.id !== p.id) pick = { id: p.id, selected: v.selected.slice(), open: v.open, filter: '' };
+  if (pick.open !== v.open) pick.open = v.open, pick.filter = '';
+  const folderPicker = v.type === 'dir';
+  const join = (dir, name) => (dir.endsWith('/') ? dir : dir + '/') + name;
+  const openFolder = (path) => post('open', { id: p.id, path });
+  const choose = (path, entry) => {
+    if (multi) {
+      const at = pick.selected.indexOf(path);
+      if (at >= 0) pick.selected.splice(at, 1); else pick.selected.push(path);
+      render();
+    } else if (folderPicker) { pick.selected = [path]; openFolder(path); }
+    else pick.selected = [path], render();
+  };
+  const searched = v.columns.length - 1;
+  const entry = (col, e, positions) => {
+    const path = join(col.path, e.name);
+    const name = el('span', {}, highlight(e.name, positions));
+    const picked = pick.selected.includes(path);
+    const cls = 'ent' + (picked ? ' sel' : col.next === e.name ? ' open' : '');
+    if (e.dir && !e.pickable) return el('button', { class: cls, onclick: () => openFolder(path) }, name, el('span', { class: 'chev' }, '›'));
+    if (e.dir) return el('button', { class: cls, onclick: () => choose(path, e), ondblclick: () => openFolder(path) },
+      name, multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
+    return el('button', { class: cls, onclick: () => choose(path, e) }, name);
+  };
+  const hits = col => matchAll(col.entries, pick.filter.trim(), e => e.name);
+  const cols = v.columns.map((col, i) => {
+    const shown = i === searched ? hits(col) : col.entries.map(e => ({ item: e, positions: [] }));
+    return el('div', { class: 'col' }, shown.length ? shown.map(m => entry(col, m.item, m.positions))
+      : el('div', { class: 'ent empty' }, col.entries.length ? 'Nothing matches' : 'Nothing to pick here'));
+  });
+  const search = el('input', { class: 'search menu', type: 'search', placeholder: 'Search this folder', 'aria-label': 'Search this folder', autocomplete: 'off', spellcheck: 'false' });
+  search.value = pick.filter;
+  search.addEventListener('input', () => { pick.filter = search.value; render(); });
+  search.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const col = v.columns[searched], top = col && hits(col)[0];
+    if (!top) return;
+    const path = join(col.path, top.item.name);
+    if (top.item.dir && (!top.item.pickable || !multi && !folderPicker)) openFolder(path);
+    else choose(path, top.item);
+  });
+  setTimeout(() => { const box = document.getElementById('picker-search'); if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); } }, 0);
+  search.id = 'picker-search';
+  // The open folder is the last column: on a narrow page, scroll it into view.
+  setTimeout(() => { const box = document.getElementById('cols'); if (box) box.scrollLeft = box.scrollWidth; }, 0);
+  const answer = pick.selected;
+  const statement = multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
+    : answer.length ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
+  const send = () => post('answer', { id: p.id, value: multi ? answer : (answer[0] || '') });
+  const buttons = [];
+  if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
+  next.disabled = !p.optional && !answer.length;
+  buttons.push(next);
+  return {
+    body: [el('h1', {}, p.info || p.varName), search, el('div', { class: 'cols', id: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
+    bar: [el('span', { class: 'picked', id: 'picked' }, statement), el('div', { class: 'actions' }, buttons)],
+  };
+}
+
+function result(s) {
+  const r = s.result;
+  const copy = el('button', { class: 'btn alt', onclick: async () => {
+    await navigator.clipboard.writeText(r.log);
+    copy.textContent = 'Copied';
+  } }, 'Copy details');
+  if (r.outcome === 'done') {
+    return {
+      body: [el('div', { class: 'icon ok' }, '✓'), el('h1', {}, "You're all set"),
+        el('p', { class: 'lead' }, 'Finished in ' + duration(r.durationMs) + '.')],
+      bar: [el('span', { class: 'note' }, s.result.home ? '' : 'You can close this window.'), homeButton(s)],
+    };
+  }
+  const cancelled = r.outcome === 'cancelled';
+  return {
+    body: [el('div', { class: 'icon bad' }, cancelled ? '■' : '✗'),
+      el('h1', {}, cancelled ? 'Cancelled' : 'Something went wrong'),
+      cancelled ? null : el('p', { class: 'lead' }, r.label ? 'Failed at: ' + r.label : 'The run failed.'),
+      r.lastLine ? el('div', { class: 'lastbox' }, r.lastLine) : null],
+    bar: [el('span'), el('span', {}, cancelled ? null : copy, ' ', homeButton(s))],
+  };
+}
+
+function render() {
+  const s = snap;
+  if (s.screen === 'progress' && running && app.contains(running.title)) {
+    app.querySelector('.rail').replaceWith(rail(s));
+    return running.update(s);
+  }
+  clearInterval(clock);
+  running = null;
+  if (s.screen === 'tasks') return tasks(s);
+  const screen = s.screen === 'prompt' ? (s.prompt.kind === 'path' ? picker(s) : ask(s)) : s.screen === 'progress' ? progress(s) : result(s);
+  app.replaceChildren(el('div', { class: 'shell' }, rail(s),
+    el('div', { class: 'main' }, el('main', { class: 'pagebody' }, screen.body), el('footer', { class: 'bar' }, screen.bar))));
+}
+
+function stopped() {
+  clearInterval(clock);
+  app.replaceChildren(el('div', { class: 'solo' }, 'hobnob has stopped.'));
+}
+
+let gone = null;
+const events = new EventSource('/events' + tokenQuery);
+events.onmessage = (event) => {
+  clearTimeout(gone);
+  gone = null;
+  snap = JSON.parse(event.data);
+  received = Date.now();
+  if (snap.screen === 'another-tab') {
+    events.close();
+    clearInterval(clock);
+    app.replaceChildren(el('div', { class: 'solo' }, 'hobnob is open in another tab.'));
+    return;
+  }
+  render();
+};
+// EventSource reconnects by itself, so a dropped connection (a laptop asleep
+// while hobnob runs) heals; hobnob has stopped only when it stays unreachable.
+// Every failed retry fires onerror too, so only the first error starts the timer.
+events.onerror = () => {
+  if (snap && (snap.screen === 'another-tab' || snap.screen === 'done' || snap.screen === 'failed')) return;
+  gone ??= setTimeout(stopped, 8000);
+};
+</script>
+</body>
+</html>

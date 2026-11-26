@@ -38,7 +38,7 @@ func TestExecRun_PTY_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog(), TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -63,7 +63,9 @@ func TestKillRunningStep_PTY_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog()) }()
+	go func() {
+		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog(), TerminalPrompts())
+	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 
 	// Act

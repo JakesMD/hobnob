@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 
 	"hobnob/internal/eval"
 )
@@ -51,13 +53,13 @@ func extractDemoFlag(args []string) (bool, []string) {
 	return false, args
 }
 
-// extractQuietFlag scans args for --quiet or -q, removes it, and reports
-// whether it was present.
-func extractQuietFlag(args []string) (bool, []string) {
+// extractFlag scans args for any of names, removes every occurrence, and
+// reports whether one was present.
+func extractFlag(args []string, names ...string) (bool, []string) {
 	found := false
 	remaining := make([]string, 0, len(args))
 	for _, arg := range args {
-		if arg == "--quiet" || arg == "-q" {
+		if slices.Contains(names, arg) {
 			found = true
 			continue
 		}
@@ -70,10 +72,31 @@ func extractQuietFlag(args []string) (bool, []string) {
 // returns the value alongside the remaining args. Returns ("", args, nil) if
 // the flag is absent.
 func extractFileFlag(args []string) (string, []string, error) {
+	return extractValueFlag(args, "--file")
+}
+
+// extractPortFlag scans args for --port <number>, removes both tokens, and
+// returns the port alongside the remaining args. Returns (0, args, nil) if
+// the flag is absent.
+func extractPortFlag(args []string) (int, []string, error) {
+	value, remaining, err := extractValueFlag(args, "--port")
+	if err != nil || value == "" {
+		return 0, remaining, err
+	}
+	port, err := strconv.Atoi(value)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, nil, fmt.Errorf("--port takes a port number from 1 to 65535, not %q", value)
+	}
+	return port, remaining, nil
+}
+
+// extractValueFlag scans args for name <value>, removes both tokens, and
+// returns the value alongside the remaining args.
+func extractValueFlag(args []string, name string) (string, []string, error) {
 	for i, arg := range args {
-		if arg == "--file" {
+		if arg == name {
 			if i+1 >= len(args) {
-				return "", nil, fmt.Errorf("flag --file requires an argument")
+				return "", nil, fmt.Errorf("flag %s requires an argument", name)
 			}
 			remaining := make([]string, 0, len(args)-2)
 			remaining = append(remaining, args[:i]...)
@@ -117,4 +140,18 @@ func (a *App) parseTaskArgs(args []string) (noPrompts bool, cliVars map[string]s
 		cliVars[key] = val
 	}
 	return noPrompts, cliVars, nil
+}
+
+// checkBrowserFlag rejects --browser where the page has nothing to do: on Windows,
+// and beside --no-input, --list, --select and --help.
+func checkBrowserFlag(goos string, args []string) error {
+	if goos == "windows" {
+		return fmt.Errorf("--browser is not yet supported on Windows")
+	}
+	for _, arg := range args {
+		if arg == "--no-input" || isListingFlag(arg) {
+			return fmt.Errorf("--browser can't be combined with %s", arg)
+		}
+	}
+	return nil
 }
