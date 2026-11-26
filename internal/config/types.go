@@ -50,6 +50,7 @@ const (
 	KindCall
 	KindFor
 	KindGet
+	KindSay
 )
 
 type SetEntry struct {
@@ -144,4 +145,7 @@ type Step struct {
 
 	// KindGet
 	GetEntries []GetEntry
+
+	// KindSay
+	Message string // the message as written; rendered when the step runs
 }

@@ -56,9 +56,9 @@ Every change must preserve these. Each is explained in the section named.
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
-  path) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
+  path, say) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
   or the page's prompts (`browserPrompts`) under `--web`.
-  Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path)
+  Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path, say)
   (restore func())`, never by reassigning a package variable.
 - **Web stays a front end.** `internal/web` implements `tui.RunListener` and
   imports `value`, and `tui` only for path prompts (`PathPrompt` and its
@@ -604,6 +604,11 @@ line. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before
 `check:`.
 
+**`say:` (`say.go`)** renders its message with `EvalTemplate`, masks it, and
+with prompts on waits on `execCtx.prompts.Say` (`tui.PromptSay`, or the page's
+`KindSay` prompt, answered by Continue with no rail entry); then `RunLog.Say`
+logs it, under `--quiet` too. With prompts off it only logs.
+
 A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
 runs its value through `acceptPath` before `check:`: empty is no answer
 (`optional:` sets it empty and skips `check:`, otherwise it fails), then per
@@ -689,7 +694,7 @@ the rule, erased and redrawn in one write on each chunk and on a 100ms clock;
 lines above it are only ever appended. `Enter` of the outermost task starts
 it, its `leave` ends it; `Run` starts the step clock and each step-end method
 stops it; `Stopping` puts the note on the rule's left; `RunLog.Pause` (around
-each card prompt in `get.go`, `getpath.go`) clears it. A chunk with a cursor
+each card prompt in `get.go`, `getpath.go`, `say.go`) clears it. A chunk with a cursor
 movement hides the area until the tool has moved the cursor no more for
 `drawIdle` (the clock notices too), and an unfinished line unchanged
 for 200ms is a prompt: the rule is drawn once below it, its clock frozen,
@@ -729,14 +734,14 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
+`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry; `Say` for a `say:` message), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
-`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`
-(bubbletea models; `prompt_path.go` is the file/directory picker, which takes
+`prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`/`prompt_say.go`
+(bubbletea models; `prompt_say.go` is a card titled by the task alone, its body the message, ended by enter; `prompt_path.go` is the file/directory picker, which takes
 `Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
 log line is built from, and `SecretMask`). The runner calls `PromptText`,
-`PromptSelect` and `PromptPath`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
+`PromptSelect`, `PromptPath` and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
 ### `internal/web`: the browser front end
 
@@ -914,5 +919,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly seven test seams: `runner.SetPrompts` (text, select and path prompts together),
+Production code exposes exactly seven test seams: `runner.SetPrompts` (text, select, path and say prompts together),
 `runner.SetLeftoverGrace`, `web.SetGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.

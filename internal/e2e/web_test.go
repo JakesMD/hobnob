@@ -133,6 +133,59 @@ func TestE2E_Web_ProgressShowsTheLabelTheLastLineAndTheRail(t *testing.T) {
 	}
 }
 
+func TestE2E_Web_LabelFillsInTheVariablesItCan(t *testing.T) {
+	// given tasks whose info: names variables, when they run, then the page's
+	// labels fill in each variable that is set, mask a secret, and keep an
+	// info: naming an unset variable as written
+	// (why: a label reads "Configuring vim", not "Configuring {{.EDITOR}}")
+	// Arrange
+	yml := `
+		tasks:
+		  top:
+		    info: Set up for {{.WHO}}
+		    steps:
+		      - set:
+		          - EDITOR: vim
+		          - TOKEN:
+		              value: hunter2
+		              secret: true
+		      - call: configure
+		      - call: login
+		      - call: later
+		  configure:
+		    info: Configuring {{.EDITOR}}
+		    steps:
+		      - run: "true"
+		  login:
+		    info: Logging in with {{.TOKEN}}
+		    steps:
+		      - run: "true"
+		  later:
+		    info: Waiting for {{.NOPE}}
+		    steps:
+		      - run: "true"
+	`
+	var done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "top", "WHO=Sam"}, Browser: func(b *Browser) {
+		done = b.Open().Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	want := []web.RailEntry{
+		{Label: "Set up for Sam", State: web.StateDone},
+		{Label: "Configuring vim", State: web.StateDone},
+		{Label: "Logging in with ****", State: web.StateDone},
+		{Label: "Waiting for {{.NOPE}}", State: web.StateDone},
+	}
+	if !equalRail(done.Rail.Setup, want) {
+		t.Errorf("rail = %+v", done.Rail.Setup)
+	}
+}
+
 func equalRail(got, want []web.RailEntry) bool {
 	if len(got) != len(want) {
 		return false

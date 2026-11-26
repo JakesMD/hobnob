@@ -20,6 +20,7 @@ func browserPrompts(server *web.Server) runner.Prompts {
 		Text:   server.PromptText,
 		Select: server.PromptSelect,
 		Path:   server.PromptPath,
+		Say:    server.PromptSay,
 	}
 }
 

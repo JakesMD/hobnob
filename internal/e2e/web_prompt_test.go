@@ -419,3 +419,40 @@ func TestE2E_Web_EmptyAnswerToARequiredPromptIsRefused(t *testing.T) {
 		t.Errorf("refusal = %q", refused.Prompt.Refusal)
 	}
 }
+
+func TestE2E_Web_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
+	// given a say: naming a variable, when the page shows it and the person
+	// continues, then the run goes on and the rail lists no answer for it
+	// (why: a message asks nothing, so there is nothing to record)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - say: "Hello {{.WHO}}"
+		      - run: echo after
+	`
+	var asked, done web.Snapshot
+	c := Case{Yml: yml, Args: []string{"--web", "t", "WHO=Ada"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		asked = tab.Screen(web.ScreenPrompt)
+		if status := b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": nil}); status != http.StatusNoContent {
+			b.Fail("answer status = %d", status)
+		}
+		done = tab.Screen(web.ScreenDone)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.OK(t)
+	res.Out(t, "t » Hello Ada")
+	res.Out(t, "t │ after")
+	if p := asked.Prompt; p.Kind != web.KindSay || p.Info != "Hello Ada" {
+		t.Errorf("prompt = %+v", p)
+	}
+	if len(done.Rail.Answers) != 0 {
+		t.Errorf("answers = %+v, want none", done.Rail.Answers)
+	}
+}

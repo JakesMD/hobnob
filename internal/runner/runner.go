@@ -185,7 +185,10 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	if err != nil {
 		return err
 	}
-	defer execState.log.Enter(taskName, task.Info)()
+	if task.Cfg != nil {
+		execState.fileScopes.Apply(scope, task.Cfg)
+	}
+	defer execState.log.Enter(taskName, taskLabel(task.Info, scope))()
 	began := time.Now()
 	softs := 0
 	skipped, err := runTask(execState, task, execCfg, taskName, callDirTmpl, scope, &softs)
@@ -206,12 +209,21 @@ func executeTask(execState execCtx, taskName string, callDirTmpl literal.Expr, s
 	return nil
 }
 
-// runTask does everything executeTask does except end the task in the log;
+// taskLabel is info with its variables filled in from scope and secrets
+// masked, or info as written when a variable it names is unset.
+func taskLabel(info string, scope *scope.Scope) string {
+	filled, err := eval.EvalTemplate(info, scope.Vars())
+	// text/template renders an unset variable as "<no value>" rather than failing.
+	if err != nil || strings.Count(filled, "<no value>") > strings.Count(info, "<no value>") {
+		return info
+	}
+	return scope.Mask(filled)
+}
+
+// runTask does everything executeTask does after applying the file scope,
+// except end the task in the log;
 // skipped is true when the task's own if: was false.
 func runTask(execState execCtx, task config.Task, execCfg *config.ConfigFile, taskName string, callDirTmpl literal.Expr, scope *scope.Scope, softs *int) (skipped bool, err error) {
-	if task.Cfg != nil {
-		execState.fileScopes.Apply(scope, task.Cfg)
-	}
 	currentDir := execState.dir
 	switch {
 	case !callDirTmpl.IsZero():
@@ -271,6 +283,8 @@ func execStep(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return execFor(execState, step, scope)
 	case config.KindGet:
 		return execGet(execState, step, scope)
+	case config.KindSay:
+		return execSay(execState, step, scope)
 	}
 	return nil
 }

@@ -11,6 +11,8 @@ import (
 // Kinds of prompt a Snapshot can carry.
 const (
 	KindText = "text"
+	// KindSay is a say: step's message: Info, with only Continue to answer it.
+	KindSay = "say"
 )
 
 // maskedAnswer stands for a secret answer on the rail.
@@ -223,4 +225,13 @@ func (s *state) PromptText(ctx context.Context, info, varName string,
 		return "", err
 	}
 	return answer, nil
+}
+
+// PromptSay shows message in the page until the person continues. Its
+// signature is runner.SayPromptFunc's.
+func (s *state) PromptSay(ctx context.Context, message, _ string) error {
+	_, err := s.ask(ctx, Prompt{Kind: KindSay, Info: message}, func(json.RawMessage) (RailEntry, string, bool) {
+		return RailEntry{}, "", true
+	})
+	return err
 }

@@ -16,6 +16,7 @@ type Prompt =
   | { kind: 'select'; task: string; varName: string; info: string; items: string[]; filter: string; cursor: number; offset: number; multi: boolean; picked: boolean[]; resolve: Resolve }
   | { kind: 'text'; task: string; varName: string; info: string; secret: boolean; value: string; resolve: Resolve }
   | (PathState & { kind: 'path'; resolve: Resolve })
+  | { kind: 'say'; task: string; message: string; resolve: Resolve }
 
 // A type: file picker over a made-up tree (FS), after prompt_path.go.
 type PathState = {
@@ -102,6 +103,7 @@ const varLine = (task: string, name: string, val: string) =>
   print(...lead(task, taskMark(task, '»')), { t: `${name}=${val}` })
 const doneEarlierLine = (task: string) =>
   print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ' earlier', c: GREY })
+const sayLine = (task: string, message: string) => print(...lead(task, taskMark(task, '»')), { t: message, c: 'b' })
 const skipLine = (task: string, what: string) => print(...lead(task, { t: '⊘', c: GREY }), { t: what, c: GREY })
 
 // The terminal's width: output wraps, and cards stop, at the same column. A
@@ -288,19 +290,15 @@ function hintSegs(hints: Hint[]): Seg[] {
   ])
 }
 
+// An empty varName is a say: card, titled by the task alone.
 function card(p: { task: string; varName: string; info: string; body: BodyRow[]; err?: string; hints: Hint[] }): CardRow[] {
   const border = p.err ? RED : GREY
   const boxed = (segs: Seg[]): CardRow => ({
     pre: [{ t: '│  ', c: border }, ...segs, { t: ' '.repeat(Math.max(0, cardInner - width(segs))) + '  │', c: border }],
   })
   const blank = boxed([])
-  const title: Seg[] = [
-    { t: p.task, c: taskColor(p.task) },
-    { t: ' ' },
-    { t: '»', c: taskColor(p.task) },
-    { t: ' ' },
-    { t: p.varName, c: 'a14 b' },
-  ]
+  const title: Seg[] = [{ t: p.task, c: taskColor(p.task) }]
+  if (p.varName) title.push({ t: ' ' }, { t: '»', c: taskColor(p.task) }, { t: ' ' }, { t: p.varName, c: 'a14 b' })
   const fill = Math.max(1, cardW - width(title) - 5)
   const rows: CardRow[] = [
     { pre: [{ t: ' ' }] },
@@ -404,6 +402,8 @@ const multiSelect = (task: string, varName: string, info: string, items: string[
 const secretText = (task: string, varName: string, info: string) =>
   ask({ kind: 'text', task, varName, info, secret: true, value: '' }) as Promise<string>
 
+const say = (task: string, message: string) => ask({ kind: 'say', task, message }) as Promise<string>
+
 const menuRows = (p: Extract<Prompt, { kind: 'select' }>) => matchRows(p.items, p.filter)
 
 function setFilter(p: Extract<Prompt, { kind: 'select' }>, filter: string) {
@@ -420,6 +420,10 @@ function moveMenu(p: Extract<Prompt, { kind: 'select' }>, to: number) {
 function submit() {
   const p = prompt.value
   if (!p || p.kind === 'path') return
+  if (p.kind === 'say') {
+    prompt.value = null
+    return p.resolve('')
+  }
   if (p.kind === 'text') {
     if (!p.value) return
     prompt.value = null
@@ -473,6 +477,11 @@ function textCard(p: Extract<Prompt, { kind: 'text' }>): CardRow[] {
   return card({ task: p.task, varName: p.varName, info: p.info, body, hints: [['enter', 'confirm', submit]] })
 }
 
+function sayCard(p: Extract<Prompt, { kind: 'say' }>): CardRow[] {
+  const body: BodyRow[] = wrapText(p.message, cardInner).map((line) => ({ segs: [{ t: line }] }))
+  return card({ task: p.task, varName: '', info: '', body, hints: [['enter', 'continue', submit]] })
+}
+
 function onKey(e: KeyboardEvent) {
   const p = prompt.value
   if (!p) {
@@ -483,6 +492,13 @@ function onKey(e: KeyboardEvent) {
     return
   }
   if (p.kind === 'text') return
+  if (p.kind === 'say') {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      submit()
+    }
+    return
+  }
   // stopPropagation keeps a typed "/" from also opening the site search.
   const handled = p.kind === 'path' ? onPathKey(p, e) : onMenuKey(p, e)
   if (handled) {
@@ -633,6 +649,7 @@ const cardRows = computed<CardRow[]>(() => {
   const p = prompt.value
   if (p?.kind === 'select') return selectCard(p)
   if (p?.kind === 'text') return textCard(p)
+  if (p?.kind === 'say') return sayCard(p)
   if (p?.kind === 'path') return pathCard(p)
   return []
 })
@@ -700,20 +717,10 @@ async function trivia() {
     varLine(task, 'GUESS', guess)
     await sleep(300)
 
-    const right = 'echo "Correct!"'
-    const wrong = `echo "Not quite. It was ${correct.trim()}."`
-    highlight(right)
-    if (guess === correct.trim()) {
-      await step(task, right, () => Promise.resolve(outLine(task, 'Correct!')))
-      await sleep(400)
-      highlight('Not quite')
-      skipLine(task, wrong)
-    } else {
-      skipLine(task, right)
-      await sleep(400)
-      highlight('Not quite')
-      await step(task, wrong, () => Promise.resolve(outLine(task, `Not quite. It was ${correct.trim()}.`)))
-    }
+    const message = guess === correct.trim() ? 'Correct!' : `Not quite. It was ${correct.trim()}.`
+    highlight(guess === correct.trim() ? 'say: Correct!' : 'Not quite')
+    await say(task, message)
+    sayLine(task, message)
   })
 }
 

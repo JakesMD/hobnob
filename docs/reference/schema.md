@@ -57,6 +57,7 @@ also takes `if:`.
 | `get:`  | none                               | [Prompts](../guide/prompts.md)                               |
 | `call:` | `with:`, `into:`, `dir:`, `soft:`  | [Calling tasks](../guide/calling-tasks.md)                   |
 | `loop:` | `steps:`                           | [Loops](../guide/loops.md)                                   |
+| `say:`  | none                               | [Prompts](../guide/prompts.md#showing-a-message)             |
 
 ### `set:` entries
 

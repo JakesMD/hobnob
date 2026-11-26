@@ -233,6 +233,13 @@
 // 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
 // 211. let web.Server.Cancel act without a live run (drop the stop != nil check) -> web_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
 // 212. leave the label blank when RunFailed names no task in web.state.labelOf -> internal/web/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), web_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
+// 213. pass task.Info to log.Enter unfilled in runner.executeTask -> web_test.go (LabelFillsInTheVariablesItCan)
+// 214. skip the prompt in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt), web_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
+// 215. drop scope.Mask in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt)
+// 216. prompt even when prompts are off in runner.execSay -> say_test.go (WithoutPromptsOnlyLogsTheMessage)
+// 217. return early under quiet in tui.RunLog.Say -> say_test.go (ShowsUnderQuiet)
+// 218. accept an empty or non-scalar say: in config.parseStepNode -> say_test.go (RejectsWhatIsNotAMessage)
+// 219. add the say answer to the rail in web.state.PromptSay -> web_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
 // 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
 // 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 package e2e
@@ -336,7 +343,7 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
-	Type     string // "file" or "dir" for a picker, empty for a text prompt or menu
+	Type     string // "file" or "dir" for a picker, "say" for a say: step (Info is its message), empty for a text prompt or menu
 	Error    string // what a picker reopened with on its error line
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
@@ -470,7 +477,7 @@ func Run(t *testing.T, c Case) *Result {
 
 	state := newPromptState(t, c.Answers)
 	state.dir, state.probe, state.interrupt = dir, c.Probe, c.Interrupt
-	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path)
+	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path, state.say)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
@@ -751,6 +758,12 @@ func (s *promptState) text(ctx context.Context, info, varName string, validate f
 	}
 	s.t.Fatalf("unexpected text prompt for %q (task %q) — got %d candidate answer(s), none satisfied check: %q, or none were provided", varName, task, len(answers)-start, checkDesc)
 	return "", errors.New("unreachable")
+}
+
+// say implements runner.SayPromptFunc: the person always continues.
+func (s *promptState) say(ctx context.Context, message, task string) error {
+	s.record(PromptCall{Type: "say", Info: message, Task: task})
+	return nil
 }
 
 // sel implements runner.SelectPromptFunc. Like text it consumes answers for

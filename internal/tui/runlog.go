@@ -141,6 +141,17 @@ func (l *RunLog) Var(task, name, display, note string) {
 	fmt.Fprintln(l.logOut, line)
 }
 
+// Say logs a say: step's message, already masked. It shows under --quiet
+// too: it was written for the person running the task.
+func (l *RunLog) Say(task, message string) {
+	lines := strings.Split(message, "\n")
+	fmt.Fprintln(l.logOut, lead(task, taskMark(task, "»"))+SBold.Render(lines[0]))
+	indent := strings.Repeat(" ", lipgloss.Width(lead(task, "»")))
+	for _, line := range lines[1:] {
+		fmt.Fprintln(l.logOut, indent+SBold.Render(line))
+	}
+}
+
 // VarSkipped logs an optional get: that got no value.
 func (l *RunLog) VarSkipped(task, name string) {
 	l.RunSkipped(task, name)

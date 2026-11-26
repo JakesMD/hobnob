@@ -26,7 +26,9 @@ address. The page is a setup assistant:
 - the **main area** shows the label of the task now running, an activity bar,
   the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
   of the time since the run began. The label is the task's `info:`, or its
-  name when it has none;
+  name when it has none. Variables in `info:` are filled in from the task's
+  [scope](./variables.md) as it starts, secrets masked; an `info:` naming a
+  variable that isn't set yet shows as written. The rail uses the same label;
 - a **bottom bar** holds the buttons for the screen. While steps run it holds
   **Cancel** and a note to keep the window open.
 
@@ -38,8 +40,9 @@ output line either.
 `--web` with no task opens a **task picker** instead. It lists every task
 `hobnob --list` shows: tasks whose name starts with `_`, and tasks from a module
 imported with a `_`-prefixed name, are left out. Each task shows its
-[`info:`](./tasks.md) as the title with the name smaller beneath it, and a
-search box filters the list. Choosing a task runs it.
+[`info:`](./tasks.md) as the title with the name smaller beneath it, in a grid of
+cards, and a search box filters them as the terminal's filter does: the letters
+you type, in order, best match first. Choosing a task runs it.
 
 ```bash
 hobnob --web
@@ -69,7 +72,7 @@ skip their prompts as in the terminal.
 
 A [menu](./prompts.md) (`options:`) shows its options as cards you click: radio
 cards for one choice, checkbox cards under `multi:`. With more than six options a
-search box filters the cards. The `default:` starts chosen; under `multi:` it is
+search box filters the cards, the same way. The `default:` starts chosen; under `multi:` it is
 a JSON list, or one option, and those options start ticked, with a running count
 in the bottom bar. A required menu needs a choice (at least one under `multi:`),
 and `check:` judges the choice, or the whole list under `multi:`, as in the
@@ -81,7 +84,9 @@ A [picker](./prompts.md#picking-a-file-or-directory) (`type: file` or `dir`) is
 a column view like the Finder's: one column per folder, from your home folder
 (or the filesystem root when the start isn't under it) down to the open folder.
 It starts in the entry's `default:` folder, as in the terminal. Click a folder to
-open it; click a file to pick it. In a `type: dir` picker the open folder is the
+open it; click a file to pick it. A search box above the columns filters the
+open folder the way the terminal's filter does, and Enter opens the top folder
+or picks the top file. In a `type: dir` picker the open folder is the
 answer: a `default:` folder that exists starts out picked and Continue takes
 it at once, while a missing one opens the nearest existing folder with nothing
 picked.
@@ -91,6 +96,10 @@ not greyed out, as in the terminal; a folder that only fails the plain patterns
 of a `type: dir` picker can be opened but not picked. The bottom bar says what is
 picked. Continue sends the picks through the same rules as the terminal: they
 must exist, be the right kind and match.
+
+A [`say:`](./prompts.md#showing-a-message) message gets a page of its own: the
+message and **Continue**. It counts as a prompt while it waits, and adds nothing
+to the rail.
 
 There are no admin prompts in browser mode.
 

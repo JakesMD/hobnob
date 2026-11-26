@@ -21,15 +21,19 @@ type SelectPromptFunc func(ctx context.Context, varName, info string, items []st
 type PathPromptFunc func(ctx context.Context, prompt tui.PathPrompt, task string,
 	secret bool) (val value.Value, answered bool, err error)
 
+// SayPromptFunc matches tui.PromptSay's signature.
+type SayPromptFunc func(ctx context.Context, message, task string) error
+
 // Prompts bundles the interactive prompt implementations a run asks its
 // answers through.
 type Prompts struct {
 	Text   TextPromptFunc
 	Select SelectPromptFunc
 	Path   PathPromptFunc
+	Say    SayPromptFunc
 }
 
-var terminalPrompts = Prompts{Text: tui.PromptText, Select: tui.PromptSelect, Path: tui.PromptPath}
+var terminalPrompts = Prompts{Text: tui.PromptText, Select: tui.PromptSelect, Path: tui.PromptPath, Say: tui.PromptSay}
 
 // TerminalPrompts returns the bubbletea prompts that run in the terminal.
 func TerminalPrompts() Prompts { return terminalPrompts }

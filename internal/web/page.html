@@ -13,6 +13,7 @@
   --btn-text: #1a2029; --alt-bg: #2c3542; --alt-hover: #3a4452;
   --red: #ff6b6b; --green: #4ec27a;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --tick: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2 5 8.6 9.5 3.6' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 @media (prefers-color-scheme: light) {
@@ -36,7 +37,8 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .shell { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
 .rail { background: var(--bg-alt); border-right: 1px solid var(--divider); padding: 28px 24px; display: flex; flex-direction: column; gap: 28px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--brand-1); font-size: 18px; }
-.logo i { width: 26px; height: 26px; border-radius: 8px; background: linear-gradient(-45deg, #d98a35 50%, #3b4654 50%); display: inline-block; }
+.message { white-space: pre-line; }
+.logo svg { width: 28px; height: 28px; flex: none; }
 .taskname { font-size: 13px; color: var(--t3); }
 .taskname b { display: block; font-size: 16px; color: var(--t1); font-weight: 600; margin-bottom: 2px; }
 .steps { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -63,13 +65,17 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .icon.ok { background: rgba(78,194,122,.15); color: var(--green); }
 .icon.bad { background: rgba(255,107,107,.12); color: var(--red); }
 .lead { color: var(--t2); max-width: 560px; margin: -14px 0 24px; }
-.tasks { list-style: none; padding: 0; margin: 18px 0 0; display: flex; flex-direction: column; gap: 8px; max-width: 640px; }
-.task { width: 100%; text-align: left; padding: 14px 18px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); transition: border-color .2s; }
-.task:hover { border-color: var(--brand-2); }
-.task b { display: block; font-weight: 600; }
-.task small { color: var(--t3); font: 12px var(--mono); }
-.search { width: 100%; max-width: 640px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-alt); color: var(--t1); font: inherit; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+.tile { text-align: left; padding: 20px; border-radius: 14px; border: 1px solid var(--divider); background: var(--bg-alt); transition: border-color .15s, transform .15s; }
+.tile:hover, .tile:focus-visible { border-color: var(--brand-2); transform: translateY(-2px); outline: none; }
+.tile b { display: block; font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.tile small { font: 12px var(--mono); color: var(--t3); }
+.search { width: 100%; max-width: 360px; padding: 8px 14px; border-radius: 999px; border: 1px solid var(--divider); background: var(--bg-alt); color: var(--t1); font: inherit; font-size: 14px; outline: none; margin-bottom: 16px; }
+.search:focus { border-color: var(--brand-3); }
+.search::-webkit-search-cancel-button { display: none; }
 .empty { color: var(--t3); }
+mark { background: none; color: var(--brand-1); font-weight: 700; }
+.ent.sel mark { color: inherit; }
 .field { width: 100%; max-width: 560px; font: inherit; font-size: 17px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--t1); }
 .field:focus { outline: 2px solid var(--brand-2); border-color: transparent; }
 .refusal { margin-top: 10px; color: var(--red); font-size: 14px; }
@@ -78,11 +84,12 @@ h1 { font-size: 32px; line-height: 1.2; letter-spacing: -.02em; font-weight: 700
 .card { display: flex; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 12px; border: 1px solid var(--divider); background: var(--bg-alt); text-align: left; transition: border-color .15s, background .15s; }
 .card:hover { border-color: var(--border); background: var(--bg-soft); }
 .card.on { border-color: var(--brand-2); background: var(--brand-soft); }
-.card .dot, .card .box { width: 18px; height: 18px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; font-size: 12px; color: var(--btn-text); }
+.card .dot, .card .box { width: 18px; height: 18px; border: 2px solid var(--border); flex: none; display: grid; place-items: center; }
 .card .dot { border-radius: 50%; }
 .card .box { border-radius: 5px; }
 .card.on .dot { border-color: var(--brand-1); background: radial-gradient(var(--brand-1) 40%, transparent 45%); }
 .card.on .box { border-color: var(--brand-1); background: var(--brand-1); }
+.card.on .box::after { content: ''; width: 12px; height: 12px; background: var(--btn-text); -webkit-mask: var(--tick) center / contain no-repeat; mask: var(--tick) center / contain no-repeat; }
 .actions { display: flex; gap: 10px; }
 .cols { display: flex; border: 1px solid var(--divider); border-radius: 12px; height: 320px; background: var(--bg-alt); overflow-x: auto; }
 .col { flex: none; width: 220px; border-right: 1px solid var(--divider); overflow-y: auto; padding: 6px; }
@@ -129,6 +136,46 @@ function post(name, body) {
   return fetch('/actions/' + name + '?token=' + encodeURIComponent(token), { method: 'POST', body: JSON.stringify(body || {}) });
 }
 
+const logoSVG = '<svg viewBox="0 0 128 128" aria-hidden="true"><defs><linearGradient id="hobnob-t" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="128" y2="128"><stop offset="0" stop-color="#3b4654"/><stop offset="1" stop-color="#1a2029"/></linearGradient><linearGradient id="hobnob-c" gradientUnits="userSpaceOnUse" x1="30" y1="38" x2="64" y2="90"><stop offset="0" stop-color="#f6c27a"/><stop offset="1" stop-color="#e0a050"/></linearGradient><radialGradient id="hobnob-b" cx=".4" cy=".35" r=".75"><stop offset="0" stop-color="#f6c27a"/><stop offset="1" stop-color="#d98a35"/></radialGradient></defs><rect x="4" y="4" width="120" height="120" rx="22" fill="url(#hobnob-t)"/><path d="M36 44 L58 64 L36 84" fill="none" stroke="url(#hobnob-c)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/><circle cx="85" cy="77" r="13" fill="url(#hobnob-b)"/><g fill="#7c2d12" opacity=".6"><circle cx="80.5" cy="72.9" r="2.6"/><circle cx="89.9" cy="76.2" r="2.4"/><circle cx="84.2" cy="83.5" r="2.3"/></g></svg>';
+
+// fuzzy and matchAll mirror the terminal's fuzzyMatch and matchRows, so a
+// search finds the same things in the browser as in the terminal.
+function fuzzy(query, target) {
+  if (!query) return { score: 0, positions: [] };
+  const q = [...query.toLowerCase()], t = [...target.toLowerCase()];
+  const positions = [];
+  let qi = 0, last = -2, score = 0;
+  for (let ti = 0; ti < t.length && qi < q.length; ti++) {
+    if (t[ti] !== q[qi]) continue;
+    positions.push(ti);
+    if (ti === last + 1) score += 5;
+    if (ti === 0 || '_-.'.includes(t[ti - 1])) score += 3;
+    score++;
+    last = ti;
+    qi++;
+  }
+  return qi < q.length ? null : { score: score * 100 - t.length, positions };
+}
+
+function matchAll(items, query, text) {
+  const hits = [];
+  items.forEach(item => { const m = fuzzy(query, text(item)); if (m) hits.push({ item, ...m }); });
+  if (query) hits.sort((a, b) => b.score - a.score);
+  return hits;
+}
+
+function highlight(text, positions) {
+  if (!positions.length) return text;
+  const at = new Set(positions);
+  return el('span', {}, [...text].map((ch, i) => at.has(i) ? el('mark', {}, ch) : ch));
+}
+
+function logo() {
+  const node = el('div', { class: 'logo' }, 'hobnob');
+  node.insertAdjacentHTML('afterbegin', logoSVG);
+  return node;
+}
+
 function rail(s) {
   const marks = { running: '●', done: '✓', failed: '✗' };
   const section = (title, entries) => entries.length ? [
@@ -137,7 +184,7 @@ function rail(s) {
       el('span', { class: 'm' }, marks[e.state] || '·'), el('span', {}, e.label, e.value ? ': ' + e.value : '')))),
   ] : [];
   return el('aside', { class: 'rail' },
-    el('div', { class: 'logo' }, el('i'), 'hobnob'),
+    logo(),
     el('div', { class: 'taskname' }, el('b', {}, s.task.info || s.task.name), s.task.info ? s.task.name : ''),
     el('div', {}, section('Your answers', s.rail.answers), section('Setup', s.rail.setup)));
 }
@@ -160,18 +207,20 @@ function homeButton(s) {
 }
 
 function tasks(s) {
-  const list = el('ul', { class: 'tasks' });
+  const list = el('div', { class: 'tiles' });
   const search = el('input', { class: 'search', type: 'search', placeholder: 'Search tasks', 'aria-label': 'Search tasks' });
   const fill = () => {
-    const needle = search.value.trim().toLowerCase();
-    const shown = s.tasks.filter(t => (t.name + ' ' + t.info).toLowerCase().includes(needle));
-    list.replaceChildren(...(shown.length ? shown.map(t => el('li', {}, el('button', { class: 'task', onclick: () => post('choose', { task: t.name }) },
-      el('b', {}, t.info || t.name), t.info ? el('small', {}, t.name) : null))) : [el('li', { class: 'empty' }, 'No tasks to show.')]));
+    const needle = search.value.trim();
+    const shown = matchAll(s.tasks, needle, t => t.name).map(m => m.item);
+    for (const m of matchAll(s.tasks, needle, t => t.info)) if (!shown.includes(m.item)) shown.push(m.item);
+    list.replaceChildren(...(shown.length ? shown.map(t => el('button', { class: 'tile', onclick: () => post('choose', { task: t.name }) },
+      el('b', {}, t.info || t.name), t.info ? el('small', {}, t.name) : null)) : [el('p', { class: 'empty' }, 'No tasks to show.')]));
   };
   search.addEventListener('input', fill);
   fill();
-  app.replaceChildren(el('div', { class: 'solo' }, el('div', { style: 'text-align: left; width: 640px; max-width: 100%' },
-    el('div', { class: 'logo' }, el('i'), 'hobnob'), el('h1', { style: 'margin-top: 28px' }, 'What would you like to do?'), search, list)));
+  app.replaceChildren(el('div', { class: 'shell' },
+    el('aside', { class: 'rail' }, logo(), el('div', { class: 'taskname' }, el('b', {}, 'Welcome'), 'Pick a task to run')),
+    el('div', { class: 'main' }, el('main', { class: 'pagebody' }, el('h1', {}, 'What would you like to do?'), search, list))));
   setTimeout(() => search.focus());
 }
 
@@ -186,16 +235,16 @@ function menu(s) {
   const count = el('span', { class: 'note', id: 'count' });
   const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
   const fill = () => {
-    const needle = menuDraft.filter.trim().toLowerCase();
-    const shown = p.options.filter(o => o.toLowerCase().includes(needle));
-    cards.replaceChildren(...(shown.length ? shown.map(o => {
+    const shown = matchAll(p.options, menuDraft.filter.trim(), o => o);
+    cards.replaceChildren(...(shown.length ? shown.map(m => {
+      const o = m.item;
       const on = menuDraft.picks.includes(o);
       return el('button', { class: 'card' + (on ? ' on' : ''), role: p.multi ? 'checkbox' : 'radio', 'aria-checked': String(on),
         onclick: () => {
           if (!p.multi) menuDraft.picks = [o];
           else menuDraft.picks = menuDraft.picks.includes(o) ? menuDraft.picks.filter(x => x !== o) : [...menuDraft.picks, o];
           fill();
-        } }, el('span', { class: p.multi ? 'box' : 'dot' }, p.multi && on ? '✓' : ''), o);
+        } }, el('span', { class: p.multi ? 'box' : 'dot' }), highlight(o, m.positions));
     }) : [el('div', { class: 'empty' }, 'No options match.')]));
     count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
   };
@@ -215,9 +264,17 @@ function menu(s) {
   return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
 }
 
+function say(s) {
+  const p = s.prompt;
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: () => post('answer', { id: p.id, value: null }) }, 'Continue');
+  setTimeout(() => next.focus(), 0);
+  return { body: [el('h1', { class: 'message' }, p.info)], bar: [el('span'), el('div', { class: 'actions' }, [next])] };
+}
+
 function ask(s) {
   const p = s.prompt;
   if (p.kind === 'menu') return menu(s);
+  if (p.kind === 'say') return say(s);
   if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
   const send = () => post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text });
   const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
@@ -235,12 +292,13 @@ function ask(s) {
   };
 }
 
-let pick = { id: null, selected: [] };
+let pick = { id: null, selected: [], open: null, filter: '' };
 
 function picker(s) {
   const p = s.prompt, v = p.picker;
   const multi = p.multi;
-  if (pick.id !== p.id) pick = { id: p.id, selected: v.selected.slice() };
+  if (pick.id !== p.id) pick = { id: p.id, selected: v.selected.slice(), open: v.open, filter: '' };
+  if (pick.open !== v.open) pick.open = v.open, pick.filter = '';
   const folderPicker = v.type === 'dir';
   const join = (dir, name) => (dir.endsWith('/') ? dir : dir + '/') + name;
   const openFolder = (path) => post('open', { id: p.id, path });
@@ -252,15 +310,36 @@ function picker(s) {
     } else if (folderPicker) { pick.selected = [path]; openFolder(path); }
     else pick.selected = [path], render();
   };
-  const cols = v.columns.map(col => el('div', { class: 'col' }, col.entries.length ? col.entries.map(e => {
+  const searched = v.columns.length - 1;
+  const entry = (col, e, positions) => {
     const path = join(col.path, e.name);
+    const name = el('span', {}, highlight(e.name, positions));
     const picked = pick.selected.includes(path);
     const cls = 'ent' + (picked ? ' sel' : col.next === e.name ? ' open' : '');
-    if (e.dir && !e.pickable) return el('button', { class: cls, onclick: () => openFolder(path) }, el('span', {}, e.name), el('span', { class: 'chev' }, '›'));
+    if (e.dir && !e.pickable) return el('button', { class: cls, onclick: () => openFolder(path) }, name, el('span', { class: 'chev' }, '›'));
     if (e.dir) return el('button', { class: cls, onclick: () => choose(path, e), ondblclick: () => openFolder(path) },
-      el('span', {}, e.name), multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
-    return el('button', { class: cls, onclick: () => choose(path, e) }, el('span', {}, e.name));
-  }) : el('div', { class: 'ent empty' }, 'Nothing to pick here')));
+      name, multi ? el('span', { class: 'chev', onclick: (event) => { event.stopPropagation(); openFolder(path); } }, '›') : el('span', { class: 'chev' }, '›'));
+    return el('button', { class: cls, onclick: () => choose(path, e) }, name);
+  };
+  const hits = col => matchAll(col.entries, pick.filter.trim(), e => e.name);
+  const cols = v.columns.map((col, i) => {
+    const shown = i === searched ? hits(col) : col.entries.map(e => ({ item: e, positions: [] }));
+    return el('div', { class: 'col' }, shown.length ? shown.map(m => entry(col, m.item, m.positions))
+      : el('div', { class: 'ent empty' }, col.entries.length ? 'Nothing matches' : 'Nothing to pick here'));
+  });
+  const search = el('input', { class: 'search menu', type: 'search', placeholder: 'Search this folder', 'aria-label': 'Search this folder', autocomplete: 'off', spellcheck: 'false' });
+  search.value = pick.filter;
+  search.addEventListener('input', () => { pick.filter = search.value; render(); });
+  search.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const col = v.columns[searched], top = col && hits(col)[0];
+    if (!top) return;
+    const path = join(col.path, top.item.name);
+    if (top.item.dir && (!top.item.pickable || !multi && !folderPicker)) openFolder(path);
+    else choose(path, top.item);
+  });
+  setTimeout(() => { const box = document.getElementById('picker-search'); if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); } }, 0);
+  search.id = 'picker-search';
   const answer = pick.selected;
   const statement = multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
     : answer.length ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
@@ -269,7 +348,7 @@ function picker(s) {
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
   buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
   return {
-    body: [el('h1', {}, p.info || p.varName), el('div', { class: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
+    body: [el('h1', {}, p.info || p.varName), search, el('div', { class: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
     bar: [el('span', { class: 'picked', id: 'picked' }, statement), el('div', { class: 'actions' }, buttons)],
   };
 }
@@ -311,10 +390,11 @@ function stopped() {
   app.replaceChildren(el('div', { class: 'solo' }, 'hobnob has stopped.'));
 }
 
-let gone;
+let gone = null;
 const events = new EventSource('/events?token=' + encodeURIComponent(token));
 events.onmessage = (event) => {
   clearTimeout(gone);
+  gone = null;
   snap = JSON.parse(event.data);
   received = Date.now();
   if (snap.screen === 'another-tab') {
@@ -327,10 +407,10 @@ events.onmessage = (event) => {
 };
 // EventSource reconnects by itself, so a dropped connection (a laptop asleep
 // while hobnob runs) heals; hobnob has stopped only when it stays unreachable.
+// Every failed retry fires onerror too, so only the first error starts the timer.
 events.onerror = () => {
   if (snap && (snap.screen === 'another-tab' || snap.screen === 'done' || snap.screen === 'failed')) return;
-  clearTimeout(gone);
-  gone = setTimeout(stopped, 8000);
+  gone ??= setTimeout(stopped, 8000);
 };
 </script>
 </body>
