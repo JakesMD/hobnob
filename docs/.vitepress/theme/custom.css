@@ -233,6 +233,53 @@
   filter: blur(40px);
 }
 
+/* Section headings, across the whole grid */
+
+.landing .l-heading {
+  grid-column: 1 / -1;
+  margin: 0 0 -12px;
+  padding: 0;
+  border: none;
+  font-size: 28px;
+  line-height: 36px;
+  letter-spacing: -0.02em;
+}
+
+/* Use cases: the why, one line each */
+
+.l-uses {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  max-width: var(--stage);
+  margin: 88px auto 0;
+}
+
+.landing .l-uses .l-heading {
+  margin-bottom: 8px;
+}
+
+.l-use {
+  padding: 22px 24px 24px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+}
+
+.landing .l-use h3 {
+  margin: 0 0 6px;
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+}
+
+.landing .l-use p {
+  margin: 0;
+  font-size: 15px;
+  line-height: 23px;
+  color: var(--vp-c-text-2);
+}
+
 /* Features: quiet columns, no cards */
 
 .l-features {
@@ -286,7 +333,19 @@
   margin-top: 28px;
 }
 
+@media (max-width: 640px) {
+  .l-demo {
+    width: calc(100vw - 20px);
+    margin-left: calc(50% - (100vw - 20px) / 2);
+  }
+}
+
 @media (max-width: 960px) {
+  .l-uses {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 14px;
+  }
+
   .l-hero {
     grid-template-columns: minmax(0, 1fr);
     gap: 40px;

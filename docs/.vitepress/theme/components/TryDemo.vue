@@ -139,12 +139,16 @@ const varLine = (task: string, name: string, val: string) =>
   print(...lead(task, taskMark(task, '»')), { t: `${name}=${val}` })
 const doneEarlierLine = (task: string) =>
   print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ' earlier', c: GREY })
-const sayLine = (task: string, message: string) => print(...lead(task, taskMark(task, '»')), { t: message, c: 'b' })
+function sayLine(task: string, message: string) {
+  const [first, ...rest] = wrapText(message, Math.max(20, termCols - task.length - 3))
+  print(...lead(task, taskMark(task, '»')), { t: first, c: 'b' })
+  for (const more of rest) print({ t: ' '.repeat(task.length + 3) }, { t: more, c: 'b' })
+}
 const skipLine = (task: string, what: string) => print(...lead(task, { t: '⊘', c: GREY }), { t: what, c: GREY })
 
 // The terminal's width: output wraps, and cards stop, at the same column. A
 // run sets it from the pane, so a wide screen wraps less; a narrow one keeps
-// 60 and scrolls sideways.
+// 60 and scrolls sideways; a phone goes down to 46 instead.
 let termCols = 60
 let cardW = termCols
 let cardInner = cardW - 2 - 4
@@ -160,7 +164,7 @@ function fitColumns() {
   probe.remove()
   const css = getComputedStyle(el)
   const room = el.clientWidth - parseFloat(css.paddingLeft) - parseFloat(css.paddingRight)
-  termCols = Math.min(110, Math.max(60, Math.floor(room / ch) - 1))
+  termCols = Math.min(110, Math.max(window.innerWidth <= 640 ? 46 : 60, Math.floor(room / ch) - 1))
   cardW = termCols
   cardInner = cardW - 2 - 4
 }
@@ -446,6 +450,10 @@ function ask(p: Omit<Prompt, 'resolve'>): Promise<string | string[]> {
     nextTick(() => (p.kind === 'text' ? textInput.value : screen.value)?.focus({ preventScroll: true }))
   })
 }
+
+// Box drawing, arrows and marks fall back to other fonts on some phones, at
+// other widths; each sits in a cell one character wide so columns still line up.
+const cells = (t: string) => t.split(/([^\x00-\x7f])/u).filter(Boolean).map((part) => ({ t: part, cell: part.length === 1 && part > '\x7f' }))
 
 const select = (task: string, varName: string, info: string, items: string[]) =>
   ask({ kind: 'select', task, varName, info, items, filter: '', cursor: 0, offset: 0, multi: false, picked: [] }) as Promise<string>
@@ -1177,7 +1185,7 @@ async function start() {
         </div>
         <div v-show="view === 'terminal'" ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">
           <div v-for="(line, i) in lines" :key="i" class="ln">
-            <span v-for="(seg, j) in line" :key="j" :class="seg.c">{{ seg.t }}</span>
+            <span v-for="(seg, j) in line" :key="j" :class="seg.c"><template v-for="(c, k) in cells(seg.t)" :key="k"><span v-if="c.cell" class="cell">{{ c.t }}</span><template v-else>{{ c.t }}</template></template></span>
           </div>
 
           <div
@@ -1188,7 +1196,7 @@ async function start() {
             @mouseenter="r.row !== undefined && hoverRow(r.row)"
             @click.stop="r.row !== undefined && clickRow(r.row)"
           >
-            <span v-for="(seg, j) in r.pre" :key="'a' + j" :class="[seg.c, { 'hint-key': seg.click }]" @click="seg.click && ($event.stopPropagation(), seg.click())">{{ seg.t }}</span>
+            <span v-for="(seg, j) in r.pre" :key="'a' + j" :class="[seg.c, { 'hint-key': seg.click }]" @click="seg.click && ($event.stopPropagation(), seg.click())"><template v-for="(c, k) in cells(seg.t)" :key="k"><span v-if="c.cell" class="cell">{{ c.t }}</span><template v-else>{{ c.t }}</template></template></span>
             <input
               v-if="r.input && prompt?.kind === 'text'"
               :ref="setInput"
@@ -1202,7 +1210,7 @@ async function start() {
               @keydown.enter.prevent="submit"
               @click.stop
             />
-            <span v-for="(seg, j) in r.post" :key="'b' + j" :class="seg.c">{{ seg.t }}</span>
+            <span v-for="(seg, j) in r.post" :key="'b' + j" :class="seg.c"><template v-for="(c, k) in cells(seg.t)" :key="k"><span v-if="c.cell" class="cell">{{ c.t }}</span><template v-else>{{ c.t }}</template></template></span>
           </div>
           <div v-if="status" class="status">
             <div class="ln">&nbsp;</div>
@@ -1232,6 +1240,9 @@ async function start() {
 </template>
 
 <style scoped>
+.try-demo {
+  --term-fs: 13;
+}
 .window {
   border-radius: 14px;
   border: 1px solid var(--vp-c-border);
@@ -1297,7 +1308,7 @@ async function start() {
   overflow: auto;
   padding: 20px 24px 28px;
   font-family: var(--vp-font-family-mono);
-  font-size: 13px;
+  font-size: calc(var(--term-fs) * 1px);
   line-height: 1.65;
   color: #e6e6e6;
   outline: none;
@@ -1438,6 +1449,7 @@ async function start() {
 }
 .tab-btn {
   padding: 6px 16px;
+  white-space: nowrap;
   border-radius: 999px;
   font-size: 14px;
   font-weight: 500;
@@ -1498,12 +1510,19 @@ async function start() {
 @media (pointer: coarse) {
   .text-input {
     font-size: 16px;
-    /* --cols at the screen's 13px, so the row still ends at the border. */
-    width: calc(var(--cols) * 1ch * 13 / 16);
+    /* --cols at the screen's font size, so the row still ends at the border. */
+    width: calc(var(--cols) * 1ch * var(--term-fs) / 16);
   }
 }
 .text-input::placeholder {
   color: #4a5361;
+}
+.cell {
+  display: inline-block;
+  width: 1ch;
+  overflow: visible;
+  text-align: center;
+  white-space: pre;
 }
 /* Clicking the hint confirms a multi-select, for touch screens with no Enter. */
 .hint-key {
@@ -1566,15 +1585,28 @@ async function start() {
 }
 
 @media (max-width: 860px) {
+  .tab-btn {
+    padding: 6px 11px;
+    font-size: 13px;
+  }
   .bar {
     grid-template-columns: minmax(0, 1fr);
   }
   .tab.file {
     display: none;
   }
+  .try-demo {
+    --term-fs: 10.5;
+  }
+  .screen {
+    padding: 14px 12px 20px;
+  }
+  .code {
+    --vp-code-font-size: 11.5px;
+  }
   .panes {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(0, 440px) minmax(0, 320px);
+    grid-template-rows: minmax(0, max(440px, 68svh)) minmax(0, 300px);
     height: auto;
   }
   .code {

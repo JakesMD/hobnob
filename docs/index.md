@@ -10,7 +10,7 @@ titleTemplate: Build wizards in YAML
   <div class="l-hero-text">
     <p class="l-badge">hobnob</p>
     <h1 class="l-title">Build <span class="l-accent">wizards</span> in YAML</h1>
-    <p class="l-tagline">A task runner where prompts are steps, JSON stays data and tasks return values. It reads like a book, and runs like one.</p>
+    <p class="l-tagline">A task runner that asks: menus, file pickers and passwords mid-task, in the terminal or a browser page.</p>
     <div class="l-actions">
       <a class="l-btn brand" href="./docs/quick-start">Get started</a>
       <a class="l-btn alt" href="./docs/reference/">Reference</a>
@@ -30,7 +30,24 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 
 </div>
 
+<section class="l-uses">
+  <h2 class="l-heading">What it's for</h2>
+  <div class="l-use">
+    <h3>A page of tasks for your customers</h3>
+    <p><code>hobnob --browser</code> turns the whole file into a page: they pick a task and answer its questions, no terminal needed.</p>
+  </div>
+  <div class="l-use">
+    <h3>A path for agents</h3>
+    <p>Agents run your tasks with <code>NAME=value</code> instead of improvising shell.</p>
+  </div>
+  <div class="l-use">
+    <h3>CI on your laptop</h3>
+    <p>The task your pipeline runs is the one you run locally.</p>
+  </div>
+</section>
+
 <section class="l-features">
+  <h2 class="l-heading">How it works</h2>
   <div class="l-feature">
     <span class="l-icon">📝</span>
     <h3>Prompts are just steps</h3>

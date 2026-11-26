@@ -23,8 +23,17 @@
   </p>
 </div>
 
-A task runner where prompts are steps, JSON stays data and tasks return values.
-It reads like a book, and runs like one.
+A task runner that asks: menus, file pickers and passwords mid-task, in the
+terminal or a browser page.
+
+- **A page of tasks for your customers.** `hobnob --browser` turns the whole
+  file into a page: they pick a task and answer its questions, no terminal
+  needed.
+- **A path for agents.** Agents run your tasks with `NAME=value` instead of
+  improvising shell.
+- **CI on your laptop.** The task your pipeline runs is the one you run locally.
+
+What makes it different:
 
 - **Prompts are just steps.** Ask anywhere in a task: a text box, a menu, a
   multi-select or a file picker, built from an earlier step's output.

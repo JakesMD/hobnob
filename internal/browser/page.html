@@ -129,6 +129,16 @@ mark { background: none; color: var(--brand-1); font-weight: 700; }
 const token = new URLSearchParams(location.search).get('token');
 const tokenQuery = token === null ? '' : '?token=' + encodeURIComponent(token);
 const app = document.getElementById('app');
+// A touchscreen opens its keyboard whenever a field takes focus, so a search
+// box takes focus by itself only under a mouse, or when it had it before the
+// page redrew.
+const finePointer = matchMedia('(pointer: fine)').matches;
+let searching = false;
+const focusSearch = (box) => {
+  if (!box || !(finePointer || searching)) return;
+  box.focus();
+  box.setSelectionRange(box.value.length, box.value.length);
+};
 let snap = null;
 let received = 0;
 let clock = null;
@@ -242,7 +252,7 @@ function tasks(s) {
   app.replaceChildren(el('div', { class: 'shell' },
     el('aside', { class: 'rail' }, logo(), el('div', { class: 'taskname' }, el('b', {}, 'Welcome'), 'Pick a task to run')),
     el('div', { class: 'main' }, el('main', { class: 'pagebody' }, el('h1', {}, 'What would you like to do?'), search, list))));
-  setTimeout(() => search.focus());
+  setTimeout(() => focusSearch(search));
 }
 
 let draft = { id: null, text: '', touched: false };
@@ -278,7 +288,7 @@ function menu(s) {
     search.value = menuDraft.filter;
     search.addEventListener('input', () => { menuDraft.filter = search.value; fill(); });
     body.push(search);
-    setTimeout(() => search.focus(), 0);
+    setTimeout(() => focusSearch(search), 0);
   }
   body.push(cards, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null);
   const buttons = [];
@@ -375,7 +385,7 @@ function picker(s) {
     if (top.item.dir && (!top.item.pickable || !multi && !folderPicker)) openFolder(path);
     else choose(path, top.item);
   });
-  setTimeout(() => { const box = document.getElementById('picker-search'); if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); } }, 0);
+  setTimeout(() => focusSearch(document.getElementById('picker-search')), 0);
   search.id = 'picker-search';
   // The open folder is the last column: on a narrow page, scroll it into view.
   setTimeout(() => { const box = document.getElementById('cols'); if (box) box.scrollLeft = box.scrollWidth; }, 0);
@@ -419,6 +429,7 @@ function result(s) {
 
 function render() {
   const s = snap;
+  searching = !!document.activeElement?.classList.contains('search');
   if (s.screen === 'progress' && running && app.contains(running.title)) {
     app.querySelector('.rail').replaceWith(rail(s));
     return running.update(s);
