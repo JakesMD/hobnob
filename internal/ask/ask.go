@@ -33,6 +33,8 @@ type Question struct {
 	// what a refusal says it was.
 	Check     func(candidate value.Value) (bool, error)
 	CheckDesc string
+	// Path makes the question a file or directory picker.
+	Path *PathRules
 }
 
 // Answer is what the person did at the prompt.
@@ -61,6 +63,9 @@ func (q Question) IsMenu() bool { return len(q.Options) > 0 }
 
 // Judge rules on an answer.
 func (q Question) Judge(answer Answer) Verdict {
+	if q.Path != nil {
+		return q.judgePath(answer)
+	}
 	if q.IsMenu() {
 		return q.judgeMenu(answer)
 	}
@@ -116,6 +121,39 @@ func (q Question) judgeMenu(answer Answer) Verdict {
 	list := make([]any, len(picks))
 	for i, pick := range picks {
 		list[i] = pick
+	}
+	return q.checked(value.Of(list))
+}
+
+// judgePath rules on a picker's answer: the picked paths, each verified by
+// Path, in the order picked and each once.
+func (q Question) judgePath(answer Answer) Verdict {
+	var paths []string
+	for _, pick := range answer.Picks {
+		abs, refusal := q.Path.Verify(pick, q.Path.Invoke)
+		if refusal != "" {
+			return Verdict{Refusal: refusal}
+		}
+		if !slices.Contains(paths, abs) {
+			paths = append(paths, abs)
+		}
+	}
+	switch {
+	case len(paths) == 0 && q.Optional:
+		return q.skipped()
+	case len(paths) == 0 && q.Multi:
+		return Verdict{Refusal: "pick at least one option"}
+	case len(paths) == 0:
+		return Verdict{Refusal: "an answer is required"}
+	case len(paths) > 1 && !q.Multi:
+		return Verdict{Refusal: "pick one path"}
+	}
+	if !q.Multi {
+		return q.checked(value.Str(paths[0]))
+	}
+	list := make([]any, len(paths))
+	for i, path := range paths {
+		list[i] = path
 	}
 	return q.checked(value.Of(list))
 }

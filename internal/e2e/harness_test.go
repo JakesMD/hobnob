@@ -86,18 +86,18 @@
 // 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
 // 67. drop the absolute-path rewrite for an already-set type: file value -> get_path_test.go (PresetRelativeBecomesAbsolute)
 // 68. resolve a CLI-arg path against the task dir, not the invocation dir -> get_path_test.go (CLIArgResolvesAgainstInvocationDir, ShellEnvResolvesAgainstInvocationDir)
-// 69. skip the right-kind check in the path pipeline                  -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails)
+// 69. skip the right-kind check in ask.PathRules.Verify -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails), ask path_test.go (PathQuestion_JudgesEachPickedPath)
 // 70. resolve symlinks before storing a picked path                   -> get_path_test.go (SymlinkKeptAsGiven)
 // 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff, MultiDirectoryDefaultIsNoAnswerWithPromptsOff, MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
-// 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
-// 74. let a plain match: pattern hide directories in the file picker (tui.ListDir) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
+// 73. check a multi: list's match: on the joined text, not per item in runner.acceptPath -> get_path_test.go (EachMultiItemMustMatch)
+// 74. let a plain match: pattern hide directories in the file picker (ask.PathRules.List) -> ask path_test.go (PathRules_ListShowsWhatCanBeBrowsed)
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
-// 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
-// 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
-// 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
+// 76. drop the Check set on a picker's ask.Question in runner.getPathInteractive -> get_path_test.go (FailingCheckRefusesThePick)
+// 77. leave the Path rules off the picker's ask.Question in runner.getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
+// 78. drop the Included/Excluded assignments in runner.pathRules -> get_path_test.go (PickerGetsMatchAsPredicates)
 // 79. print a secret value in full in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom, secret cases)
-// 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
+// 80. skip the allowed test on multi: defaults in ask.PathRules.Opening -> ask path_test.go (PathRules_OpeningStartsAtTheDefaultAndPicksWhatFits)
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
 // 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
 // 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
@@ -147,7 +147,7 @@
 //
 // 124. drop the "check failed:" prefix from a check's error in ask.Question.checked -> prompt_select_test.go (ErroringCheckShowsItsError)
 // 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
-// 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 126. drop the check-error refusal in ask.Question.checked -> get_path_test.go (ErroringCheckRefusesThePickShowingItsError), prompt_path_test.go (RefusalFromTheJudgeShowsOnTheErrorLineAndKeepsThePickerOpen)
 // 127. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
 // 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
 // 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
@@ -216,13 +216,13 @@
 // 191. take every option a multi menu is answered with, offered or not, in ask.Question.judgeMenu -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
 // 192. drop the multi menu's ticked defaults from browser.state.PromptAsk -> browser_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
 // 193. let a required multi menu go through with nothing ticked in ask.Question.judgeMenu -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 194. show what match: excludes in tui.ListDir (drop the Excluded check) -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 195. list files that match: doesn't include in tui.ListDir -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 196. open a file's folder instead of the default folder in browser.pickerRules.start -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
-// 197. leave a folder picker's default unselected in browser.pickerRules.start -> browser_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 194. show what match: excludes in ask.PathRules.List (drop the Excluded check) -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 195. list files that match: doesn't include in ask.PathRules.List -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 196. open a file's folder instead of the default folder in ask.PathRules.Opening -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 197. leave a folder picker's default unselected in ask.PathRules.Opening -> browser_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
 // 198. open a path that is not a folder in browser.state.askPicker -> browser_picker_test.go (OpeningAFolderByPostChangesTheListing)
-// 199. accept a path match: excludes in browser.pickerRules.pick -> browser_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
-// 200. let a required picker go through with no pick in browser.state.PromptPath -> browser_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
+// 199. accept a path match: excludes in ask.PathRules.Verify -> browser_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
+// 200. let a required picker go through with no pick in ask.Question.judgePath -> browser_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
 // 201. never close the previous tab's replaced channel in browser.Server.serveEvents -> browser_lifecycle_test.go (NewestTabWinsAndTheOldOneIsToldAndClosed)
 // 202. keep the timer running while steps run in browser.Server.waitingOnPerson -> browser_lifecycle_test.go (NothingExitsWhileStepsRunAndTheTimerStartsWhenTheRunEnds)
 // 203. ignore open tabs in browser.Server.watchGrace -> browser_lifecycle_test.go (AReconnectingTabStopsTheTimer)
@@ -231,8 +231,8 @@
 // 206. drop the abandoned case from browser.Server.AwaitHome -> browser_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
 // 207. drop the watchGrace call when a tab closes in browser.Server.serveEvents -> browser_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
 // 208. drop the abandoned case from browser.Server.PickTask -> browser_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
-// 209. let tui.PathPrompt.Allows accept a junk-named path -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
-// 210. pre-select the nearest existing folder when a folder picker's default is missing in browser.pickerRules.start -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
+// 209. let ask.PathRules.Verify accept a junk-named path -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused), ask path_test.go (PathQuestion_JudgesEachPickedPath)
+// 210. pre-select the nearest existing folder when a folder picker's default is missing in ask.PathRules.Opening -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 // 211. let browser.Server.Cancel act without a live run (drop the stop != nil check) -> browser_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
 // 212. leave the label blank when RunFailed names no task in browser.state.labelOf -> internal/browser/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
 // 213. pass task.Info to log.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
@@ -254,6 +254,10 @@
 // 229. skip the default fallback for an empty text answer in ask.Question.judgeText -> runner/get_test.go (TextJudge_AppliesDefaultRequiredAndSkipRules)
 // 230. leave match: out of the text Check in runner.checkCandidate -> runner/get_test.go (TextJudge_RefusesWithMatchAndCheckWording)
 // 231. take menu picks in the order given, not the options', in ask.Question.judgeMenu -> runner/get_test.go (MenuJudge_AppliesPickRules)
+// 232. leave the junk-name check out of ask.PathRules.Verify -> ask path_test.go (PathQuestion_JudgesEachPickedPath)
+// 233. drop the ~ expansion in ask.PathRules.Resolve -> ask path_test.go (PathQuestion_JudgesEachPickedPath), get_path_test.go (PathIsCleanedAndHomeExpanded)
+// 234. list a path's picks more than once in ask.Question.judgePath -> ask path_test.go (PathQuestion_ShapesTheAnswerLikeAMenu)
+// 235. accept the answer despite a refusal in tui.pathModel.judge -> prompt_path_test.go (RefusalFromTheJudgeShowsOnTheErrorLineAndKeepsThePickerOpen)
 package e2e
 
 import (
@@ -356,8 +360,8 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
-	Type     string // "file" or "dir" for a picker, "say" for a say: step (Info is its message), empty for a text prompt or menu
-	Error    string // what a picker reopened with on its error line
+	Type     string   // "file" or "dir" for a picker, "say" for a say: step (Info is its message), empty for a text prompt or menu
+	Refusals []string // what the judge refused of the answers offered before the one it took
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -490,7 +494,7 @@ func Run(t *testing.T, c Case) *Result {
 
 	state := newPromptState(t, c.Answers)
 	state.dir, state.probe, state.interrupt = dir, c.Probe, c.Interrupt
-	restorePrompts := runner.SetPrompts(state.ask, state.path, state.say)
+	restorePrompts := runner.SetPrompts(state.ask, state.say)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
@@ -740,7 +744,6 @@ type promptState struct {
 	t         *testing.T
 	answers   map[string][]string
 	askIdx    map[string]int
-	pathIdx   map[string]int
 	calls     []PromptCall
 	dir       string   // the temp root, for resolving probe paths
 	probe     []string // see Case.Probe
@@ -752,7 +755,6 @@ func newPromptState(t *testing.T, answers map[string][]string) *promptState {
 		t:       t,
 		answers: answers,
 		askIdx:  map[string]int{},
-		pathIdx: map[string]int{},
 	}
 }
 
@@ -760,10 +762,10 @@ func (s *promptState) record(c PromptCall) {
 	s.calls = append(s.calls, c)
 }
 
-// ask implements runner.AskFunc as a plain answer feeder: it offers each
+// ask implements runner.AskFunc as a plain answer feeder (a picker's answers are paths, relative ones from the invocation directory): it offers each
 // answer for q.VarName to the question's judge in turn, as a person retyping
 // after a refusal would, and takes the first one the judge doesn't refuse.
-// Menu answers are option names, comma-separated under multi:. It fails loudly
+// Menu answers are option names and picker answers paths, comma-separated under multi:. It fails loudly
 // rather than hanging if every answer is exhausted without success.
 func (s *promptState) ask(ctx context.Context, q ask.Question) (value.Value, error) {
 	s.t.Helper()
@@ -779,15 +781,48 @@ func (s *promptState) ask(ctx context.Context, q ask.Question) (value.Value, err
 			continue
 		}
 		s.askIdx[q.VarName] = i + 1
-		s.record(PromptCall{VarName: q.VarName, Info: q.Info, Default: q.Default, Items: q.Options, Multi: q.Multi, Secret: q.Secret, Optional: q.Optional, Task: q.Task})
+		call := PromptCall{VarName: q.VarName, Info: q.Info, Default: q.Default, Items: q.Options, Multi: q.Multi, Secret: q.Secret, Optional: q.Optional, Task: q.Task, Refusals: refusals}
+		if q.Path != nil {
+			s.describePicker(&call, q.Path)
+		}
+		s.record(call)
 		return verdict.Value, nil
 	}
 	s.t.Fatalf("unexpected prompt for %q (task %q): no answer was accepted (refusals: %q), or none were provided", q.VarName, q.Task, refusals)
 	return value.Value{}, errors.New("unreachable")
 }
 
+// describePicker records what a picker question carried: its kind, defaults
+// and what its predicates report for each Case.Probe path.
+func (s *promptState) describePicker(call *PromptCall, rules *ask.PathRules) {
+	call.Type = "file"
+	if rules.Dir {
+		call.Type = "dir"
+	}
+	call.Default = strings.Join(rules.Defaults, ",")
+	for _, p := range s.probe {
+		full := filepath.Join(s.dir, p)
+		info, err := os.Stat(full)
+		if err != nil {
+			s.t.Fatalf("probe path %q: %v", p, err)
+		}
+		if rules.Included != nil {
+			if call.Included == nil {
+				call.Included = map[string]bool{}
+			}
+			call.Included[p] = rules.Included(full, info.IsDir())
+		}
+		if rules.Excluded != nil {
+			if call.Excluded == nil {
+				call.Excluded = map[string]bool{}
+			}
+			call.Excluded[p] = rules.Excluded(full, info.IsDir())
+		}
+	}
+}
+
 func answerFrom(q ask.Question, raw string) ask.Answer {
-	if !q.IsMenu() {
+	if !q.IsMenu() && q.Path == nil {
 		return ask.Answer{Text: raw}
 	}
 	if raw == "" {
@@ -803,60 +838,4 @@ func answerFrom(q ask.Question, raw string) ask.Answer {
 func (s *promptState) say(ctx context.Context, message, task string) error {
 	s.record(PromptCall{Type: "say", Info: message, Task: task})
 	return nil
-}
-
-// path implements runner.PathPromptFunc. Each call consumes the next
-// not-yet-used answer for prompt.VarName, like sel: a path (comma-separated
-// under multi:), relative ones taken from the invocation directory the way
-// the real picker returns absolute paths. An empty answer on an optional
-// picker is the escape key: no answer. internal/runner's own check:/re-open
-// loop is what drives repeat calls.
-func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task string, secret bool) (value.Value, bool, error) {
-	s.t.Helper()
-	answers := s.answers[prompt.VarName]
-	idx := s.pathIdx[prompt.VarName]
-	if idx >= len(answers) {
-		s.t.Fatalf("unexpected picker for %q (task %q, visit %d) — only %d answer(s) provided", prompt.VarName, task, idx+1, len(answers))
-	}
-	raw := answers[idx]
-	s.pathIdx[prompt.VarName] = idx + 1
-	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Error: prompt.Error}
-	for _, p := range s.probe {
-		full := filepath.Join(s.dir, p)
-		info, err := os.Stat(full)
-		if err != nil {
-			s.t.Fatalf("probe path %q: %v", p, err)
-		}
-		if prompt.Included != nil {
-			if call.Included == nil {
-				call.Included = map[string]bool{}
-			}
-			call.Included[p] = prompt.Included(full, info.IsDir())
-		}
-		if prompt.Excluded != nil {
-			if call.Excluded == nil {
-				call.Excluded = map[string]bool{}
-			}
-			call.Excluded[p] = prompt.Excluded(full, info.IsDir())
-		}
-	}
-	s.record(call)
-	abs := func(p string) string {
-		if filepath.IsAbs(p) {
-			return p
-		}
-		return filepath.Join(prompt.Invoke, p)
-	}
-	if raw == "" && prompt.Optional {
-		return value.Value{}, false, nil
-	}
-	if prompt.Multi {
-		parts := []any{}
-		for _, p := range strings.Split(raw, ",") {
-			parts = append(parts, abs(p))
-		}
-		return value.Of(parts), true, nil
-	}
-	return value.Str(abs(raw)), true, nil
 }

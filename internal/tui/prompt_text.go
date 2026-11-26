@@ -11,12 +11,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// PromptAsk shows q in the terminal: a menu when it has options, else a
-// text box. It returns what q's judge accepted, or the empty value for a
+// PromptAsk shows q in the terminal: a picker when it has path rules, a
+// menu when it has options, else a text box. It returns what q's judge accepted, or the empty value for a
 // skipped optional question.
 func PromptAsk(ctx context.Context, q ask.Question) (value.Value, error) {
 	var model tea.Model = newTextModel(q)
-	if q.IsMenu() {
+	switch {
+	case q.Path != nil:
+		model = newPathModel(q)
+	case q.IsMenu():
 		model = newSelectModel(q)
 	}
 	result, err := tea.NewProgram(model, tea.WithContext(ctx)).Run()
@@ -27,6 +30,8 @@ func PromptAsk(ctx context.Context, q ask.Question) (value.Value, error) {
 	case textModel:
 		return final.answer, final.finished()
 	case selectModel:
+		return final.answer, final.finished()
+	case pathModel:
 		return final.answer, final.finished()
 	}
 	return value.Value{}, fmt.Errorf("unexpected prompt model %T", result)

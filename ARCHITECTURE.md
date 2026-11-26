@@ -55,18 +55,20 @@ Every change must preserve these. Each is explained in the section named.
   reaches `into:` or a held (`quiet:` or `--quiet`) buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
-- **Prompt seam.** The runner asks through the `runner.Prompts` (ask, path,
+- **Prompt seam.** The runner asks through the `runner.Prompts` (ask,
   say) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
-  or the page's prompts (`browserPrompts`) under `--browser`. A text or menu
-  `get:` entry is one `ask.Question` whose `Judge` owns the answer rules
-  (default fallback, required refusal, skip, `match:`/`check:`, every refusal's
-  wording); a front end only presents the question and hands back an
-  `ask.Answer`, never re-deriving those rules.
-  Tests swap those terminal prompts with `runner.SetPrompts(ask, path, say)
+  or the page's prompts (`browserPrompts`) under `--browser`. A text, menu or
+  `type: file|dir` `get:` entry is one `ask.Question` whose `Judge` owns the
+  answer rules (default fallback, required refusal, skip, `match:`/`check:`,
+  every refusal's wording); a picker's path rules (resolving `~` and relative
+  paths, exists, kind, junk names, `match:`, where it opens and what it starts
+  with picked) live once in the question's `ask.PathRules`. A front end only
+  presents the question and hands back an `ask.Answer`, never re-deriving
+  those rules.
+  Tests swap those terminal prompts with `runner.SetPrompts(ask, say)
   (restore func())`, never by reassigning a package variable.
 - **The browser stays a front end.** `internal/browser` implements `tui.RunListener` and
-  imports `value`, and `tui` only for path prompts (`PathPrompt` and its
-  shared rules), never `eval`,
+  imports `value` and `ask`, never `tui`, `eval`,
   `runner` or `config`;
   it observes a run through `RunLog` and never changes
   what the runner does. ([browser](#internalbrowser-the-browser-front-end))
@@ -87,7 +89,7 @@ internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
-internal/ask/     the question a text or menu get: entry puts to a front end, and the judge of its answer
+internal/ask/     the question a get: entry puts to a front end, the judge of its answer, and the path rules of a file or directory picker
 internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
 internal/browser/ the --browser front end: local page, SSE snapshots, the run listener's state
 internal/config/  YAML into typed structs, the step-level load-time check
@@ -138,20 +140,19 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `ask` imports only `value`; `runner` builds its `Question`, and `tui` and
+- `ask` imports only `value` (and the stdlib for the path rules); `runner` builds its `Question`, and `tui` and
   `browser` import it to present one, so no front end imports `runner`.
 - `tui` imports `value` and `ask` but not `eval`: `PromptAsk` takes a
-  `Question` whose `Check` closure the runner built, and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
-  from `internal/glob`, so the prompt layer never learns how a shell condition
-  or a `match:` pattern works.
+  `Question` whose `Check` closure and `PathRules` `Included`/`Excluded`
+  predicates the runner built (from `internal/glob`), so the prompt layer
+  never learns how a shell condition or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `browser` imports `value` and `ask`, and `tui` only for path prompts (`PathPrompt`, its
-  `Included`/`Excluded` predicates, and the picker rules `IsJunk`,
-  `ResolvePath`, `ListDir`, `NearestFolder` and `PathPrompt.Allows` that
-  the terminal and the page share); it implements `tui.RunListener`
-  structurally, so it needs no `tui` import for that. `app` imports it.
+- `browser` imports `value` and `ask`, never `tui`: the picker rules the
+  terminal and the page share (`ask.PathRules`) live in `ask`. It implements
+  `tui.RunListener` structurally, so it needs no `tui` import for that. `app`
+  imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -598,7 +599,7 @@ A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
 `KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
-one, else sets an optional entry empty, else aborts; with prompts on it prompts through `execCtx.prompts` (`Ask`, or `Path` for a `type: file|dir` entry). A preset, a default and an
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `execCtx.prompts.Ask`, a `type: file|dir` entry as one more `ask.Question`. A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
@@ -606,7 +607,7 @@ strictly parses as a JSON array as that array, anything else an error. So a
 declares the type.
 `match:` patterns (rendered like `options:`, compiled by `internal/glob`; `tui` never
 imports it, and for a `type: file|dir` picker the runner builds the
-`Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
+`Included`/`Excluded` predicates of the question's `ask.PathRules` from the `glob.Matcher`) narrow a menu's items
 before it is shown (nothing left fails, or is empty under `optional:`), and
 join `check:` in the `Check` of the `ask.Question` the runner builds for a text
 or menu entry (`getInteractive`): its rendered info, its `Default` or, for a
@@ -622,20 +623,25 @@ with prompts on waits on `execCtx.prompts.Say` (`tui.PromptSay`, or the page's
 `KindSay` prompt, answered by Continue with no rail entry); then `RunLog.Say`
 logs it, under `--quiet` too. With prompts off it only logs.
 
-A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
-runs its value through `acceptPath` before `check:`: empty is no answer
-(`optional:` sets it empty and skips `check:`, otherwise it fails), then per
-item (each under `multi:`) absolute, exists, right kind (`os.Stat`, so a
-symlink is judged by its target and stored as given), `match:` (`glob.Path`).
-A relative path resolves against the invocation dir when
+A `type: file|dir` entry (`getpath.go`) is stored absolute. Its rules live
+once in `ask.PathRules` (`ask/path.go`), which `pathRules` builds from the
+entry: `Resolve` (`~`, relative against a base, `filepath.Clean`), `Verify`
+(per item: resolves, exists, right kind via `os.Stat` so a symlink is judged by
+its target and stored as given, not a junk name, allowed by `match:`), `Opening`
+(the folder the picker opens and its initial picks) and `List` (what a picker
+shows). `acceptAnswer` runs a value nobody picked through `acceptPath` before
+`check:`: empty is no answer (`optional:` sets it empty and skips `check:`,
+otherwise it fails), then `Verify` per item (each under `multi:`), a refusal
+being fatal. A relative path resolves against the invocation dir when
 `Scope.FromInvocation` says the value came from the CLI or shell, else against
-the task's working directory (`execCtx.dir`); `filepath.Clean` and `~`
-expansion apply. With prompts off, a `type: file` `default:` that is a
-directory counts as no default (`isDirDefault`). With prompts on,
-`getPathInteractive` opens the picker through `promptPathFn` (the task's
-working directory as `WorkDir`, the `default:` as written, `match:` as
-`Included`/`Excluded` predicates). A pick goes through the same per-item
-checks, and a failing `check:` re-opens the picker. An escaped optional picker sets the variable empty.
+the task's working directory (`execCtx.dir`). With prompts off, a `type: file`
+`default:` that is a directory counts as no default (`isDirDefault`). With
+prompts on, `getPathInteractive` puts the picker to `Prompts.Ask` as an
+`ask.Question` with `Path` set (the invocation dir, the task's working
+directory, the `default:` as written, `match:` as `Included`/`Excluded`) and the
+`check:` as its `Check`; `Judge` verifies each pick and runs `check:`, so a bad
+path or a failing `check:` is a refusal inside the picker. An escaped optional
+picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -751,10 +757,9 @@ end of the run.
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`/`prompt_say.go`
-(bubbletea models; `prompt_say.go` is a card titled by the task alone, its body the message, ended by enter; `prompt_path.go` is the file/directory picker, which takes
-`Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
-log line is built from, and `SecretMask`). The runner calls `PromptAsk` (`prompt_text.go`: text or menu models, each judging through its `ask.Question`),
-`PromptPath` and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
+(bubbletea models; `prompt_say.go` is a card titled by the task alone, its body the message, ended by enter; `prompt_path.go` is the file/directory picker, which lists and opens through its question's `ask.PathRules` and judges what is picked through the question. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
+log line is built from, and `SecretMask`). The runner calls `PromptAsk` (`prompt_text.go`: text, menu or picker models, each judging through its `ask.Question`)
+and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
 ### `internal/browser`: the browser front end
 
@@ -811,15 +816,14 @@ which `tui.IsInterrupted` counts as an interrupt. A menu
 (`PromptAsk` for a question with options) is the same `ask` with `KindMenu`, its
 `Options`, `Multi` and `Defaults` (the question's `Picks`), reading a string
 (one choice) or a list (`multi:`) as the answer's picks. A picker
-(`picker.go`, `PromptPath`) is the same `ask` with `KindPath` and a `Picker`
-field: the column view from the home folder (the filesystem root when the open
-folder isn't under it) down to the open folder, listed through the
-`tui.PathPrompt`'s `Included`/`Excluded` predicates, so what `match:` excludes
-is hidden as in the terminal. Its `judge` takes a path (a list under `multi:`)
-and refuses one that is relative, missing, the wrong kind or not allowed by the
-predicates, since the runner treats a bad path as fatal rather than asking
-again; a `check:` failure reopens the picker with `PathPrompt.Error` as the
-refusal. `POST /actions/open` (the ID and a folder) changes a picker's open
+(`picker.go`, `PromptAsk` for a question with `Path` rules) is the same `ask`
+with `KindPath` and a `Picker` field: the column view from the home folder (the
+filesystem root when the open folder isn't under it) down to the open folder,
+listed through `ask.PathRules.List`, so what `match:` excludes is hidden as in
+the terminal. Its `judge` reads a path (a list under `multi:`) into the
+answer's picks and the question's `Judge` rules on it, so a missing path, the
+wrong kind, a junk name, a `match:` miss and a failing `check:` are all
+refusals, as in the terminal. `POST /actions/open` (the ID and a folder) changes a picker's open
 folder and the next snapshot lists it; the picks live in the page.
 
 **Requests.** Every request must carry the token (constant-time compare).
