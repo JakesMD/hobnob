@@ -26,7 +26,7 @@ titleTemplate: Build wizards in YAML
 curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh | bash
 ```
 
-<p class="l-note">One static binary. On CI, <a href="./docs/installation#github-actions">add it to GitHub Actions</a>. Add <code>--browser</code> to any task to <a href="./docs/guide/browser-mode">run it behind a local page in the browser</a>, or run <code>hobnob --browser</code> alone to pick a task there.</p>
+<p class="l-note">One static binary. On CI, <a href="./docs/installation#github-actions">add it to GitHub Actions</a>.</p>
 
 </div>
 
