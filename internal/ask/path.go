@@ -37,6 +37,10 @@ type PathRules struct {
 	Excluded func(abs string, isDir bool) bool
 	// Match is the match: patterns as text, for a refusal.
 	Match string
+	// VarName, when set, makes a kind refusal name the variable ("X is a
+	// directory; CONF needs a file"), as a preset value's refusal does; a
+	// picker's refusal stays short.
+	VarName string
 	// Home stands for ~; empty means the user's home directory.
 	Home string
 }
@@ -106,6 +110,13 @@ func (r PathRules) Allows(abs string, isDir bool) bool {
 		(r.Included == nil || r.Included(abs, isDir))
 }
 
+func (r PathRules) wrongKind(is, needs string) string {
+	if r.VarName == "" {
+		return fmt.Sprintf(" is %s, not a %s", is, needs)
+	}
+	return fmt.Sprintf(" is %s; %s needs a %s", is, r.VarName, needs)
+}
+
 // Verify resolves written against base and checks it exists, is the right
 // kind and is allowed. refusal says why not, naming the path.
 func (r PathRules) Verify(written, base string) (abs, refusal string) {
@@ -120,9 +131,9 @@ func (r PathRules) Verify(written, base string) (abs, refusal string) {
 	case err != nil:
 		return "", fmt.Sprintf("can't read %s: %v", abs, err)
 	case r.Dir && !info.IsDir():
-		return "", abs + " is a file, not a directory"
+		return "", abs + r.wrongKind("a file", "directory")
 	case !r.Dir && info.IsDir():
-		return "", abs + " is a directory, not a file"
+		return "", abs + r.wrongKind("a directory", "file")
 	case IsJunk(filepath.Base(abs)):
 		return "", abs + " is a system file name"
 	case !r.Allows(abs, info.IsDir()):

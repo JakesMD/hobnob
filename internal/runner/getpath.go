@@ -58,6 +58,7 @@ func acceptPath(execState execCtx, getEntry config.GetEntry, scope *scope.Scope,
 	if err != nil {
 		return err
 	}
+	rules.VarName = name
 	written := []any{val.String()}
 	if getEntry.Multi {
 		written, _ = val.Any().([]any)

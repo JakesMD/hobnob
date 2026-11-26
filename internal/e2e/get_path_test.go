@@ -164,7 +164,7 @@ func TestE2E_GetPath_SymlinkToDirectoryFailsAsAFile(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get CONF:", "link is a directory, not a file")
+	res.Err(t, "get CONF:", "link is a directory; CONF needs a file")
 }
 
 func TestE2E_GetPath_FilePresetThatIsADirectoryFails(t *testing.T) {
@@ -186,7 +186,7 @@ func TestE2E_GetPath_FilePresetThatIsADirectoryFails(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get CONF: "+filepath.Join(res.Dir, "sub")+" is a directory, not a file")
+	res.Err(t, "get CONF: "+filepath.Join(res.Dir, "sub")+" is a directory; CONF needs a file")
 }
 
 func TestE2E_GetPath_DirPresetThatIsAFileFails(t *testing.T) {
@@ -207,7 +207,7 @@ func TestE2E_GetPath_DirPresetThatIsAFileFails(t *testing.T) {
 
 	// Assert
 	res.Fails(t)
-	res.Err(t, "get OUT:", "is a file, not a directory")
+	res.Err(t, "get OUT:", "is a file; OUT needs a directory")
 }
 
 func TestE2E_GetPath_MissingPresetFails(t *testing.T) {
