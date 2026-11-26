@@ -23,17 +23,22 @@
   </p>
 </div>
 
-A task runner that asks: menus, file pickers and passwords mid-task, in the
-terminal or a browser page.
+A task runner for building wizards. Hand your workflows to anyone. Ditch the
+outdated docs.
 
-- **A page of tasks for your customers.** `hobnob --browser` turns the whole
-  file into a page: they pick a task and answer its questions, no terminal
-  needed.
-- **A path for agents.** Agents run your tasks with `NAME=value` instead of
-  improvising shell.
-- **CI on your laptop.** The task your pipeline runs is the one you run locally.
+One task anyone can run:
 
-What makes it different:
+- **You.** Like any task runner: `hobnob deploy`. The commands you kept pasting
+  from a note now have a name, and they're committed with the repo.
+- **Your team.** It asks them which services, which environment, and for the
+  token. Nobody has to read the README first.
+- **Everyone else.** `hobnob --browser` puts it on a page. A client or a manager
+  clicks Deploy and fills in the blanks.
+- **CI and agents.** `hobnob deploy ENV=staging` skips the question it answers
+  and runs straight through. Your pipeline runs what you ran, and an agent runs
+  your tested task instead of guessing at shell.
+
+How this task runner is different:
 
 - **Prompts are just steps.** Ask anywhere in a task: a text box, a menu, a
   multi-select or a file picker, built from an earlier step's output.
@@ -41,11 +46,6 @@ What makes it different:
   parsing step.
 - **Tasks return values.** Call a helper and use what it returns in the next
   step, like a function.
-- **Runs in CI too.** Pass the answers as `NAME=value` and the same wizard runs
-  straight through.
-- **A page for non-terminal people.** `hobnob --browser <task>` runs the same task
-  behind a local page and opens it in the browser. `hobnob --browser` alone
-  opens a task picker.
 
 [See it in action →](https://hobnob.jakesmd.dev/)
 

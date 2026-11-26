@@ -249,7 +249,7 @@
 
 .l-uses {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   max-width: var(--stage);
   margin: 88px auto 0;
@@ -284,7 +284,7 @@
 
 .l-features {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 40px;
   max-width: var(--stage);
   margin: 88px auto 0;
@@ -356,10 +356,6 @@
     width: 140px;
     height: 140px;
     margin: 0;
-  }
-
-  .l-features {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

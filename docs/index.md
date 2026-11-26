@@ -10,7 +10,7 @@ titleTemplate: Build wizards in YAML
   <div class="l-hero-text">
     <p class="l-badge">hobnob</p>
     <h1 class="l-title">Build <span class="l-accent">wizards</span> in YAML</h1>
-    <p class="l-tagline">A task runner that asks: menus, file pickers and passwords mid-task, in the terminal or a browser page.</p>
+    <p class="l-tagline">Hand your workflows to anyone. Ditch the outdated docs.</p>
     <div class="l-actions">
       <a class="l-btn brand" href="./docs/quick-start">Get started</a>
       <a class="l-btn alt" href="./docs/reference/">Reference</a>
@@ -31,23 +31,27 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
 </div>
 
 <section class="l-uses">
-  <h2 class="l-heading">What it's for</h2>
+  <h2 class="l-heading">One task anyone can run</h2>
   <div class="l-use">
-    <h3>A page of tasks for your customers</h3>
-    <p><code>hobnob --browser</code> turns the whole file into a page: they pick a task and answer its questions, no terminal needed.</p>
+    <h3>You</h3>
+    <p>Like any task runner: <code>hobnob deploy</code>. The commands you kept pasting from a note now have a name, and they're committed with the repo.</p>
   </div>
   <div class="l-use">
-    <h3>A path for agents</h3>
-    <p>Agents run your tasks with <code>NAME=value</code> instead of improvising shell.</p>
+    <h3>Your team</h3>
+    <p>It asks them which services, which environment, and for the token. Nobody has to read the README first.</p>
   </div>
   <div class="l-use">
-    <h3>CI on your laptop</h3>
-    <p>The task your pipeline runs is the one you run locally.</p>
+    <h3>Everyone else</h3>
+    <p><code>hobnob --browser</code> puts it on a page. A client or a manager clicks Deploy and fills in the blanks.</p>
+  </div>
+  <div class="l-use">
+    <h3>CI and agents</h3>
+    <p><code>hobnob deploy ENV=staging</code> skips the question it answers and runs straight through. Your pipeline runs what you ran, and an agent runs your tested task instead of guessing at shell.</p>
   </div>
 </section>
 
 <section class="l-features">
-  <h2 class="l-heading">How it works</h2>
+  <h2 class="l-heading">How this task runner is different</h2>
   <div class="l-feature">
     <span class="l-icon">📝</span>
     <h3>Prompts are just steps</h3>
@@ -63,58 +67,11 @@ curl -fsSL https://github.com/jakesmd/hobnob/releases/latest/download/install.sh
     <h3>Tasks return values</h3>
     <p>Call a helper and use what it returns in the next step, like a function.</p>
   </div>
-  <div class="l-feature">
-    <span class="l-icon">🤖</span>
-    <h3>Runs in CI too</h3>
-    <p>Pass the answers as <code>NAME=value</code> and the same wizard runs straight through.</p>
-  </div>
 </section>
 
 <section class="l-demo">
 
 <TryDemo>
-<template #trivia>
-
-```yaml
-tasks:
-  ask-trivia:
-    info: Answer a trivia question from a category you pick.
-    steps:
-      # Query an API. The response is a value now.
-      - run: curl -fsS https://the-trivia-api.com/v2/categories
-        into:
-          - CATEGORIES: stdout
-
-      # The menu is built from what that step returned.
-      - get:
-          - CATEGORY:
-              info: Which trivia category?
-              options: .CATEGORIES | keys
-
-      # Look up the chosen category's id by name.
-      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
-        into:
-          - TRIVIA: stdout[0]
-
-      # Shuffle the answers, so the right one isn't always first.
-      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
-        into:
-          - ANSWERS: stdout | lines
-
-      # Dot straight into the JSON. No parsing step.
-      - get:
-          - GUESS:
-              info: "{{ .TRIVIA.question.text }}"
-              options: .ANSWERS
-
-      # Show the result and wait for Enter.
-      - say: Correct!
-        if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
-      - say: "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."
-        if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
-```
-
-</template>
 <template #deploy>
 
 ```yaml
@@ -203,6 +160,48 @@ tasks:
       - run: '[ "{{.SURE}}" = yes ]'
       - set:
           - DISK: '{{ (.DISK | split " ")[0] }}'
+```
+
+</template>
+<template #trivia>
+
+```yaml
+tasks:
+  ask-trivia:
+    info: Answer a trivia question from a category you pick.
+    steps:
+      # Query an API. The response is a value now.
+      - run: curl -fsS https://the-trivia-api.com/v2/categories
+        into:
+          - CATEGORIES: stdout
+
+      # The menu is built from what that step returned.
+      - get:
+          - CATEGORY:
+              info: Which trivia category?
+              options: .CATEGORIES | keys
+
+      # Look up the chosen category's id by name.
+      - run: curl -fsS "https://the-trivia-api.com/v2/questions?limit=1&categories={{ .CATEGORIES[.CATEGORY][0] }}"
+        into:
+          - TRIVIA: stdout[0]
+
+      # Shuffle the answers, so the right one isn't always first.
+      - run: [sh, -c, 'printf "%s\n" "$@" | sort -R', answers, .TRIVIA.correctAnswer, .TRIVIA.incorrectAnswers]
+        into:
+          - ANSWERS: stdout | lines
+
+      # Dot straight into the JSON. No parsing step.
+      - get:
+          - GUESS:
+              info: "{{ .TRIVIA.question.text }}"
+              options: .ANSWERS
+
+      # Show the result and wait for Enter.
+      - say: Correct!
+        if: "{{ eq .GUESS (.TRIVIA.correctAnswer | trim) }}"
+      - say: "Not quite. It was {{ .TRIVIA.correctAnswer | trim }}."
+        if: "{{ ne .GUESS (.TRIVIA.correctAnswer | trim) }}"
 ```
 
 </template>

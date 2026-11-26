@@ -4,7 +4,7 @@ const repo = 'https://github.com/jakesmd/hobnob'
 
 export default defineConfig({
   title: 'hobnob',
-  description: 'A YAML task runner where tasks return values, prompts are steps and JSON is data.',
+  description: 'A YAML task runner for building wizards. Hand your workflows to anyone, in the terminal, on a page or from CI, and ditch the outdated docs.',
   base: '/',
   cleanUrls: true,
   lastUpdated: true,

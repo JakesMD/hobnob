@@ -8,8 +8,9 @@
 // renumbering anything here. The trivia slot must stay in step with
 // internal/app/demo.yml.
 //
-// The Browser view runs the same scripts behind hobnob's own --browser page,
-// internal/browser/page.html, in a frame. A shim stands in for its events stream
+// The Browser view is `hobnob --browser` with no task: hobnob's own page,
+// internal/browser/page.html, in a frame, opening on its task picker over the
+// selected demo's tasks. A shim stands in for its events stream
 // and its button actions: the run's state goes in as the snapshots of
 // internal/browser/snapshot.go, and the page's answers come back as the actions
 // of internal/browser/server.go.
@@ -31,6 +32,7 @@ type PathState = {
   varName: string
   info: string
   match: (name: string) => boolean
+  glob: string
   text: string
   cursor: number
   offset: number
@@ -56,12 +58,12 @@ const INFO: Record<string, string> = {
   flash: 'Flash the built image to a disk.',
 }
 const DEMOS: { id: DemoId; label: string; command: string; caption: string }[] = [
-  { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia', caption: 'Live, in your browser: the questions come straight from the API.' },
   { id: 'deploy', label: 'Deploy', command: 'hobnob deploy', caption: 'Pick services, an environment and a token. The token never shows.' },
   { id: 'flash', label: 'Flash an image', command: 'hobnob build-and-flash', caption: 'Pick a template, then a disk. Every question comes first; say no and nothing is touched.' },
+  { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia', caption: 'Live, in your browser: the questions come straight from the API.' },
 ]
 
-const active = ref<DemoId>('trivia')
+const active = ref<DemoId>('deploy')
 const demo = computed(() => DEMOS.find((d) => d.id === active.value)!)
 const lines = ref<Line[]>([])
 const typed = ref('')
@@ -83,8 +85,9 @@ class Interrupted extends Error {}
 let interrupted = false
 
 const view = ref<View>('terminal')
+// The browser page is on its task picker.
+const picking = ref(false)
 const frame = ref<HTMLIFrameElement>()
-const frameKey = ref(0)
 
 // What the page is sent, kept as the run goes: the tasks running, innermost
 // last, the current step's last output line, and how the run ended.
@@ -702,8 +705,9 @@ function onPathKey(p: PathState & { resolve: Resolve }, e: KeyboardEvent): boole
 }
 
 // A type: file picker opening in a directory default, the way open() does.
-const pickFile = (task: string, varName: string, info: string, start: string, match: (name: string) => boolean) =>
-  ask({ kind: 'path', task, varName, info, match, text: `${PROJECT}/${start}/`, cursor: 0, offset: 0, errMsg: '' }) as Promise<string>
+// Only a "*.ext" match: is needed here.
+const pickFile = (task: string, varName: string, info: string, start: string, glob: string) =>
+  ask({ kind: 'path', task, varName, info, glob, match: (name: string) => name.endsWith(glob.slice(1)), text: `${PROJECT}/${start}/`, cursor: 0, offset: 0, errMsg: '' }) as Promise<string>
 
 const cardRows = computed<CardRow[]>(() => {
   const p = prompt.value
@@ -745,7 +749,6 @@ function shuffle<T>(items: T[]): T[] {
 
 async function trivia() {
   const task = 'ask-trivia'
-  hobnobNote(DEMO_NOTICE)
   startClock()
 
   await inTask(task, async () => {
@@ -834,69 +837,110 @@ async function deploy() {
   })
 }
 
-async function flash() {
+const DISKS = ['nvme0n1 953.9G Samsung SSD 980 PRO', 'sda      28.9G SanDisk Ultra']
+const at = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
+
+async function pickImage(caller: string): Promise<string> {
+  let image = ''
+  await call(caller, '_pick-image', async () => {
+    highlight('- IMAGE:')
+    image = await pickFile('_pick-image', 'IMAGE', 'Which Packer template should be built?', 'images', '*.pkr.hcl')
+    varLine('_pick-image', 'IMAGE', image)
+    await sleep(250)
+  })
+  return image
+}
+
+async function pickDisk(caller: string): Promise<string> {
+  let disk = ''
+  await call(caller, '_pick-disk', async () => {
+    highlight('lsblk -dno')
+    await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', DISKS, 120))
+    await sleep(300)
+    highlight('- DISK:')
+    const line = await select('_pick-disk', 'DISK', 'Which disk should the image be flashed to?', DISKS)
+    varLine('_pick-disk', 'DISK', line)
+    highlight('- SURE:')
+    const sure = await select('_pick-disk', 'SURE', `Wipe '${line}'? Everything on it goes.`, ['no', 'yes'])
+    varLine('_pick-disk', 'SURE', sure)
+    await sleep(250)
+
+    highlight('= yes ]')
+    await step('_pick-disk', `[ "${sure}" = yes ]`, async () => {
+      await sleep(400)
+      if (sure !== 'yes') throw new Error('exit status 1')
+    })
+    await at('split')
+    disk = line.split(' ')[0]
+  })
+  return disk
+}
+
+async function packerBuild(image: string) {
+  highlight('packer build')
+  const src = `qemu.${image.slice(image.lastIndexOf('/') + 1).replace(/\.pkr\.hcl$/, '')}`
+  await step('build', `packer build -var out=output/os.img ${image}`, () =>
+    stream('build', [
+      `${src}: output will be in this color.`,
+      '',
+      `==> ${src}: Retrieving ISO`,
+      `==> ${src}: Starting VM, booting from CD-ROM`,
+      `==> ${src}: Waiting for SSH to become available...`,
+      `==> ${src}: Connected to SSH!`,
+      `==> ${src}: Provisioning with shell script: scripts/setup.sh`,
+      `==> ${src}: Gracefully halting virtual machine...`,
+      `==> ${src}: Converting hard drive to raw: output/os.img`,
+      `Build '${src}' finished after 6 minutes 12 seconds.`,
+      '',
+      '==> Builds finished. The artifacts of successful builds are:',
+      `--> ${src}: VM files in directory: output`,
+    ], 280),
+  )
+}
+
+async function flashDisk(disk: string) {
+  highlight('sudo wipefs')
+  await step('flash', `sudo wipefs --all /dev/${disk}`, () => {
+    const end = disk === 'sda' ? '0x7363ffe00' : '0xee3d4c5e00'
+    return stream('flash', [
+      `/dev/${disk}: 8 bytes were erased at offset 0x00000200 (gpt): 45 46 49 20 50 41 52 54`,
+      `/dev/${disk}: 8 bytes were erased at offset ${end} (gpt): 45 46 49 20 50 41 52 54`,
+      `/dev/${disk}: 2 bytes were erased at offset 0x000001fe (PMBR): 55 aa`,
+    ], 200)
+  })
+  await sleep(400)
+
+  highlight('sudo dd')
+  await step('flash', `sudo dd if=output/os.img of=/dev/${disk} bs=4M status=progress conv=fsync`, async () => {
+    const total = 2147483648
+    outLine('flash', '')
+    for (let s = 1; s <= 7; s++) {
+      await sleep(350)
+      const bytes = Math.min(total, Math.round((total / 7.13) * s))
+      redraw('flash', `${bytes} bytes (${(bytes / 1e9).toFixed(1)} GB, ${(bytes / 2 ** 30).toFixed(1)} GiB) copied, ${s} s, 301 MB/s`)
+    }
+    await sleep(350)
+    redraw('flash', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`)
+    await stream('flash', ['512+0 records in', '512+0 records out', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`], 200)
+  })
+}
+
+async function buildAndFlash() {
   const task = 'build-and-flash'
-  const disks = ['nvme0n1 953.9G Samsung SSD 980 PRO', 'sda      28.9G SanDisk Ultra']
-  const at = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
   startClock()
 
   await inTask(task, async () => {
     await at('call: _pick-image', 'build-and-flash:')
-    let image = ''
-    await call(task, '_pick-image', async () => {
-      highlight('- IMAGE:')
-      image = await pickFile('_pick-image', 'IMAGE', 'Which Packer template should be built?', 'images', (name) => name.endsWith('.pkr.hcl'))
-      varLine('_pick-image', 'IMAGE', image)
-      await sleep(250)
-    })
-
+    const image = await pickImage(task)
     await at('call: _pick-disk', 'build-and-flash:')
-    let disk = ''
-    await call(task, '_pick-disk', async () => {
-      highlight('lsblk -dno')
-      await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', disks, 120))
-      await sleep(300)
-      highlight('- DISK:')
-      const line = await select('_pick-disk', 'DISK', 'Which disk should the image be flashed to?', disks)
-      varLine('_pick-disk', 'DISK', line)
-      highlight('- SURE:')
-      const sure = await select('_pick-disk', 'SURE', `Wipe '${line}'? Everything on it goes.`, ['no', 'yes'])
-      varLine('_pick-disk', 'SURE', sure)
-      await sleep(250)
-
-      highlight('= yes ]')
-      await step('_pick-disk', `[ "${sure}" = yes ]`, async () => {
-        await sleep(400)
-        if (sure !== 'yes') throw new Error('exit status 1')
-      })
-      await at('split')
-      disk = line.split(' ')[0]
-    })
+    const disk = await pickDisk(task)
 
     await at('call: build', 'build-and-flash:')
     await call(task, 'build', async () => {
       highlight('call: _pick-image', 'build:')
       callDoneEarlier('build', '_pick-image')
       await sleep(400)
-      highlight('packer build')
-      const src = `qemu.${image.slice(image.lastIndexOf('/') + 1).replace(/\.pkr\.hcl$/, '')}`
-      await step('build', `packer build -var out=output/os.img ${image}`, () =>
-        stream('build', [
-          `${src}: output will be in this color.`,
-          '',
-          `==> ${src}: Retrieving ISO`,
-          `==> ${src}: Starting VM, booting from CD-ROM`,
-          `==> ${src}: Waiting for SSH to become available...`,
-          `==> ${src}: Connected to SSH!`,
-          `==> ${src}: Provisioning with shell script: scripts/setup.sh`,
-          `==> ${src}: Gracefully halting virtual machine...`,
-          `==> ${src}: Converting hard drive to raw: output/os.img`,
-          `Build '${src}' finished after 6 minutes 12 seconds.`,
-          '',
-          '==> Builds finished. The artifacts of successful builds are:',
-          `--> ${src}: VM files in directory: output`,
-        ], 280),
-      )
+      await packerBuild(image)
       await sleep(400)
     })
 
@@ -905,36 +949,50 @@ async function flash() {
       highlight('call: _pick-disk', 'flash:')
       callDoneEarlier('flash', '_pick-disk')
       await sleep(500)
-
-      highlight('sudo wipefs')
-      await step('flash', `sudo wipefs --all /dev/${disk}`, () => {
-        const end = disk === 'sda' ? '0x7363ffe00' : '0xee3d4c5e00'
-        return stream('flash', [
-          `/dev/${disk}: 8 bytes were erased at offset 0x00000200 (gpt): 45 46 49 20 50 41 52 54`,
-          `/dev/${disk}: 8 bytes were erased at offset ${end} (gpt): 45 46 49 20 50 41 52 54`,
-          `/dev/${disk}: 2 bytes were erased at offset 0x000001fe (PMBR): 55 aa`,
-        ], 200)
-      })
-      await sleep(400)
-
-      highlight('sudo dd')
-      await step('flash', `sudo dd if=output/os.img of=/dev/${disk} bs=4M status=progress conv=fsync`, async () => {
-        const total = 2147483648
-        outLine('flash', '')
-        for (let s = 1; s <= 7; s++) {
-          await sleep(350)
-          const bytes = Math.min(total, Math.round((total / 7.13) * s))
-          redraw('flash', `${bytes} bytes (${(bytes / 1e9).toFixed(1)} GB, ${(bytes / 2 ** 30).toFixed(1)} GiB) copied, ${s} s, 301 MB/s`)
-        }
-        await sleep(350)
-        redraw('flash', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`)
-        await stream('flash', ['512+0 records in', '512+0 records out', `${total} bytes (2.1 GB, 2.0 GiB) copied, 7.13 s, 301 MB/s`], 200)
-      })
+      await flashDisk(disk)
     })
   })
 }
 
-const RUNS: Record<DemoId, () => Promise<void>> = { trivia, deploy, flash }
+async function build() {
+  startClock()
+  await inTask('build', async () => {
+    await at('call: _pick-image', 'build:')
+    const image = await pickImage('build')
+    await packerBuild(image)
+  })
+}
+
+async function flash() {
+  startClock()
+  await inTask('flash', async () => {
+    await at('call: _pick-disk', 'flash:')
+    const disk = await pickDisk('flash')
+    await flashDisk(disk)
+  })
+}
+
+const RUNS: Record<DemoId, () => Promise<void>> = {
+  trivia: () => (hobnobNote(DEMO_NOTICE), trivia()),
+  deploy,
+  flash: buildAndFlash,
+}
+
+// Each demo's visible tasks. Its picker offers them sorted by name, after
+// CollectSelectableTasks in internal/cli/list.go.
+const TASKS: Record<string, { demo: DemoId; run: () => Promise<void> }> = {
+  'ask-trivia': { demo: 'trivia', run: trivia },
+  build: { demo: 'flash', run: build },
+  'build-and-flash': { demo: 'flash', run: buildAndFlash },
+  deploy: { demo: 'deploy', run: deploy },
+  flash: { demo: 'flash', run: flash },
+}
+const picker = computed(() =>
+  Object.keys(TASKS)
+    .filter((name) => TASKS[name].demo === active.value)
+    .sort()
+    .map((name) => ({ name, info: INFO[name] ?? '' })),
+)
 
 
 // The page as hobnob serves it, but talking to this component. The site is
@@ -961,10 +1019,10 @@ const SHIM = `<script>
 <` + `/script>`
 const PAGE = PAGE_HTML.replace('@media (prefers-color-scheme: light)', '@media not all').replace('<script>', SHIM + '<script>')
 
-const browserCommand = computed(() => demo.value.command.replace(/^hobnob /, 'hobnob --browser '))
 const ADDRESS = '127.0.0.1:52814/?token=3f9c…'
+const BROWSER_CAPTION = 'hobnob --browser: every task in the file, one click away. Home brings you back.'
 
-// A folder the picker lists, after ListDir in internal/tui/prompt_path.go.
+// A folder the picker lists, after PathRules.List in internal/ask/path.go.
 function listDir(dir: string, match: (name: string) => boolean) {
   const all = (FS[dir] ?? []).map((e) => ({ name: e.replace(/\/$/, ''), dir: e.endsWith('/') }))
   const byName = (a: { name: string }, b: { name: string }) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())
@@ -998,16 +1056,18 @@ function browserPrompt(p: Prompt) {
   return { ...base, kind: 'path', varName: p.varName, info: p.info, picker: pickerView(pickerOpen.value, p.match) }
 }
 
-const runLog = () => lines.value.slice(1).map((line) => line.map((seg) => seg.t).join('')).join('\n')
+const runLog = () => lines.value.map((line) => line.map((seg) => seg.t).join('')).join('\n')
 
 // The snapshot, but for the clock, which goes in as it is sent. Null until
 // the run's first task starts.
 const snapshot = computed(() => {
+  const rail = { answers: [], setup: [] }
+  if (picking.value) return { screen: 'tasks', tasks: picker.value, task: { name: '', info: '' }, rail }
   const task = running.value[0] ?? snapTask
   if (!task) return null
-  const base = { task: { name: task, info: INFO[task] ?? '' }, rail: { answers: [], setup: [] } }
+  const base = { task: { name: task, info: INFO[task] ?? '' }, rail }
   const o = outcome.value
-  if (o) return { ...base, screen: o.outcome === 'done' ? 'done' : 'failed', result: { ...o, log: runLog(), home: false } }
+  if (o) return { ...base, screen: o.outcome === 'done' ? 'done' : 'failed', result: { ...o, log: runLog(), home: true } }
   if (prompt.value) return { ...base, screen: 'prompt', prompt: browserPrompt(prompt.value) }
   return { ...base, screen: 'progress', progress: { label: label(running.value[running.value.length - 1] ?? task), lastLine: lastLine.value, elapsedMs: 0, cancelling: false } }
 })
@@ -1023,8 +1083,8 @@ function sendSnapshot() {
 }
 watch(() => JSON.stringify(snapshot.value), sendSnapshot)
 
-// An answer goes through the rules of internal/browser/prompt.go: a refusal
-// keeps the prompt open with the reason under it.
+// An answer goes through the rules of internal/ask (judgeMenu, judgeText and
+// PathRules.Verify): a refusal keeps the prompt open with the reason under it.
 function answer(value: unknown) {
   const p = prompt.value
   if (!p) return
@@ -1033,16 +1093,19 @@ function answer(value: unknown) {
     p.resolve(v)
   }
   if (p.kind === 'say') return take('')
-  if (p.kind === 'select' && p.multi) {
-    const picks = Array.isArray(value) ? value.filter((v) => p.items.includes(v)) : []
-    return picks.length ? take(picks) : (refusal.value = 'pick at least one option')
+  if (p.kind === 'select') {
+    const given = p.multi ? (Array.isArray(value) ? value.map(String) : []) : typeof value === 'string' && value ? [value] : []
+    const stranger = given.find((v) => !p.items.includes(v))
+    if (stranger !== undefined) return (refusal.value = `${JSON.stringify(stranger)} is not one of the options`)
+    const picks = p.items.filter((o) => given.includes(o))
+    if (!picks.length) return (refusal.value = p.multi ? 'pick at least one option' : 'an answer is required')
+    return take(p.multi ? picks : picks[0])
   }
   const text = typeof value === 'string' ? value : ''
   if (!text) return (refusal.value = 'an answer is required')
-  if (p.kind === 'select') return p.items.includes(text) ? take(text) : (refusal.value = `${text} isn't one of the options`)
   if (p.kind === 'path') {
     const name = text.slice(text.lastIndexOf('/') + 1)
-    return FS[parentDir(text)]?.includes(name) && p.match(name) ? take(text) : (refusal.value = `${text} doesn't match`)
+    return FS[parentDir(text)]?.includes(name) && p.match(name) ? take(text) : (refusal.value = `${text} doesn't match ${p.glob}`)
   }
   take(text)
 }
@@ -1055,6 +1118,8 @@ function onFrameMessage(e: MessageEvent) {
     body = JSON.parse(e.data.body || '{}')
   } catch {}
   const action = e.data.hobnobAction
+  if (action === 'choose') return choose(String((body as { task?: unknown }).task ?? ''))
+  if (action === 'home') return outcome.value && showPicker()
   if (action === 'cancel') {
     if (state.value === 'running' && !prompt.value && !interrupted) {
       interrupted = true
@@ -1074,6 +1139,19 @@ function setView(v: View) {
   if (v === view.value) return
   reset()
   view.value = v
+  picking.value = v === 'browser'
+}
+
+function showPicker() {
+  reset()
+  picking.value = true
+}
+
+function choose(name: string) {
+  const task = TASKS[name]
+  if (!picking.value || task?.demo !== active.value) return
+  picking.value = false
+  launch(task.run)
 }
 
 function reset() {
@@ -1096,6 +1174,7 @@ function reset() {
 function pick(id: DemoId) {
   if (id === active.value) return
   reset()
+  if (view.value === 'browser') picking.value = true
   active.value = id
   nextTick(() => {
     const pre = code.value?.querySelector<HTMLElement>(`[data-demo="${id}"] pre`)
@@ -1103,28 +1182,29 @@ function pick(id: DemoId) {
   })
 }
 
-async function start() {
+function start() {
   if (state.value === 'running') return
+  launch(async () => {
+    const command = demo.value.command
+    for (const ch of command) {
+      typed.value += ch
+      await sleep(28)
+    }
+    await sleep(250)
+    print({ t: '$ ', c: 'prompt' }, { t: command })
+    typed.value = ''
+    await RUNS[active.value]()
+  })
+}
+
+async function launch(run: () => Promise<void>) {
   reset()
   fitColumns()
   state.value = 'running'
   const id = runId
-  const inBrowser = view.value === 'browser'
-  if (inBrowser) frameKey.value++
   let ended: Outcome['outcome'] = 'done'
   try {
-    const command = inBrowser ? browserCommand.value : demo.value.command
-    if (!inBrowser) {
-      for (const ch of command) {
-        typed.value += ch
-        await sleep(28)
-      }
-      await sleep(250)
-    }
-    print({ t: '$ ', c: 'prompt' }, { t: command })
-    typed.value = ''
-    if (inBrowser) hobnobNote(`Browser mode: http://${ADDRESS}`)
-    await RUNS[active.value]()
+    await run()
   } catch (err) {
     if (err instanceof Cancelled || id !== runId) return
     prompt.value = null
@@ -1175,13 +1255,9 @@ async function start() {
       <div class="panes">
         <div v-if="view === 'browser'" class="browser">
           <div class="address">
-            <span class="url">{{ state === 'idle' ? '' : ADDRESS }}</span>
-            <button v-if="state === 'done'" class="again" @click="start">↻ Run it again</button>
+            <span class="url">{{ ADDRESS }}</span>
           </div>
-          <iframe ref="frame" :key="frameKey" class="page" :srcdoc="PAGE" title="hobnob's browser page" allow="clipboard-write" />
-          <div v-if="state === 'idle'" class="cover">
-            <button class="run" @click="start">▶ Run {{ browserCommand }}</button>
-          </div>
+          <iframe ref="frame" class="page" :srcdoc="PAGE" title="hobnob's browser page" allow="clipboard-write" />
         </div>
         <div v-show="view === 'terminal'" ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">
           <div v-for="(line, i) in lines" :key="i" class="ln">
@@ -1235,7 +1311,7 @@ async function start() {
       </div>
     </div>
 
-    <p class="caption">{{ demo.caption }}</p>
+    <p class="caption">{{ view === 'browser' ? BROWSER_CAPTION : demo.caption }}</p>
   </div>
 </template>
 
@@ -1410,28 +1486,12 @@ async function start() {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.again {
-  flex: none;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--vp-c-brand-1);
-}
 .page {
   flex: 1;
   min-height: 0;
   width: 100%;
   border: none;
   color-scheme: dark;
-}
-.cover {
-  position: absolute;
-  inset: 40px 0 0;
-  display: grid;
-  place-items: center;
-  background: #1a2029;
-}
-.cover .run {
-  margin: 0;
 }
 
 /* Demo switcher */
