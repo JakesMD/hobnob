@@ -192,7 +192,7 @@ func getPathInteractive(execState execCtx, getEntry config.GetEntry, scope *scop
 		picked, answered, err := execState.prompts.Path(execState.ctx, prompt, execState.task, getEntry.Secret)
 		resume()
 		if err != nil {
-			return wrapPromptErr(name, err)
+			return wrapPromptErr("get "+name, err)
 		}
 		if !answered {
 			if getEntry.Multi {

@@ -146,7 +146,7 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 			getEntry.Optional, selectValidator(execState.ctx, getEntry, scope.Vars()), getEntry.Check)
 		resume()
 		if err != nil {
-			return wrapPromptErr(getEntry.VarName, err)
+			return wrapPromptErr("get "+getEntry.VarName, err)
 		}
 	} else {
 		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
@@ -154,7 +154,7 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 		text, err := execState.prompts.Text(execState.ctx, info, getEntry.VarName, checkValidate, validatorDesc(getEntry, matcher, patterns), defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
 		resume()
 		if err != nil {
-			return wrapPromptErr(getEntry.VarName, err)
+			return wrapPromptErr("get "+getEntry.VarName, err)
 		}
 		val = value.Str(text)
 	}

@@ -36,16 +36,16 @@ func Reported(err error) bool {
 	return errors.As(err, &reported)
 }
 
-// wrapPromptErr classifies a text or select prompt error: one caused by
+// wrapPromptErr classifies the error of a prompt for what: one caused by
 // ctx cancellation (the prompt was torn down mid-input, e.g. a SIGTERM
 // arriving while a get: step is blocked waiting on the user) becomes
 // ErrInterrupted so callers treat it like any other graceful-shutdown exit,
 // rather than an ordinary "aborted" prompt failure.
-func wrapPromptErr(varName string, err error) error {
+func wrapPromptErr(what string, err error) error {
 	if tui.IsInterrupted(err) {
 		return fmt.Errorf("%w: %v", ErrInterrupted, err)
 	}
-	return fmt.Errorf("get %s: %w", varName, err)
+	return fmt.Errorf("%s: %w", what, err)
 }
 
 // runningStepMu guards runningStepPID. execRun clears the PID before reaping

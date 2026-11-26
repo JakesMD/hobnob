@@ -6,7 +6,6 @@ import (
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/scope"
-	"hobnob/internal/tui"
 )
 
 // execSay shows a say: step's message and waits for the person to go on.
@@ -21,11 +20,8 @@ func execSay(execState execCtx, step config.Step, scope *scope.Scope) error {
 		resume := execState.log.Pause()
 		err := execState.prompts.Say(execState.ctx, message, execState.task)
 		resume()
-		if tui.IsInterrupted(err) {
-			return fmt.Errorf("%w: %v", ErrInterrupted, err)
-		}
 		if err != nil {
-			return fmt.Errorf("say: %w", err)
+			return wrapPromptErr("say", err)
 		}
 	}
 	execState.log.Say(execState.task, message)

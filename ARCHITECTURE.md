@@ -761,7 +761,9 @@ asked through the page's prompts (`browserPrompts` in `app/web.go`), even in tes
 
 **The run listener.** `tui.RunListener` is how a front end observes a run. A
 `RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
-(`Enter(task, info)`; the leave func carries whether the task failed), a step
+(`Enter(task, label)`, where `runner.executeTask` applies the file scope first
+so `taskLabel` can fill the `info:`'s variables in and mask secrets; the leave
+func carries whether the task failed), a step
 started and whether it is held (`quiet:`), each line of a command's output
 (`RunLog.Tap`, wrapped around the step's destination writers in `execRun`, so
 `--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
@@ -772,8 +774,7 @@ failed step's task and reason, except that a soft-failed step is forgiven). Term
 
 **State and snapshots.** `web.state` turns those events into a `Snapshot`
 (`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
-(answers and setup entries), progress (the innermost running task's `info:` or
-name, the last line, empty for a held step) and the result (outcome, label,
+(answers and setup entries), progress (the innermost running task's label, the last line, empty for a held step) and the result (outcome, label,
 last line, duration and the masked log). The page keeps the masked log it receives with the result, which is what Copy details copies; the clock runs on the page from `progress.elapsedMs`. Every SSE event on `GET /events` is
 a whole snapshot; a stream that is behind gets only the latest. To add a
 screen or field, extend `Snapshot`, set it from `state`, and draw it in

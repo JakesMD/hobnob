@@ -43,8 +43,9 @@ output line either.
 `hobnob --list` shows: tasks whose name starts with `_`, and tasks from a module
 imported with a `_`-prefixed name, are left out. Each task shows its
 [`info:`](./tasks.md) as the title with the name smaller beneath it, in a grid of
-cards, and a search box filters them as the terminal's filter does: the letters
-you type, in order, best match first. Choosing a task runs it.
+cards, and a search box filters them the way the terminal's filter does: the
+letters you type, in order, best match first. It matches task names first, then
+their `info:`. Choosing a task runs it.
 
 ```bash
 hobnob --web

@@ -231,6 +231,8 @@
 // 206. drop the abandoned case from web.Server.AwaitHome -> web_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
 // 207. drop the watchGrace call when a tab closes in web.Server.serveEvents -> web_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
 // 208. drop the abandoned case from web.Server.PickTask -> web_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
+// 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
+// 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 // 211. let web.Server.Cancel act without a live run (drop the stop != nil check) -> web_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
 // 212. leave the label blank when RunFailed names no task in web.state.labelOf -> internal/web/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), web_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
 // 213. pass task.Info to log.Enter unfilled in runner.executeTask -> web_test.go (LabelFillsInTheVariablesItCan)
@@ -240,8 +242,6 @@
 // 217. return early under quiet in tui.RunLog.Say -> say_test.go (ShowsUnderQuiet)
 // 218. accept an empty or non-scalar say: in config.parseStepNode -> say_test.go (RejectsWhatIsNotAMessage)
 // 219. add the say answer to the rail in web.state.PromptSay -> web_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
-// 209. let tui.PathPrompt.Allows accept a junk-named path -> web_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
-// 210. pre-select the nearest existing folder when a folder picker's default is missing in web.pickerRules.start -> web_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 package e2e
 
 import (
