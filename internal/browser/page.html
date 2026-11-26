@@ -94,8 +94,6 @@ mark { background: none; color: var(--brand-1); font-weight: 700; }
 .ent.empty { color: var(--t3); cursor: default; }
 .ent .chev { color: var(--t3); }
 .ent.sel .chev { color: var(--btn-text); }
-.picked { font-size: 14px; color: var(--t2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 200px; }
-.picked code { font-family: var(--mono); color: var(--brand-1); }
 @media (max-width: 760px) {
   .shell { display: flex; flex-direction: column; }
   .rail { flex-direction: row; align-items: center; gap: 16px; padding: 12px 20px; border-right: none; border-bottom: 1px solid var(--divider); }
@@ -224,6 +222,11 @@ function progress(s) {
   };
 }
 
+// cancelButton stops the run from a prompt, as Cancel does while it runs.
+function cancelButton() {
+  return el('button', { class: 'btn alt', id: 'cancel', onclick: () => post('cancel') }, 'Cancel');
+}
+
 function homeButton(s) {
   return s.result.home ? el('button', { class: 'btn brand', onclick: () => post('home') }, 'Home') : null;
 }
@@ -254,7 +257,6 @@ function menu(s) {
   const p = s.prompt;
   if (menuDraft.id !== p.id) menuDraft = { id: p.id, picks: p.multi ? [...(p.defaults || [])] : (p.hasDefault ? [p.default] : []), filter: '' };
   const cards = el('div', { class: 'cards', role: p.multi ? 'group' : 'radiogroup' });
-  const count = el('span', { class: 'note', id: 'count' });
   const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
   const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
   const fill = () => {
@@ -269,7 +271,6 @@ function menu(s) {
           fill();
         } }, el('span', { class: p.multi ? 'box' : 'dot' }), highlight(o, m.positions));
     }) : [el('div', { class: 'empty' }, 'No options match.')]));
-    count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
     next.disabled = !p.optional && !menuDraft.picks.length;
   };
   fill();
@@ -285,7 +286,7 @@ function menu(s) {
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
   buttons.push(next);
-  return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
+  return { body, bar: [cancelButton(), el('div', { class: 'actions' }, buttons)] };
 }
 
 function linked(text) {
@@ -302,7 +303,7 @@ function say(s) {
   const p = s.prompt;
   const next = el('button', { class: 'btn brand', id: 'continue', onclick: () => post('answer', { id: p.id, value: null }) }, 'Continue');
   setTimeout(() => next.focus(), 0);
-  return { body: [el('h1', { class: 'message' }, linked(p.info))], bar: [el('span'), el('div', { class: 'actions' }, [next])] };
+  return { body: [el('h1', { class: 'message' }, linked(p.info))], bar: [cancelButton(), el('div', { class: 'actions' }, [next])] };
 }
 
 function ask(s) {
@@ -326,7 +327,7 @@ function ask(s) {
   buttons.push(next);
   return {
     body: [el('h1', {}, p.info || p.varName), field, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
-    bar: [el('span'), el('div', { class: 'actions' }, buttons)],
+    bar: [cancelButton(), el('div', { class: 'actions' }, buttons)],
   };
 }
 
@@ -381,8 +382,6 @@ function picker(s) {
   // The open folder is the last column: on a narrow page, scroll it into view.
   setTimeout(() => { const box = document.getElementById('cols'); if (box) box.scrollLeft = box.scrollWidth; }, 0);
   const answer = pick.selected;
-  const statement = multi ? (answer.length ? answer.length + ' selected' : 'Nothing picked yet')
-    : answer.length ? el('span', {}, (folderPicker ? 'Folder: ' : 'Picked: '), el('code', {}, answer[0])) : 'Nothing picked yet';
   const send = () => post('answer', { id: p.id, value: multi ? answer : (answer[0] || '') });
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
@@ -391,7 +390,7 @@ function picker(s) {
   buttons.push(next);
   return {
     body: [el('h1', {}, p.info || p.varName), search, el('div', { class: 'cols', id: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
-    bar: [el('span', { class: 'picked', id: 'picked' }, statement), el('div', { class: 'actions' }, buttons)],
+    bar: [cancelButton(), el('div', { class: 'actions' }, buttons)],
   };
 }
 

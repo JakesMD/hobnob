@@ -1,8 +1,10 @@
 package app
 
 import (
+	"cmp"
 	"context"
 	"os"
+	"slices"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
@@ -27,6 +29,7 @@ func (t *terminalFrontEnd) Pick(ctx context.Context, tasks []tui.TaskItem, showU
 	if showUsage {
 		cli.PrintUsage(os.Stdout, t.app.Version)
 	}
+	tasks = slices.SortedFunc(slices.Values(tasks), func(a, b tui.TaskItem) int { return cmp.Compare(a.Name, b.Name) })
 	name, err := t.app.SelectTask(ctx, tasks)
 	return name, err == nil, err
 }

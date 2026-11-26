@@ -124,7 +124,8 @@ func TestListTasksGrouping(t *testing.T) {
 
 func TestCollectSelectableTasks(t *testing.T) {
 	// given public and internal tasks, when collected for the picker, then
-	// only public tasks come back, sorted (why: the picker must match --list)
+	// only public tasks come back, in declaration order (why: the browser
+	// lists them by info, so the taskfile's order is the one that reads well)
 	tests := []struct {
 		name        string
 		fixture     string
@@ -133,7 +134,7 @@ func TestCollectSelectableTasks(t *testing.T) {
 		absentNames []string
 	}{
 		{
-			name:      "given tasks with and without info, when collected, then returns public tasks sorted with rendered info (why: selector needs display data)",
+			name:      "given tasks with and without info, when collected, then returns public tasks with rendered info (why: selector needs display data)",
 			fixture:   "testdata/task_info.yml",
 			wantNames: []string{"adopt", "list_animals", "no_info"},
 			wantInfos: []string{"Adopt a cat from the shelter", "List all available animals", ""},
@@ -141,7 +142,7 @@ func TestCollectSelectableTasks(t *testing.T) {
 		{
 			name:        "given internal tasks, when collected, then underscore-prefixed tasks excluded (why: internal tasks must not appear in selector)",
 			fixture:     "testdata/internal_tasks.yml",
-			wantNames:   []string{"another_public", "public"},
+			wantNames:   []string{"public", "another_public"},
 			absentNames: []string{"_helper"},
 		},
 		{

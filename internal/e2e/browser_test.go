@@ -744,7 +744,7 @@ const pickerYml = `
 
 func TestE2E_Browser_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t *testing.T) {
 	// given a taskfile with a default task and a _-prefixed task, when run with --browser and no task, then the picker lists the visible
-	// tasks with their info and name, and the default does not run, and the
+	// tasks with their info and name in the taskfile's order, and the default does not run, and the
 	// exit code is 0 as nothing ran (why: one shortcut offers several wizards)
 	// Arrange
 	var picker browser.Snapshot
@@ -759,7 +759,7 @@ func TestE2E_Browser_WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault(t
 	// Assert
 	res.OK(t)
 	res.NotOut(t, "ran-default")
-	want := []browser.Task{{Name: "broken"}, {Name: "default", Info: "The default"}, {Name: "setup", Info: "Set up the laptop"}}
+	want := []browser.Task{{Name: "default", Info: "The default"}, {Name: "setup", Info: "Set up the laptop"}, {Name: "broken"}}
 	if !equalTasks(picker.Tasks, want) {
 		t.Errorf("picker tasks = %+v, want %+v", picker.Tasks, want)
 	}

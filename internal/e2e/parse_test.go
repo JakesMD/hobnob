@@ -123,7 +123,7 @@ func TestE2E_Parse_EnvBlockMalformedMultiKeyEntryErrors(t *testing.T) {
 
 func TestE2E_Parse_ListSortsTasksAlphabeticallyRegardlessOfDeclarationOrder(t *testing.T) {
 	// given tasks declared out of alphabetical order, when --list runs, then
-	// they're shown sorted (why: visibleTaskNames sorts for display —
+	// they're shown sorted (why: sortedTaskNames sorts for display —
 	// declaration order is preserved internally in cfg.TaskNames, but that's
 	// not what the user sees in the menu)
 	// Arrange

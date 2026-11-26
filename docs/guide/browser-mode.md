@@ -61,7 +61,7 @@ it printed nothing.
 ## Offering several tasks
 
 `--browser` with no task opens a picker listing every task `hobnob --list` shows,
-titled by its `info:`. Choosing one runs it, and the end screen offers **Home**
+titled by its `info:`, in the order the taskfile declares them. Choosing one runs it, and the end screen offers **Home**
 to pick another. A task named on the command line ends with no Home.
 
 ```bash
@@ -99,7 +99,8 @@ tasks:
   password in the terminal, which the person isn't watching, so run the wizard
   where it already has the rights it needs.
 - **Cancel on the page is CTRL+C.** The first press asks the running step to
-  stop, the second kills it. A cancelled run exits with 1.
+  stop, the second kills it. At a prompt, Cancel ends the run there. A
+  cancelled run exits with 1.
 - **On a random port, hobnob waits 60 seconds for a closed tab.** The wait
   only counts while hobnob is waiting on the person: at a prompt, the picker or an end screen.
   When it runs out at a prompt, the run is cancelled as by CTRL+C; anywhere

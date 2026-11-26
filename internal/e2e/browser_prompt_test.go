@@ -456,3 +456,40 @@ func TestE2E_Browser_SayShowsTheMessageAndContinueGoesOn(t *testing.T) {
 		t.Errorf("answers = %+v, want none", done.Rail.Answers)
 	}
 }
+
+func TestE2E_Browser_CancelAtAPromptEndsTheRunCancelled(t *testing.T) {
+	// given a run at a prompt, when the page POSTs cancel, then the prompt
+	// closes unanswered, the steps after it don't run and the page ends on
+	// Cancelled (why: a person must be able to back out of a wizard midway)
+	// Arrange
+	yml := `
+		tasks:
+		  t:
+		    steps:
+		      - get:
+		          - NAME:
+		              info: Your name?
+		      - run: echo hello={{.NAME}}
+	`
+	var status int
+	var result browser.Snapshot
+	c := Case{Yml: yml, Args: []string{"--browser", "t"}, Browser: func(b *Browser) {
+		tab := b.Open()
+		tab.Screen(browser.ScreenPrompt)
+		status = b.Post("cancel", struct{}{})
+		result = tab.Screen(browser.ScreenFailed)
+	}}
+
+	// Act
+	res := Run(t, c)
+
+	// Assert
+	res.Fails(t)
+	res.NotOut(t, "hello=")
+	if status != http.StatusNoContent {
+		t.Errorf("cancel status = %d", status)
+	}
+	if result.Result.Outcome != browser.OutcomeCancelled {
+		t.Errorf("result = %+v", result.Result)
+	}
+}

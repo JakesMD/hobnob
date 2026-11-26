@@ -17,14 +17,11 @@ import (
 	cterm "github.com/charmbracelet/x/term"
 )
 
-// visibleTaskNames returns cfg's non-internal, non-hidden task names, sorted.
+// visibleTaskNames returns cfg's non-internal, non-hidden task names in the
+// order the taskfile declares them.
 func visibleTaskNames(cfg *config.ConfigFile) []string {
-	sortedNames := make([]string, len(cfg.TaskNames))
-	copy(sortedNames, cfg.TaskNames)
-	sort.Strings(sortedNames)
-
 	var names []string
-	for _, name := range sortedNames {
+	for _, name := range cfg.TaskNames {
 		if strings.HasPrefix(name, "_") {
 			continue
 		}
@@ -36,6 +33,15 @@ func visibleTaskNames(cfg *config.ConfigFile) []string {
 	return names
 }
 
+// sortedTaskNames is visibleTaskNames sorted by name, as --list shows them.
+func sortedTaskNames(cfg *config.ConfigFile) []string {
+	names := visibleTaskNames(cfg)
+	sort.Strings(names)
+	return names
+}
+
+// CollectSelectableTasks returns the tasks a picker offers, in the order the
+// taskfile declares them; a front end that lists them by name sorts them.
 func CollectSelectableTasks(cfg *config.ConfigFile, scope *scope.Scope) []tui.TaskItem {
 	var tasks []tui.TaskItem
 	for _, name := range visibleTaskNames(cfg) {
@@ -58,7 +64,7 @@ type taskRow struct {
 // sorted order, alongside the longest task name — callers need that width to
 // align the info column before any rendering happens.
 func buildTaskRows(cfg *config.ConfigFile, scope *scope.Scope) (rows []taskRow, maxNameLen int) {
-	for _, name := range visibleTaskNames(cfg) {
+	for _, name := range sortedTaskNames(cfg) {
 		info := listRenderInfo(cfg.Tasks[name].Info, scope.Vars())
 		rows = append(rows, taskRow{name, info})
 		if width := lipgloss.Width(name); width > maxNameLen {
