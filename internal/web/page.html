@@ -39,6 +39,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .rail { background: var(--bg-alt); border-right: 1px solid var(--divider); padding: 28px 24px; display: flex; flex-direction: column; gap: 28px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--brand-1); font-size: 18px; }
 .message { white-space: pre-line; }
+.message a { color: inherit; text-decoration: underline; overflow-wrap: anywhere; }
 .logo svg { width: 28px; height: 28px; flex: none; }
 .taskname { font-size: 13px; color: var(--t3); min-width: 0; overflow-wrap: anywhere; }
 .taskname b { display: block; font-size: 16px; color: var(--t1); font-weight: 600; margin-bottom: 2px; }
@@ -285,11 +286,16 @@ function menu(s) {
   return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
 }
 
+function linked(text) {
+  return text.split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'\]])/).map((part, i) =>
+    i % 2 ? el('a', { href: part, target: '_blank', rel: 'noopener noreferrer' }, part) : part);
+}
+
 function say(s) {
   const p = s.prompt;
   const next = el('button', { class: 'btn brand', id: 'continue', onclick: () => post('answer', { id: p.id, value: null }) }, 'Continue');
   setTimeout(() => next.focus(), 0);
-  return { body: [el('h1', { class: 'message' }, p.info)], bar: [el('span'), el('div', { class: 'actions' }, [next])] };
+  return { body: [el('h1', { class: 'message' }, linked(p.info))], bar: [el('span'), el('div', { class: 'actions' }, [next])] };
 }
 
 function ask(s) {

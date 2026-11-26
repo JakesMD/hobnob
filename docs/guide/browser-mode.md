@@ -49,10 +49,21 @@ in browser mode, name it: `hobnob default --web`.
 
 [`get:`](./prompts.md) prompts, menus, file and directory pickers, and
 [`say:`](./prompts.md#showing-a-message) messages each get a page of their own,
-headed by the entry's `info:`. They follow the same rules as in the terminal:
+headed by the entry's `info:`, or by the message for a `say:`. They follow the same rules as in the terminal:
 `default:`, `optional:`, `multi:`, `match:` and `check:` all behave the same, and
 a refused answer shows its reason on the page. Prompts settled by a `KEY=VALUE`
 preset are skipped. The page never receives a `secret:` prompt's default.
+
+A web address starting `http://` or `https://` in a `say:` message is a link
+that opens in a new tab, so a message can send the person somewhere and keep
+the run's page open behind it:
+
+```yaml
+tasks:
+  setup:
+    steps:
+      - say: Make an account at https://the-trivia-api.com, then press Continue.
+```
 
 ## Rules
 
