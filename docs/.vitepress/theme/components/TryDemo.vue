@@ -57,10 +57,10 @@ const INFO: Record<string, string> = {
   build: 'Build an OS image with Packer.',
   flash: 'Flash the built image to a disk.',
 }
-const DEMOS: { id: DemoId; label: string; command: string; caption: string }[] = [
-  { id: 'deploy', label: 'Deploy', command: 'hobnob deploy', caption: 'Pick services, an environment and a token. The token never shows.' },
-  { id: 'flash', label: 'Flash an image', command: 'hobnob build-and-flash', caption: 'Pick a template, then a disk. Every question comes first; say no and nothing is touched.' },
-  { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia', caption: 'Live, in your browser: the questions come straight from the API.' },
+const DEMOS: { id: DemoId; label: string; command: string }[] = [
+  { id: 'deploy', label: 'Deploy', command: 'hobnob deploy' },
+  { id: 'flash', label: 'Flash an image', command: 'hobnob build-and-flash' },
+  { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia' },
 ]
 
 const active = ref<DemoId>('deploy')
@@ -978,19 +978,19 @@ const RUNS: Record<DemoId, () => Promise<void>> = {
   flash: buildAndFlash,
 }
 
-// Each demo's visible tasks. Its picker offers them sorted by name, after
-// CollectSelectableTasks in internal/cli/list.go.
+// Each demo's visible tasks, in the order its taskfile on the landing page
+// declares them: the picker keeps that order, after CollectSelectableTasks in
+// internal/cli/list.go.
 const TASKS: Record<string, { demo: DemoId; run: () => Promise<void> }> = {
   'ask-trivia': { demo: 'trivia', run: trivia },
-  build: { demo: 'flash', run: build },
-  'build-and-flash': { demo: 'flash', run: buildAndFlash },
   deploy: { demo: 'deploy', run: deploy },
+  'build-and-flash': { demo: 'flash', run: buildAndFlash },
+  build: { demo: 'flash', run: build },
   flash: { demo: 'flash', run: flash },
 }
 const picker = computed(() =>
   Object.keys(TASKS)
     .filter((name) => TASKS[name].demo === active.value)
-    .sort()
     .map((name) => ({ name, info: INFO[name] ?? '' })),
 )
 
@@ -1019,8 +1019,6 @@ const SHIM = `<script>
 <` + `/script>`
 const PAGE = PAGE_HTML.replace('@media (prefers-color-scheme: light)', '@media not all').replace('<script>', SHIM + '<script>')
 
-const ADDRESS = '127.0.0.1:52814/?token=3f9c…'
-const BROWSER_CAPTION = 'hobnob --browser: every task in the file, one click away. Home brings you back.'
 
 // A folder the picker lists, after PathRules.List in internal/ask/path.go.
 function listDir(dir: string, match: (name: string) => boolean) {
@@ -1254,9 +1252,6 @@ async function launch(run: () => Promise<void>) {
       </div>
       <div class="panes">
         <div v-if="view === 'browser'" class="browser">
-          <div class="address">
-            <span class="url">{{ ADDRESS }}</span>
-          </div>
           <iframe ref="frame" class="page" :srcdoc="PAGE" title="hobnob's browser page" allow="clipboard-write" />
         </div>
         <div v-show="view === 'terminal'" ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">
@@ -1310,8 +1305,6 @@ async function launch(run: () => Promise<void>) {
         </div>
       </div>
     </div>
-
-    <p class="caption">{{ view === 'browser' ? BROWSER_CAPTION : demo.caption }}</p>
   </div>
 </template>
 
@@ -1370,7 +1363,7 @@ async function launch(run: () => Promise<void>) {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
-  height: 520px;
+  height: clamp(520px, 72svh, 720px);
 }
 
 /* Grid items grow to fit their content unless told otherwise, which would
@@ -1453,38 +1446,13 @@ async function launch(run: () => Promise<void>) {
   background: #2c3542;
 }
 
-/* The browser view: an address bar over hobnob's page */
+/* The browser view: hobnob's page */
 .browser {
   position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
   background: #1a2029;
-}
-.address {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  height: 40px;
-  padding: 0 10px;
-  background: #151a22;
-  border-bottom: 1px solid var(--vp-c-divider);
-}
-.url {
-  flex: 1;
-  min-width: 0;
-  height: 26px;
-  padding: 0 12px;
-  border-radius: 13px;
-  background: #0f131a;
-  font-family: var(--vp-font-family-mono);
-  font-size: 12px;
-  line-height: 26px;
-  color: var(--vp-c-text-3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .page {
   flex: 1;
@@ -1522,13 +1490,6 @@ async function launch(run: () => Promise<void>) {
 .tab-btn.on {
   color: var(--vp-button-brand-text);
   background: var(--vp-button-brand-bg);
-}
-
-.caption {
-  margin: 20px 0 0;
-  text-align: center;
-  font-size: 14px;
-  color: var(--vp-c-text-3);
 }
 
 /* The status line: a grey rule under the log, pinned to the bottom of the
