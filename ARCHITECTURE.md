@@ -67,10 +67,13 @@ Every change must preserve these. Each is explained in the section named.
   those rules.
   Tests swap those terminal prompts with `runner.SetPrompts(ask, say)
   (restore func())`, never by reassigning a package variable.
-- **One event stream.** The runner reports a run only to the `runevents.Stream`
-  it is given, and never to a front end directly. The terminal `RunLog` and the
-  browser `state` are listeners on it. Which failure ended a run, and the task
-  it names, is decided in the stream (`Finish`), not in a listener.
+- **One event stream.** Everything a run reports (tasks, steps, variables,
+  says, the outcome) goes to the `runevents.Stream` the runner is given, never
+  to a listener directly. The terminal `RunLog` and the browser `state` are
+  listeners on it. The runner also holds the `tui.RunLog` itself for what is
+  terminal-only and not an event: a command's raw `Output`, `Pause` around a
+  prompt, `PTYSize` and `Quiet`. Which failure ended a run, and the task it
+  names, is decided in the stream (`Finish`), not in a listener.
   ([runevents](#internalrunevents-the-run-event-stream))
 - **The browser stays a front end.** `internal/browser` is a `runevents.Listener` and
   imports `value`, `ask` and `runevents`, never `tui`, `eval`,
@@ -114,6 +117,7 @@ Imports run one way. An arrow means "imports":
 flowchart TD
     cmd[cmd/hobnob] --> app
     cmd --> runner
+    cmd --> tui
     app --> cli
     app --> runner
     app --> scope
@@ -137,6 +141,8 @@ flowchart TD
     app --> runevents
     tui --> runevents
     browser --> runevents
+    browser --> ask
+    browser --> value
     config --> literal
     literal --> eval
     eval --> value
