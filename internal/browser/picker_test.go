@@ -1,6 +1,7 @@
 package browser
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,5 +29,26 @@ func TestPickerStart_DirDefaultFailingMatchOpensThatFolder(t *testing.T) {
 	// Assert
 	if open != filepath.Join(root, "y") || len(selected) != 0 {
 		t.Errorf("start() = %q, %q; want the y folder and nothing picked", open, selected)
+	}
+}
+
+func TestReadPaths_RefusesARelativePathFromThePage(t *testing.T) {
+	// given a page answer holding a relative path, when it is read, then it is refused as not absolute
+	// (why: the page shows absolute paths, so a relative one is not something it picked)
+
+	// Arrange
+	for _, multi := range []bool{false, true} {
+		raw := json.RawMessage(`"sub/a.txt"`)
+		if multi {
+			raw = json.RawMessage(`["/abs/ok.txt","sub/a.txt"]`)
+		}
+
+		// Act
+		_, refusal := readPaths(multi)(raw)
+
+		// Assert
+		if refusal != "sub/a.txt isn't an absolute path" {
+			t.Errorf("multi=%v: refusal = %q", multi, refusal)
+		}
 	}
 }

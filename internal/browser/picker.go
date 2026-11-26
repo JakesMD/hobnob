@@ -106,24 +106,30 @@ func (r pickerView) start(multi bool) (open string, selected []string) {
 	return open, selected
 }
 
-// readPaths reads a picker's answer: the picked paths.
+// readPaths reads a picker's answer: the picked paths, each absolute as the
+// page lists them.
 func readPaths(multi bool) func(json.RawMessage) (ask.Answer, string) {
 	return func(raw json.RawMessage) (ask.Answer, string) {
+		var paths []string
 		if multi {
-			var paths []string
 			if err := json.Unmarshal(raw, &paths); err != nil {
 				return ask.Answer{}, "the answer must be a list of paths"
 			}
-			return ask.Answer{Picks: paths}, ""
+		} else {
+			var one string
+			if err := json.Unmarshal(raw, &one); err != nil {
+				return ask.Answer{}, "the answer must be a path"
+			}
+			if one != "" {
+				paths = []string{one}
+			}
 		}
-		var one string
-		if err := json.Unmarshal(raw, &one); err != nil {
-			return ask.Answer{}, "the answer must be a path"
+		for _, path := range paths {
+			if !filepath.IsAbs(path) {
+				return ask.Answer{}, fmt.Sprintf("%s isn't an absolute path", path)
+			}
 		}
-		if one == "" {
-			return ask.Answer{}, ""
-		}
-		return ask.Answer{Picks: []string{one}}, ""
+		return ask.Answer{Picks: paths}, ""
 	}
 }
 
