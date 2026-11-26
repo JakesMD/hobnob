@@ -26,6 +26,7 @@ _hobnob_completion() {
       (( i++ ))
     elif [[ "${COMP_WORDS[i]}" == "--port" ]]; then
       (( i++ ))
+      (( positional++ ))
     elif [[ "${COMP_WORDS[i]}" != --* && "${COMP_WORDS[i]}" != *=* ]]; then
       (( positional++ ))
     fi

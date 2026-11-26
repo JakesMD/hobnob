@@ -25,6 +25,7 @@ _hobnob() {
       (( i++ ))
     elif [[ "${words[i]}" == "--port" ]]; then
       (( i++ ))
+      (( positional++ ))
     elif [[ "${words[i]}" != --* && "${words[i]}" != *=* ]]; then
       (( positional++ ))
     fi

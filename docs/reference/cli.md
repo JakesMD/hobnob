@@ -78,11 +78,12 @@ hobnob --browser
 
 Serves the `--browser` page on this port of `127.0.0.1` instead of a random free
 one, at an address with no token, and doesn't open the browser or give up on a
-closed tab. It is an error without `--browser`, with a number outside 1 to 65535, and when
-the port is already in use. See [Browser mode](../guide/browser-mode.md).
+closed tab. The page is always the task picker. It is an error without
+`--browser`, with a task, with a number outside 1 to 65535, and when the port
+is already in use. See [Browser mode](../guide/browser-mode.md).
 
 ```bash
-hobnob --browser --port 8080 setup
+hobnob --browser --port 8080
 ```
 
 ## `--file <path>`

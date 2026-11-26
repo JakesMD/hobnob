@@ -37,11 +37,10 @@ hobnob » Browser mode: http://127.0.0.1:8080/
 ```
 
 With `--port`, hobnob doesn't open the browser, and it never gives up on a
-closed tab: it waits until someone opens the address, or until CTRL+C. A
-named task still starts at once, and hobnob exits only after a page has shown
-its result, so for a service leave the task out and let the picker offer
-every task. Forward the port to the same port number, since the page answers
-only to `127.0.0.1` on that port.
+closed tab: it waits until someone opens the address, or until CTRL+C. The
+page is the [task picker](#offering-several-tasks), so each visit can run any
+task. Forward the port to the same port number, since the page answers only
+to `127.0.0.1` on that port.
 
 Without the token, any program or person on your machine can open the page and
 answer its prompts, so use `--port` only where that's fine.
@@ -111,7 +110,7 @@ tasks:
 - **`--browser` combines with** `--file`, `--demo`, `KEY=VALUE`, `--port` and
   `--quiet` (which changes only the terminal). It is an error with `--no-input`,
   `--list`, `--select` and `--help`, and not yet supported on Windows.
-- **`--port` needs `--browser`** and a number from 1 to 65535. A port already in
+- **`--port` needs `--browser`**, no task, and a number from 1 to 65535. A port already in
   use is an error; hobnob doesn't fall back to another.
 - **The page is local and guarded.** It is served on `127.0.0.1` only, and
   hobnob refuses a request whose `Host` or `Origin` isn't that address and

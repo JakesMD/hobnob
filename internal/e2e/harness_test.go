@@ -249,6 +249,7 @@
 // 224. check the token on a fixed server in browser.Server.guard -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
 // 225. keep the token in a fixed server's browser.Server.URL -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
 // 226. start the grace timer on a fixed server in browser.Server.watchGrace -> browser_test.go (PortWaitsForATabPastTheGrace)
+// 227. run a named task under --port in app.execBrowserTask -> browser_test.go (PortRefusals)
 package e2e
 
 import (

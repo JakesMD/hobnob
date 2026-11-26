@@ -15,7 +15,10 @@ function __fish_hobnob_no_task_given
     set -l positional 0
     set -l i 2
     while test $i -le (count $cmd)
-        if contains -- "$cmd[$i]" --file --port
+        if test "$cmd[$i]" = --port
+            set positional (math $positional + 1)
+            set i (math $i + 2)
+        else if test "$cmd[$i]" = --file
             set i (math $i + 2)
         else if not string match -qr '^--' "$cmd[$i]"; and not string match -qr '=' "$cmd[$i]"
             set positional (math $positional + 1)

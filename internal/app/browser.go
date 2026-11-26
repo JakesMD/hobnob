@@ -37,6 +37,9 @@ func openBrowser(url string) error {
 // the terminal, and the page observes the same run. It returns once the page
 // has been sent how the run ended.
 func (a *App) execBrowserTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, dir string) error {
+	if a.port != 0 {
+		return errors.New("--port can't be used with a task; leave the task out and choose it on the page")
+	}
 	if err := runner.CheckTask(taskName, cfg); err != nil {
 		return failSilently(err)
 	}

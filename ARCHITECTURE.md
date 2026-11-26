@@ -757,7 +757,8 @@ the last run's. `browser.Listen` binds a random port on 127.0.0.1
 with a random token; `App.OpenBrowser(url)` opens
 `http://127.0.0.1:<port>/?token=<token>` (`open` or `xdg-open`) and `app` prints
 the URL beside the run log. With `--port`, `Listen` binds that port as a
-`fixed` server: no token, no grace timer, and `app` only prints the URL.
+`fixed` server: no token, no grace timer, and `app` only prints the URL and
+refuses a named task, so the page is always the picker.
 `--browser` runs with prompts on whatever `IsTerminal` says,
 asked through the page's prompts (`browserPrompts` in `app/browser.go`), even in tests.
 

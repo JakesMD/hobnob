@@ -911,23 +911,27 @@ func TestE2E_Browser_DemoWithoutATaskOpensThePicker(t *testing.T) {
 }
 
 func TestE2E_Browser_PortServesThePageWithoutATokenAndOpensNoBrowser(t *testing.T) {
-	// given --port with a free port, when run with --browser, then the page
-	// is served on that port at an address with no token, the address is
-	// printed and no browser opens (why: a service runs it, and the person
-	// opens a bookmark of the address)
+	// given --port with a free port and no task, when run with --browser,
+	// then the picker is served on that port at an address with no token, the
+	// address is printed and no browser opens (why: a service runs it, and the
+	// person opens a bookmark of the address)
 	// Arrange
 	port := freePort(t)
 	var address string
 	var page int
 	var hosts map[string]int
-	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: echo hi\n", Args: []string{"--browser", "--port", port, "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: "tasks:\n  t:\n    steps:\n      - run: echo hi\n", Args: []string{"--browser", "--port", port}, Browser: func(b *Browser) {
 		address = b.Address()
 		page, _ = b.Get("/", "")
 		hosts = map[string]int{
 			"wrong host":   b.GetWith("/", map[string]string{"Host": "localhost:" + port}),
 			"wrong origin": b.GetWith("/", map[string]string{"Origin": "https://example.com"}),
 		}
-		b.Open().Screen(browser.ScreenDone)
+		tab := b.Open()
+		tab.Screen(browser.ScreenTasks)
+		b.Post("choose", map[string]string{"task": "t"})
+		tab.Screen(browser.ScreenDone)
+		b.Interrupt()
 	}}
 
 	// Act
@@ -950,16 +954,21 @@ func TestE2E_Browser_PortServesThePageWithoutATokenAndOpensNoBrowser(t *testing.
 }
 
 func TestE2E_Browser_PortWaitsForATabPastTheGrace(t *testing.T) {
-	// given --port and a run at a prompt with no page open, when the grace
-	// passes, then hobnob still waits and a page opening later answers it
-	// (why: a service waits until someone opens the bookmark)
+	// given --port and the picker with no page open, when the grace passes,
+	// then hobnob still waits and a page opening later runs a task and
+	// answers its prompt (why: a service waits until someone opens the
+	// bookmark)
 	// Arrange
 	defer browser.SetGrace(50 * time.Millisecond)()
-	c := Case{Yml: promptYml, Args: []string{"--browser", "--port", freePort(t), "t"}, Browser: func(b *Browser) {
+	c := Case{Yml: promptYml, Args: []string{"--browser", "--port", freePort(t)}, Browser: func(b *Browser) {
 		time.Sleep(300 * time.Millisecond)
-		asked := b.Open().Screen(browser.ScreenPrompt)
+		tab := b.Open()
+		tab.Screen(browser.ScreenTasks)
+		b.Post("choose", map[string]string{"task": "t"})
+		asked := tab.Screen(browser.ScreenPrompt)
 		b.Post("answer", map[string]any{"id": asked.Prompt.ID, "value": "Ada"})
-		b.Open().Screen(browser.ScreenDone)
+		tab.Screen(browser.ScreenDone)
+		b.Interrupt()
 	}}
 
 	// Act
@@ -971,9 +980,10 @@ func TestE2E_Browser_PortWaitsForATabPastTheGrace(t *testing.T) {
 }
 
 func TestE2E_Browser_PortRefusals(t *testing.T) {
-	// given --port without --browser, with a value that isn't a port, or with a
-	// port already taken, when run, then it fails saying why and no page
-	// opens (why: a page on another port than asked for would be lost)
+	// given --port without --browser, with a task, with a value that isn't a
+	// port, or with a port already taken, when run, then it fails saying why
+	// and no page opens (why: a page on another port than asked for would be
+	// lost, and a named task would run before anyone opens the bookmark)
 	// Arrange
 	taken, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -985,12 +995,13 @@ func TestE2E_Browser_PortRefusals(t *testing.T) {
 		args []string
 		err  string
 	}{
-		"without browser": {[]string{"--port", "8080", "t"}, "--port needs --browser"},
-		"no value":        {[]string{"--browser", "t", "--port"}, "--port requires an argument"},
-		"not a port":      {[]string{"--browser", "--port", "http", "t"}, `--port takes a port number from 1 to 65535, not "http"`},
-		"zero":            {[]string{"--browser", "--port", "0", "t"}, `from 1 to 65535, not "0"`},
-		"too high":        {[]string{"--browser", "--port", "70000", "t"}, "from 1 to 65535"},
-		"taken":           {[]string{"--browser", "--port", takenPort, "t"}, "can't serve the page on port " + takenPort},
+		"without browser": {[]string{"--port", "8080"}, "--port needs --browser"},
+		"with a task":     {[]string{"--browser", "--port", freePort(t), "t"}, "--port can't be used with a task; leave the task out and choose it on the page"},
+		"no value":        {[]string{"--browser", "--port"}, "--port requires an argument"},
+		"not a port":      {[]string{"--browser", "--port", "http"}, `--port takes a port number from 1 to 65535, not "http"`},
+		"zero":            {[]string{"--browser", "--port", "0"}, `from 1 to 65535, not "0"`},
+		"too high":        {[]string{"--browser", "--port", "70000"}, "from 1 to 65535"},
+		"taken":           {[]string{"--browser", "--port", takenPort}, "can't serve the page on port " + takenPort},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// Act
