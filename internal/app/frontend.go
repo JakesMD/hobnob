@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime"
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
@@ -47,27 +48,40 @@ type frontRun struct {
 }
 
 // frontEnd chooses the front end the flags ask for.
-func (a *App) frontEnd(browserMode bool, port int, quiet bool) (frontEnd, error) {
+// args are the command line without the front end's flags, which the browser
+// checks for flags it can't be combined with.
+func (a *App) frontEnd(browserMode bool, port int, quiet bool, args []string) (frontEnd, error) {
 	if port != 0 && !browserMode {
 		return nil, fmt.Errorf("--port needs --browser")
 	}
 	if browserMode {
+		if err := checkBrowserFlag(runtime.GOOS, args); err != nil {
+			return nil, err
+		}
 		return &browserFrontEnd{app: a, port: port, quiet: quiet}, nil
 	}
 	return &terminalFrontEnd{app: a, quiet: quiet}, nil
 }
 
-func (a *App) selectAndRun(ctx context.Context, fe frontEnd, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
-	if !fe.CanPick(noPrompts) {
+// taskfile is a loaded taskfile and how its tasks are to be run.
+type taskfile struct {
+	scope      *scope.Scope
+	fileScopes scope.FileScopes
+	cfg        *config.ConfigFile
+	noPrompts  bool
+}
+
+func (a *App) selectAndRun(ctx context.Context, fe frontEnd, tf taskfile, showUsage bool) error {
+	if !fe.CanPick(tf.noPrompts) {
 		if showUsage {
 			cli.PrintUsage(os.Stdout, a.Version)
 		}
-		return cli.ListTasks(cfg, scope, os.Stdout)
+		return cli.ListTasks(tf.cfg, tf.scope, os.Stdout)
 	}
-	tasks := cli.CollectSelectableTasks(cfg, scope)
+	tasks := cli.CollectSelectableTasks(tf.cfg, tf.scope)
 	if len(tasks) == 0 && !fe.AlwaysPicks() {
 		cli.PrintUsage(os.Stdout, a.Version)
-		return cli.ListTasks(cfg, scope, os.Stdout)
+		return cli.ListTasks(tf.cfg, tf.scope, os.Stdout)
 	}
 	var last error
 	for {
@@ -78,7 +92,9 @@ func (a *App) selectAndRun(ctx context.Context, fe frontEnd, scope *scope.Scope,
 		if !ok {
 			return last
 		}
-		again, err := a.runTask(ctx, fe, name, true, scope.Copy(), fileScopes, cfg, false, cfg.TaskfileDir)
+		next := tf
+		next.scope, next.noPrompts = tf.scope.Copy(), false
+		again, err := a.runTask(ctx, fe, name, true, next)
 		last = err
 		if !again {
 			return last
@@ -86,18 +102,18 @@ func (a *App) selectAndRun(ctx context.Context, fe frontEnd, scope *scope.Scope,
 	}
 }
 
-func (a *App) execTask(ctx context.Context, fe frontEnd, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	_, err := a.runTask(ctx, fe, taskName, false, scope, fileScopes, cfg, noPrompts, dir)
+func (a *App) execTask(ctx context.Context, fe frontEnd, taskName string, tf taskfile) error {
+	_, err := a.runTask(ctx, fe, taskName, false, tf)
 	return err
 }
 
-// runTask runs one task on fe and returns how it ended and whether fe wants
-// another pick.
-func (a *App) runTask(ctx context.Context, fe frontEnd, taskName string, picked bool, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) (again bool, err error) {
-	front, err := fe.Begin(ctx, cfg, taskName, picked)
+// runTask runs one task on fe, in the taskfile's own directory, and returns
+// how it ended and whether fe wants another pick.
+func (a *App) runTask(ctx context.Context, fe frontEnd, taskName string, picked bool, tf taskfile) (again bool, err error) {
+	front, err := fe.Begin(ctx, tf.cfg, taskName, picked)
 	if err != nil {
 		return false, failSilently(err)
 	}
-	err = failSilently(runner.ExecuteTask(front.Ctx, taskName, scope, fileScopes, cfg, noPrompts && !front.AlwaysPrompts, dir, front.Events, front.Log, front.Prompts))
+	err = failSilently(runner.ExecuteTask(front.Ctx, taskName, tf.scope, tf.fileScopes, tf.cfg, tf.noPrompts && !front.AlwaysPrompts, tf.cfg.TaskfileDir, front.Events, front.Log, front.Prompts))
 	return front.Done(ctx), err
 }

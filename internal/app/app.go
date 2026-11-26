@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 
 	"hobnob/internal/cli"
@@ -105,16 +104,11 @@ func (a *App) run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	fe, err := a.frontEnd(browserMode, port, flagQuiet || os.Getenv("HOBNOB_QUIET") == "1")
+	fe, err := a.frontEnd(browserMode, port, flagQuiet || os.Getenv("HOBNOB_QUIET") == "1", args)
 	if err != nil {
 		return err
 	}
 	defer fe.Close()
-	if browserMode {
-		if err := checkBrowserFlag(runtime.GOOS, args); err != nil {
-			return err
-		}
-	}
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")
 	}
@@ -154,7 +148,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			announceDemo()
-			return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, a.defaultNoPrompts(), false)
+			return a.selectAndRun(ctx, fe, taskfile{scope, fileScopes, cfg, a.defaultNoPrompts()}, false)
 		}
 		tfPath, _ := resolveTaskfile(fileFlag, invDir) // error = "not found"; tfPath=="" handles it below
 		if tfPath != "" {
@@ -162,11 +156,11 @@ func (a *App) run(ctx context.Context, args []string) error {
 			if err != nil {
 				return err
 			}
-			noPrompts := a.defaultNoPrompts()
+			tf := taskfile{scope, fileScopes, cfg, a.defaultNoPrompts()}
 			if _, ok := cfg.Tasks["default"]; ok && !fe.AlwaysPicks() {
-				return a.execTask(ctx, fe, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+				return a.execTask(ctx, fe, "default", tf)
 			}
-			return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, noPrompts, true)
+			return a.selectAndRun(ctx, fe, tf, true)
 		}
 		cli.PrintUsage(os.Stdout, a.Version)
 		return nil
@@ -183,9 +177,9 @@ func (a *App) run(ctx context.Context, args []string) error {
 		}
 		announceDemo()
 		if isListingFlag(args[0]) {
-			return a.runListingFlag(ctx, fe, args, scope, fileScopes, cfg)
+			return a.runListingFlag(ctx, fe, args, taskfile{scope, fileScopes, cfg, false})
 		}
-		return a.execTask(ctx, fe, args[0], scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+		return a.execTask(ctx, fe, args[0], taskfile{scope, fileScopes, cfg, noPrompts})
 	}
 
 	taskfilePath, err := resolveTaskfile(fileFlag, invDir)
@@ -198,7 +192,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		return a.runListingFlag(ctx, fe, args, scope, fileScopes, cfg)
+		return a.runListingFlag(ctx, fe, args, taskfile{scope, fileScopes, cfg, false})
 	}
 
 	taskName := args[0]
@@ -212,7 +206,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return a.execTask(ctx, fe, taskName, scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+	return a.execTask(ctx, fe, taskName, taskfile{scope, fileScopes, cfg, noPrompts})
 }
 
 // isListingFlag reports whether arg is one of the flags that inspect a
@@ -222,15 +216,15 @@ func isListingFlag(arg string) bool {
 }
 
 // runListingFlag dispatches the --list/--help/--select trio against an
-// already-loaded config, so the real and built-in-demo paths can't drift.
-func (a *App) runListingFlag(ctx context.Context, fe frontEnd, args []string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
+// already-loaded taskfile, so the real and built-in-demo paths can't drift.
+func (a *App) runListingFlag(ctx context.Context, fe frontEnd, args []string, tf taskfile) error {
 	switch args[0] {
 	case "--help":
-		return cli.PrintHelp(cfg, scope, os.Stdout, a.Version)
+		return cli.PrintHelp(tf.cfg, tf.scope, os.Stdout, a.Version)
 	case "--select":
-		noPrompts := a.defaultNoPrompts() || hasNoInputFlag(args[1:])
-		return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, noPrompts, false)
+		tf.noPrompts = a.defaultNoPrompts() || hasNoInputFlag(args[1:])
+		return a.selectAndRun(ctx, fe, tf, false)
 	default:
-		return cli.ListTasks(cfg, scope, os.Stdout)
+		return cli.ListTasks(tf.cfg, tf.scope, os.Stdout)
 	}
 }

@@ -22,7 +22,7 @@ type outcomeRecorder struct {
 
 func (o outcomeRecorder) Finished(out runevents.Outcome) { *o.outcomes = append(*o.outcomes, out) }
 
-// fakeFrontEnd records how dispatch drives a front end.
+// fakeFrontEnd records what dispatch asks of a front end.
 type fakeFrontEnd struct {
 	picks       []string
 	pickErr     error
@@ -31,10 +31,11 @@ type fakeFrontEnd struct {
 	beginErr    error
 	again       []bool
 
-	calls    []string
-	begun    []string
-	picked   []bool
-	outcomes []runevents.Outcome
+	picksAsked int
+	waits      int
+	begun      []string
+	picked     []bool
+	outcomes   []runevents.Outcome
 }
 
 func (f *fakeFrontEnd) AlwaysPicks() bool { return f.alwaysPicks }
@@ -42,7 +43,7 @@ func (f *fakeFrontEnd) AlwaysPicks() bool { return f.alwaysPicks }
 func (f *fakeFrontEnd) CanPick(bool) bool { return f.interact }
 
 func (f *fakeFrontEnd) Pick(_ context.Context, _ []tui.TaskItem, _ bool) (string, bool, error) {
-	f.calls = append(f.calls, "pick")
+	f.picksAsked++
 	if f.pickErr != nil {
 		return "", false, f.pickErr
 	}
@@ -55,7 +56,6 @@ func (f *fakeFrontEnd) Pick(_ context.Context, _ []tui.TaskItem, _ bool) (string
 }
 
 func (f *fakeFrontEnd) Begin(ctx context.Context, cfg *config.ConfigFile, name string, picked bool) (frontRun, error) {
-	f.calls = append(f.calls, "begin")
 	f.begun = append(f.begun, name)
 	f.picked = append(f.picked, picked)
 	if f.beginErr != nil {
@@ -67,7 +67,7 @@ func (f *fakeFrontEnd) Begin(ctx context.Context, cfg *config.ConfigFile, name s
 		Log:     tui.NewRunLog(os.Stdout, os.Stderr),
 		Prompts: runner.TerminalPrompts(),
 		Done: func(context.Context) bool {
-			f.calls = append(f.calls, "done")
+			f.waits++
 			again := len(f.again) > 0 && f.again[0]
 			if len(f.again) > 0 {
 				f.again = f.again[1:]
@@ -77,7 +77,7 @@ func (f *fakeFrontEnd) Begin(ctx context.Context, cfg *config.ConfigFile, name s
 	}, nil
 }
 
-func (f *fakeFrontEnd) Close() { f.calls = append(f.calls, "close") }
+func (f *fakeFrontEnd) Close() {}
 
 func dispatchConfig() *config.ConfigFile {
 	return &config.ConfigFile{
@@ -92,22 +92,22 @@ func dispatchConfig() *config.ConfigFile {
 
 func TestSelectAndRunPicksRunsThenWaits(t *testing.T) {
 	// given a front end that picks "build" once, when selectAndRun dispatches,
-	// then it picks, begins, runs and then waits, in that order
-	// (why: the after-run wait must come after the run, and only once per pick)
+	// then that task runs once as a picked task and the front end is waited on once
+	// (why: the after-run wait is once per pick)
 	// Arrange
 	fe := &fakeFrontEnd{interact: true, picks: []string{"build"}}
 	cfg := dispatchConfig()
 	app := &App{}
 
 	// Act
-	err := app.selectAndRun(context.Background(), fe, scope.New(), nil, cfg, false, false)
+	err := app.selectAndRun(context.Background(), fe, taskfile{scope: scope.New(), cfg: cfg}, false)
 
 	// Assert
 	if err != nil {
 		t.Fatalf("selectAndRun: %v", err)
 	}
-	if want := []string{"pick", "begin", "done"}; !reflect.DeepEqual(fe.calls, want) {
-		t.Errorf("calls = %v, want %v", fe.calls, want)
+	if fe.waits != 1 {
+		t.Errorf("waits = %d, want 1", fe.waits)
 	}
 	if want := []string{"build"}; !reflect.DeepEqual(fe.begun, want) || !fe.picked[0] {
 		t.Errorf("begun %v picked %v, want build picked", fe.begun, fe.picked)
@@ -125,7 +125,7 @@ func TestSelectAndRunPicksAgainWhileTheWaitSaysSo(t *testing.T) {
 	fe := &fakeFrontEnd{interact: true, picks: []string{"build", "test"}, again: []bool{true, false}}
 
 	// Act
-	err := (&App{}).selectAndRun(context.Background(), fe, scope.New(), nil, dispatchConfig(), false, false)
+	err := (&App{}).selectAndRun(context.Background(), fe, taskfile{scope: scope.New(), cfg: dispatchConfig()}, false)
 
 	// Assert
 	if err != nil {
@@ -144,7 +144,7 @@ func TestSelectAndRunReturnsTheLastRunsFailureWhenThePickerEnds(t *testing.T) {
 	fe := &fakeFrontEnd{interact: true, picks: []string{"missing"}, again: []bool{true}}
 
 	// Act
-	err := (&App{}).selectAndRun(context.Background(), fe, scope.New(), nil, dispatchConfig(), false, false)
+	err := (&App{}).selectAndRun(context.Background(), fe, taskfile{scope: scope.New(), cfg: dispatchConfig()}, false)
 
 	// Assert
 	if !errors.Is(err, ErrSilent) {
@@ -161,7 +161,7 @@ func TestSelectAndRunReturnsAPickError(t *testing.T) {
 	fe := &fakeFrontEnd{interact: true, pickErr: boom}
 
 	// Act
-	err := (&App{}).selectAndRun(context.Background(), fe, scope.New(), nil, dispatchConfig(), false, false)
+	err := (&App{}).selectAndRun(context.Background(), fe, taskfile{scope: scope.New(), cfg: dispatchConfig()}, false)
 
 	// Assert
 	if !errors.Is(err, boom) {
@@ -182,15 +182,15 @@ func TestSelectAndRunListsWhenTheFrontEndCannotPick(t *testing.T) {
 
 	// Act
 	out := captureStdout(t, func() {
-		err = (&App{Version: "dev"}).selectAndRun(context.Background(), fe, scope.New(), nil, dispatchConfig(), true, false)
+		err = (&App{Version: "dev"}).selectAndRun(context.Background(), fe, taskfile{scope: scope.New(), cfg: dispatchConfig(), noPrompts: true}, false)
 	})
 
 	// Assert
 	if err != nil {
 		t.Fatalf("selectAndRun: %v", err)
 	}
-	if len(fe.calls) != 0 {
-		t.Errorf("calls = %v, want none", fe.calls)
+	if fe.picksAsked != 0 || len(fe.begun) != 0 {
+		t.Errorf("picks asked %d, begun %v, want neither", fe.picksAsked, fe.begun)
 	}
 	if !strings.Contains(out, "build") || !strings.Contains(out, "test") {
 		t.Errorf("output %q lacks the task list", out)
@@ -205,17 +205,17 @@ func TestExecTaskRunsANamedTaskOnceAndWaits(t *testing.T) {
 	fe := &fakeFrontEnd{again: []bool{true}}
 
 	// Act
-	err := (&App{}).execTask(context.Background(), fe, "build", scope.New(), nil, dispatchConfig(), false, ".")
+	err := (&App{}).execTask(context.Background(), fe, "build", taskfile{scope: scope.New(), cfg: dispatchConfig()})
 
 	// Assert
 	if err != nil {
 		t.Fatalf("execTask: %v", err)
 	}
-	if want := []string{"begin", "done"}; !reflect.DeepEqual(fe.calls, want) {
-		t.Errorf("calls = %v, want %v", fe.calls, want)
+	if want := []string{"build"}; !reflect.DeepEqual(fe.begun, want) || fe.picked[0] {
+		t.Errorf("begun %v picked %v, want build named", fe.begun, fe.picked)
 	}
-	if fe.picked[0] {
-		t.Error("named task began as picked")
+	if fe.picksAsked != 0 || fe.waits != 1 || len(fe.outcomes) != 1 {
+		t.Errorf("picks asked %d, waits %d, outcomes %d, want 0, 1, 1", fe.picksAsked, fe.waits, len(fe.outcomes))
 	}
 }
 
@@ -227,7 +227,7 @@ func TestExecTaskFailsSilentlyWhenTheFrontEndRefusesTheTask(t *testing.T) {
 	fe := &fakeFrontEnd{beginErr: errors.New("refused")}
 
 	// Act
-	err := (&App{}).execTask(context.Background(), fe, "build", scope.New(), nil, dispatchConfig(), false, ".")
+	err := (&App{}).execTask(context.Background(), fe, "build", taskfile{scope: scope.New(), cfg: dispatchConfig()})
 
 	// Assert
 	if !errors.Is(err, ErrSilent) {
@@ -246,14 +246,14 @@ func TestExecTaskReportsAFailedRunAndStillWaits(t *testing.T) {
 	fe := &fakeFrontEnd{}
 
 	// Act
-	err := (&App{}).execTask(context.Background(), fe, "nope", scope.New(), nil, dispatchConfig(), false, ".")
+	err := (&App{}).execTask(context.Background(), fe, "nope", taskfile{scope: scope.New(), cfg: dispatchConfig()})
 
 	// Assert
 	if !errors.Is(err, ErrSilent) {
 		t.Errorf("err = %v, want ErrSilent", err)
 	}
-	if want := []string{"begin", "done"}; !reflect.DeepEqual(fe.calls, want) {
-		t.Errorf("calls = %v, want %v", fe.calls, want)
+	if fe.waits != 1 || len(fe.outcomes) != 1 || fe.outcomes[0].Kind != runevents.Failed {
+		t.Errorf("waits %d, outcomes %+v, want one wait and one failed outcome", fe.waits, fe.outcomes)
 	}
 }
 
@@ -264,7 +264,7 @@ func TestPortNeedsBrowser(t *testing.T) {
 	app := &App{}
 
 	// Act
-	_, err := app.frontEnd(false, 8080, false)
+	_, err := app.frontEnd(false, 8080, false, nil)
 
 	// Assert
 	if err == nil || err.Error() != "--port needs --browser" {
@@ -277,7 +277,7 @@ func TestBrowserFrontEndRefusesANamedTaskUnderPort(t *testing.T) {
 	// then it is refused before any page opens
 	// (why: with --port the page is always the picker)
 	// Arrange
-	fe, err := (&App{}).frontEnd(true, 8080, false)
+	fe, err := (&App{}).frontEnd(true, 8080, false, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -292,20 +292,17 @@ func TestBrowserFrontEndRefusesANamedTaskUnderPort(t *testing.T) {
 	}
 }
 
-func TestBrowserFrontEndAlwaysPicksTerminalDoesNot(t *testing.T) {
-	// given both front ends, when asked whether the picker comes before a
-	// default task, then only the browser says yes
-	// (why: --browser with no task always shows the page's picker)
+func TestBrowserFrontEndRefusesFlagsItCannotBeCombinedWith(t *testing.T) {
+	// given --browser beside --no-input, when the front end is chosen, then it is refused
+	// (why: the page has nothing to do without prompts)
 	// Arrange
 	app := &App{}
-	term, _ := app.frontEnd(false, 0, false)
-	page, _ := app.frontEnd(true, 0, false)
 
 	// Act
-	termFirst, pageFirst := term.AlwaysPicks(), page.AlwaysPicks()
+	_, err := app.frontEnd(true, 0, false, []string{"build", "--no-input"})
 
 	// Assert
-	if termFirst || !pageFirst {
-		t.Errorf("AlwaysPicks terminal=%v browser=%v, want false true", termFirst, pageFirst)
+	if err == nil || err.Error() != "--browser can't be combined with --no-input" {
+		t.Errorf("err = %v, want --browser can't be combined with --no-input", err)
 	}
 }
