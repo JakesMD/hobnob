@@ -4,11 +4,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"hobnob/internal/runevents"
 )
 
-// state is what the run has shown so far. It implements tui.RunListener, and
+// state is what the run has shown so far. It is a runevents.Listener, and
 // snapshot turns it into what the page shows.
 type state struct {
+	runevents.Nop
+
 	mu      sync.Mutex
 	version int
 	changed func()
@@ -20,6 +24,9 @@ type state struct {
 	started  time.Time
 	result   *Result
 	logLines []string
+	// failureLogged is whether logLines already holds a failure line, so a
+	// run that failed before any step doesn't lack one.
+	failureLogged bool
 
 	picking    bool
 	tasks      []Task
@@ -87,10 +94,10 @@ func (s *state) TaskLeft(name string, failed bool) {
 	})
 }
 
-func (s *state) StepStarted(task, cmd string) {
+func (s *state) StepStarted(task, cmd string, notes []string) {
 	s.update(func() {
 		s.step = stepState{began: time.Now()}
-		s.logf(task, "$", cmd)
+		s.logf(task, "$", cmd+noteSuffix(notes))
 	})
 }
 
@@ -105,65 +112,126 @@ func (s *state) OutputLine(task, line string) {
 	})
 }
 
-func (s *state) Var(task, name, display string) {
-	s.update(func() { s.logf(task, "»", name+"="+display) })
+func (s *state) StepSkipped(task, what string) {
+	s.update(func() { s.logf(task, "⊘", what) })
 }
 
-func (s *state) RunSucceeded() { s.finish(OutcomeDone, "", "") }
-func (s *state) RunCancelled() { s.finish(OutcomeCancelled, "", "") }
-
-func (s *state) RunFailed(task, reason string) {
-	s.finish(OutcomeFailed, task, reason)
+func (s *state) StepDone(task string, elapsed time.Duration) {
+	s.update(func() { s.logf(task, "✓", runevents.FormatElapsed(elapsed)) })
 }
 
-func (s *state) finish(outcome, task, reason string) {
+func (s *state) StepFailed(task string, elapsed time.Duration, cmd, reason string) {
 	s.update(func() {
-		res := &Result{Outcome: outcome}
+		s.logf(task, "✗", runevents.FormatElapsed(elapsed)+" "+cmd+": "+reason)
+		s.failureLogged = true
+	})
+}
+
+func (s *state) StepSoftFailed(task string, elapsed time.Duration, cmd, reason string) {
+	s.update(func() { s.logf(task, "!", runevents.FormatElapsed(elapsed)+" "+cmd+": "+reason) })
+}
+
+func (s *state) StepError(task string, soft bool, message string) {
+	s.update(func() {
+		if soft {
+			s.logf(task, "!", message)
+			return
+		}
+		s.logf(task, "✗", message)
+		s.failureLogged = true
+	})
+}
+
+func (s *state) TaskSkipped(task string) {
+	s.update(func() { s.logf(task, "⊘", "skipped") })
+}
+
+func (s *state) TaskDone(task string, elapsed time.Duration, softFailures int) {
+	s.update(func() {
+		text := "done after " + runevents.FormatElapsed(elapsed)
+		if softFailures > 0 {
+			text += " • " + runevents.SoftFailureCount(softFailures)
+		}
+		s.logf(task, "✓", text)
+	})
+}
+
+func (s *state) TaskFailed(task string, elapsed time.Duration, stopped bool) {
+	s.update(func() {
+		word := "failed"
+		if stopped {
+			word = "stopped"
+		}
+		s.logf(task, "✗", word+" after "+runevents.FormatElapsed(elapsed))
+	})
+}
+
+func (s *state) Call(task, called string) {
+	s.update(func() { s.logf(task, "→", called) })
+}
+
+func (s *state) DoneEarlier(task string) {
+	s.update(func() { s.logf(task, "✓", "done earlier") })
+}
+
+func (s *state) Var(task, name, display, note string) {
+	s.update(func() { s.logf(task, "»", name+"="+display+noteSuffix([]string{note})) })
+}
+
+func (s *state) VarSkipped(task, name string) {
+	s.update(func() { s.logf(task, "⊘", name) })
+}
+
+func (s *state) Say(task, message string) {
+	s.update(func() { s.logf(task, "»", message) })
+}
+
+func noteSuffix(notes []string) string {
+	var suffix strings.Builder
+	for _, note := range notes {
+		if note != "" {
+			suffix.WriteString(" # " + note)
+		}
+	}
+	return suffix.String()
+}
+
+func (s *state) Finished(outcome runevents.Outcome) {
+	s.update(func() {
+		res := &Result{Outcome: outcomeName(outcome.Kind)}
 		if !s.started.IsZero() {
 			res.DurationMS = time.Since(s.started).Milliseconds()
 		}
-		if outcome == OutcomeFailed {
-			res.Label = s.labelOf(task)
+		if outcome.Kind == runevents.Failed {
+			res.Label = outcome.Label
 			res.LastLine = s.step.lastLine
 			if res.LastLine == "" {
-				res.LastLine = reason
+				res.LastLine = outcome.Reason
 			}
-			s.logf(task, "✗", reason)
+			if !s.failureLogged {
+				s.logf(outcome.Task, "✗", outcome.Reason)
+			}
 		}
 		res.Log = strings.Join(s.logLines, "\n")
 		s.result = res
 	})
 }
 
-// labelOf is the label of the task a run failed in. With no task named, as
-// when the failure was logged against no step, it is the innermost task that
-// failed or was still running, else the run's first task.
-func (s *state) labelOf(task string) string {
-	if task == "" {
-		return s.innermostLabel()
+func outcomeName(kind runevents.Kind) string {
+	switch kind {
+	case runevents.Cancelled:
+		return OutcomeCancelled
+	case runevents.Failed:
+		return OutcomeFailed
 	}
-	for i := len(s.setup) - 1; i >= 0; i-- {
-		if s.setup[i].name == task {
-			return s.setup[i].label
-		}
-	}
-	return task
-}
-
-func (s *state) innermostLabel() string {
-	for i := len(s.setup) - 1; i >= 0; i-- {
-		if s.setup[i].state != StateDone {
-			return s.setup[i].label
-		}
-	}
-	return label(s.task.Info, s.task.Name)
+	return OutcomeDone
 }
 
 // startPick clears the last run and shows the task picker.
 func (s *state) startPick(tasks []Task, offerHome bool) {
 	s.update(func() {
 		s.task, s.setup, s.running, s.step = Task{}, nil, nil, stepState{}
-		s.started, s.result, s.logLines = time.Time{}, nil, nil
+		s.started, s.result, s.logLines, s.failureLogged = time.Time{}, nil, nil, false
 		s.prompt, s.answers, s.cancelling = nil, nil, false
 		s.picking, s.tasks, s.home, s.homed = true, tasks, offerHome, false
 	})

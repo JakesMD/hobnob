@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"hobnob/internal/runevents"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 )
@@ -38,7 +39,8 @@ func TestExecRun_PTY_CtxCancelled_KillsWholeProcessGroup(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog(), TerminalPrompts())
+	log := watchedLog()
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, runevents.New(log), log, TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {
@@ -62,9 +64,10 @@ func TestKillRunningStep_PTY_ForceKillsGroupThatIgnoredSIGTERM(t *testing.T) {
 	cfg := makeRunCfg(t, fmt.Sprintf("trap '' TERM; (sleep 5; touch %s) & wait", marker), nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
+	log := watchedLog()
 	done := make(chan error, 1)
 	go func() {
-		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, watchedLog(), TerminalPrompts())
+		done <- ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, dir, runevents.New(log), log, TerminalPrompts())
 	}()
 	time.Sleep(150 * time.Millisecond) // let ctx cancel and the ignored SIGTERM land
 

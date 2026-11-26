@@ -29,7 +29,7 @@ var grace = 60 * time.Second
 type action func(body json.RawMessage) error
 
 // Server serves the page on 127.0.0.1 and streams the run's state to it. It
-// implements tui.RunListener through its embedded state.
+// is a runevents.Listener through its embedded state.
 type Server struct {
 	*state
 

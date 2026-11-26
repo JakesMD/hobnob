@@ -33,7 +33,7 @@ func main() {
 		// ctx cancellation already asked the running step to terminate
 		// gracefully (SIGTERM to its own process group) and, if hobnob is
 		// blocked on a get: prompt instead, already unblocks that prompt too
-		// (see tea.WithContext in tui.PromptText/PromptSelect). Only force-exit
+		// (see tea.WithContext in tui.PromptAsk). Only force-exit
 		// here if a step is actually running and might be ignoring SIGTERM —
 		// otherwise let run() return and unwind normally, so bubbletea gets to
 		// restore the terminal before the process exits instead of racing an

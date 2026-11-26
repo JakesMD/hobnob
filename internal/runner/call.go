@@ -57,7 +57,7 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 		return err
 	}
 
-	execState.log.Call(execState.task, taskName)
+	execState.events.Call(execState.task, taskName)
 
 	if !task.Once || len(task.Steps) == 0 {
 		childScope, err := buildCallScope(scope, step.CallVars)
@@ -72,7 +72,7 @@ func execCall(execState execCtx, step config.Step, scope *scope.Scope) error {
 
 	id := callCacheID(task)
 	if cached, ok := execState.memo.scopes[id]; ok {
-		execState.log.DoneEarlier(taskName)
+		execState.events.DoneEarlier(taskName)
 		return finishCall(execState.cfg, taskName, task, step, scope, cached)
 	}
 	if execState.memo.running[id] {

@@ -55,16 +55,30 @@ Every change must preserve these. Each is explained in the section named.
   reaches `into:` or a held (`quiet:` or `--quiet`) buffer. ([runner](#internalrunner-the-interpreter))
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
-- **Prompt seam.** The runner asks through the `runner.Prompts` (text, select,
-  path, say) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
-  or the page's prompts (`browserPrompts`) under `--browser`.
-  Tests swap those terminal prompts with `runner.SetPrompts(text, sel, path, say)
+- **Prompt seam.** The runner asks through the `runner.Prompts` (ask,
+  say) its caller passes to `ExecuteTask`; the terminal front end passes `runner.TerminalPrompts()`,
+  or the page's prompts (`browserPrompts`) under `--browser`. A text, menu or
+  `type: file|dir` `get:` entry is one `ask.Question` whose `Judge` owns the
+  answer rules (default fallback, required refusal, skip, `match:`/`check:`,
+  every refusal's wording); a picker's path rules (resolving `~` and relative
+  paths, exists, kind, junk names, `match:`, where it opens and what it starts
+  with picked) live once in the question's `ask.PathRules`. A front end only
+  presents the question and hands back an `ask.Answer`, never re-deriving
+  those rules.
+  Tests swap those terminal prompts with `runner.SetPrompts(ask, say)
   (restore func())`, never by reassigning a package variable.
-- **The browser stays a front end.** `internal/browser` implements `tui.RunListener` and
-  imports `value`, and `tui` only for path prompts (`PathPrompt` and its
-  shared rules), never `eval`,
+- **One event stream.** Everything a run reports (tasks, steps, variables,
+  says, the outcome) goes to the `runevents.Stream` the runner is given, never
+  to a listener directly. The terminal `RunLog` and the browser `state` are
+  listeners on it. The runner also holds the `tui.RunLog` itself for what is
+  terminal-only and not an event: a command's raw `Output`, `Pause` around a
+  prompt, `PTYSize` and `Quiet`. Which failure ended a run, and the task it
+  names, is decided in the stream (`Finish`), not in a listener.
+  ([runevents](#internalrunevents-the-run-event-stream))
+- **The browser stays a front end.** `internal/browser` is a `runevents.Listener` and
+  imports `value`, `ask` and `runevents`, never `tui`, `eval`,
   `runner` or `config`;
-  it observes a run through `RunLog` and never changes
+  it observes a run through the stream and never changes
   what the runner does. ([browser](#internalbrowser-the-browser-front-end))
 - **One sniff point.** Only `value.Capture` turns text into structure, and
   only for `run: into:` and CLI args ([ADR-0005](docs/adr/0005-cli-args-read-as-json.md)).
@@ -83,6 +97,8 @@ internal/app/     the CLI body: flag dispatch, App.Run(ctx, args)
 internal/runner/  step execution (the interpreter loop)
 internal/scope/   the runtime scope, loading the root and module file scopes, and their load rules
 internal/cli/     --list/--help, completions
+internal/ask/     the question a get: entry puts to a front end, the judge of its answer, and the path rules of a file or directory picker
+internal/runevents/ the run's event stream: every event, the failure bookkeeping and the outcome
 internal/tui/     bubbletea prompts, lipgloss styles, the run log and output line writers
 internal/browser/ the --browser front end: local page, SSE snapshots, the run listener's state
 internal/config/  YAML into typed structs, the step-level load-time check
@@ -101,6 +117,7 @@ Imports run one way. An arrow means "imports":
 flowchart TD
     cmd[cmd/hobnob] --> app
     cmd --> runner
+    cmd --> tui
     app --> cli
     app --> runner
     app --> scope
@@ -113,10 +130,19 @@ flowchart TD
     runner --> scope
     runner --> config
     runner --> tui
+    runner --> runevents
     runner --> literal
     runner --> glob
+    runner --> ask
+    tui --> ask
+    ask --> value
     scope --> config
     scope --> tui
+    app --> runevents
+    tui --> runevents
+    browser --> runevents
+    browser --> ask
+    browser --> value
     config --> literal
     literal --> eval
     eval --> value
@@ -130,18 +156,20 @@ For readability the graph omits the direct `eval`/`value` imports from
 - `value` imports only the stdlib.
 - `literal` imports `eval` and `value`, never `config`; `eval` imports
   neither. `runner` names `literal.Expr` only for a call's `dir:`.
-- `tui` imports `value` but not `eval`: `PromptText` and `PromptSelect` take a
-  validator closure and `PromptPath` takes `Included`/`Excluded` predicates built by the runner
-  from `internal/glob`, so the prompt layer never learns how a shell condition
-  or a `match:` pattern works.
+- `ask` imports only `value` (and the stdlib for the path rules); `runner` builds its `Question`, and `tui` and
+  `browser` import it to present one, so no front end imports `runner`.
+- `tui` imports `value` and `ask` but not `eval`: `PromptAsk` takes a
+  `Question` whose `Check` closure and `PathRules` `Included`/`Excluded`
+  predicates the runner built (from `internal/glob`), so the prompt layer
+  never learns how a shell condition or a `match:` pattern works.
 - `scope`, not `config`, walks modules: a module path is evaluated against its
   importer's resolved scope, and `config` cannot import `scope`. `scope`
   imports `tui` only for `SecretMask` and `HobnobWarning` (`envfiles.go`).
-- `browser` imports `value`, and `tui` only for path prompts (`PathPrompt`, its
-  `Included`/`Excluded` predicates, and the picker rules `IsJunk`,
-  `ResolvePath`, `ListDir`, `NearestFolder` and `PathPrompt.Allows` that
-  the terminal and the page share); it implements `tui.RunListener`
-  structurally, so it needs no `tui` import for that. `app` imports it.
+- `runevents` imports only the stdlib (and `ansi`, to strip output lines);
+  `runner`, `tui`, `browser` and `app` import it, so a front end hears a run
+  without importing `runner`.
+- `browser` imports `value`, `ask` and `runevents`, never `tui`: the picker rules
+  the terminal and the page share (`ask.PathRules`) live in `ask`. `app` imports it.
 - Only `internal/e2e` (all `_test.go`) imports `app`.
 
 ### `internal/value`: the typed scope value
@@ -485,7 +513,7 @@ flowchart TD
     start["run: step (its if: already passed)"] --> form{"YAML sequence?"}
     form -- yes --> argv["Step.Argv.Resolve<br/>exec argv directly, no shell"]
     form -- no --> sh["Step.Command.Text<br/>sh -c"]
-    argv --> show["RunLog.Run: the command, masked by the caller"]
+    argv --> show["Stream.StepStarted: the command, masked by the caller"]
     sh --> show
     show --> out{"output mode"}
     out -- "quiet: or --quiet" --> quiet["buffers only, into: included<br/>(RunLog.Quiet() or Step.Quiet)<br/>quiet: adds a note on the run line"]
@@ -581,14 +609,14 @@ The memo is load-bearing in three ways:
    (or the task's `results:`) projects what it wants, which a delta would
    have to guess in advance.
 3. **A hit is announced.** `execCall` logs every call (`task → called`); a hit
-   then logs `called ✓ done earlier` (`RunLog.DoneEarlier`) in place of the
+   then logs `called ✓ done earlier` (`Stream.DoneEarlier`) in place of the
    task's own lines.
 
 A failed first run is not stored, so under `soft: true` the next call retries.
 
 **`get:` (`get.go`)** no-ops when the var is in scope, which is how a CLI
 `KEY=VALUE` satisfies a prompt. Otherwise, with prompts off (`getFromNoPrompts`), it uses `default:` if there is
-one, else sets an optional entry empty, else aborts; with prompts on it prompts through `execCtx.prompts` (`Text`/`Select`, or `Path` for a `type: file|dir` entry). A preset, a default and an
+one, else sets an optional entry empty, else aborts; with prompts on it prompts through `execCtx.prompts.Ask`, a `type: file|dir` entry as one more `ask.Question`. A preset, a default and an
 optional entry's missing answer all go through `acceptAnswer`; for `multi:`
 it runs `multiList` first: an Array as is, empty as `[]`, a String that
 strictly parses as a JSON array as that array, anything else an error. So a
@@ -596,33 +624,41 @@ strictly parses as a JSON array as that array, anything else an error. So a
 declares the type.
 `match:` patterns (rendered like `options:`, compiled by `internal/glob`; `tui` never
 imports it, and for a `type: file|dir` picker the runner builds the
-`Included`/`Excluded` predicates from the `glob.Matcher` and hands them over) narrow a menu's items
+`Included`/`Excluded` predicates of the question's `ask.PathRules` from the `glob.Matcher`) narrow a menu's items
 before it is shown (nothing left fails, or is empty under `optional:`), and
-join `check:` in the closure handed to `PromptText` or `PromptSelect`; a menu
-choice that fails it stays in the prompt, which shows the refusal on its error
+join `check:` in the `Check` of the `ask.Question` the runner builds for a text
+or menu entry (`getInteractive`): its rendered info, its `Default` or, for a
+menu, `Picks` (the `default:` resolved into options: under `multi:` a JSON list
+or one option), the `secret:`/`optional:`/`multi:` flags and the judge. A
+refused answer stays in the prompt, which shows `Verdict.Refusal` on its error
 line. A value nobody typed at a
 prompt is checked by `validateGetValue`, per item under `multi:`, before
 `check:`.
 
 **`say:` (`say.go`)** renders its message with `EvalTemplate`, masks it, and
 with prompts on waits on `execCtx.prompts.Say` (`tui.PromptSay`, or the page's
-`KindSay` prompt, answered by Continue with no rail entry); then `RunLog.Say`
+`KindSay` prompt, answered by Continue with no rail entry); then `Stream.Say`
 logs it, under `--quiet` too. With prompts off it only logs.
 
-A `type: file|dir` entry (`getpath.go`) is stored absolute, and `acceptAnswer`
-runs its value through `acceptPath` before `check:`: empty is no answer
-(`optional:` sets it empty and skips `check:`, otherwise it fails), then per
-item (each under `multi:`) absolute, exists, right kind (`os.Stat`, so a
-symlink is judged by its target and stored as given), `match:` (`glob.Path`).
-A relative path resolves against the invocation dir when
+A `type: file|dir` entry (`getpath.go`) is stored absolute. Its rules live
+once in `ask.PathRules` (`ask/path.go`), which `pathRules` builds from the
+entry: `Resolve` (`~`, relative against a base, `filepath.Clean`), `Verify`
+(per item: resolves, exists, right kind via `os.Stat` so a symlink is judged by
+its target and stored as given, not a junk name, allowed by `match:`), `Opening`
+(the folder the picker opens and its initial picks) and `List` (what a picker
+shows). `acceptAnswer` runs a value nobody picked through `acceptPath` before
+`check:`: empty is no answer (`optional:` sets it empty and skips `check:`,
+otherwise it fails), then `Verify` per item (each under `multi:`), a refusal
+being fatal. A relative path resolves against the invocation dir when
 `Scope.FromInvocation` says the value came from the CLI or shell, else against
-the task's working directory (`execCtx.dir`); `filepath.Clean` and `~`
-expansion apply. With prompts off, a `type: file` `default:` that is a
-directory counts as no default (`isDirDefault`). With prompts on,
-`getPathInteractive` opens the picker through `promptPathFn` (the task's
-working directory as `WorkDir`, the `default:` as written, `match:` as
-`Included`/`Excluded` predicates). A pick goes through the same per-item
-checks, and a failing `check:` re-opens the picker. An escaped optional picker sets the variable empty.
+the task's working directory (`execCtx.dir`). With prompts off, a `type: file`
+`default:` that is a directory counts as no default (`isDirDefault`). With
+prompts on, `getPathInteractive` puts the picker to `Prompts.Ask` as an
+`ask.Question` with `Path` set (the invocation dir, the task's working
+directory, the `default:` as written, `match:` as `Included`/`Excluded`) and the
+`check:` as its `Check`; `Judge` verifies each pick and runs `check:`, so a bad
+path or a failing `check:` is a refusal inside the picker. An escaped optional
+picker sets the variable empty.
 
 **`loop:` (`loop.go`).** `execFor` dispatches on `value.Kind()`: an Object sets
 `KEY`/`VALUE`, anything else sets `ITEM`, a matrix recurses over the cartesian
@@ -635,9 +671,9 @@ values on exit.
 `runner_unix.go`/`runner_windows.go` manage process groups. The first CTRL+C
 signals the whole group, catching children a single-PID signal would miss, and
 waits; a `context.AfterFunc` in `ExecuteTask` (`termLeftovers`) SIGTERMs every
-leftover group at the same moment, and another calls `RunLog.Stopping`, which
+leftover group at the same moment, and another calls `Stream.Stopping`, which
 logs `stopping, ctrl+c again to force` once, on the innermost task (`executeTask`
-tracks it with `RunLog.Enter`). The paths that end an interrupted step or task
+tracks it with `Stream.Enter`). The paths that end an interrupted step or task
 call it too, so it always comes before the first `stopped` line. The second force-kills via `KillRunningStep`, which
 also SIGKILLs every leftover group. A mutex guards the running PID, and on
 Linux and macOS it is cleared before the process is reaped, so a racing
@@ -734,23 +770,23 @@ end of the run.
 
 ### `internal/tui`
 
-`runlog.go` (`RunLog`: in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); the one writer the lines `runner` and `app` print during a run go through, with a method per kind of line: run (its dir:/quiet: notes as `# …`), call, skip, done earlier, step end, task end and command output; `app` creates it and the runner holds it on `execCtx`. Variable lines: `Var` and `VarSkipped`, called from `runner.logVar` for every `get:` entry; `Say` for a `say:` message), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
+`runlog.go` (`RunLog`: the terminal's `runevents.Listener`, which prints a line per event; in quiet mode (`SetQuiet`, from `--quiet` or `HOBNOB_QUIET=1`) it prints only each `run:` line and each task's end line, and `Quiet()` makes the runner hold every step's output as `quiet:` does (a `promptWriter` still shows a trailing partial line, a prompt, as it arrives); `Say` shows under quiet. It also owns what the screen needs: the command output writers (`Output`), the live area, `PTYSize`, `OnResize` and `Pause`. `app` creates it, puts it on the stream (`runevents.New(log)`) and hands it to `ExecuteTask`, which holds it on `execCtx` beside the stream. It keeps no failure bookkeeping: that is the stream's), `linewriter.go` (the prefixing writer for command output, handed out by `RunLog.Output`; it streams, wraps and passes cursor-moving output through when `RunLog.Watch` was given a `Screen`), `screen.go` (`Screen`: the terminal's size and resizes; nil when piped), `frame.go` (the
 card every prompt renders itself in: title, wrapped `info:`, error line, hint
 line; a prompt model's `View` supplies only its body), `list.go` (what menus, the task picker and the file picker share: `fuzzyMatch`, `matchRows`, the scrolling `renderWindow` with its more-lines and `nothing matches`, the filter line and the `cursorPrefix`; plus `listState`, the filter text, cursor and key handling that the select and task-picker models embed),
 `prompt_text.go`/`prompt_select.go`/`prompt_taskselect.go`/`prompt_path.go`/`prompt_say.go`
-(bubbletea models; `prompt_say.go` is a card titled by the task alone, its body the message, ended by enter; `prompt_path.go` is the file/directory picker, which takes
-`Included`/`Excluded` predicates from its caller and owns the junk-name list. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
-log line is built from, and `SecretMask`). The runner calls `PromptText`,
-`PromptSelect`, `PromptPath` and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
+(bubbletea models; `prompt_say.go` is a card titled by the task alone, its body the message, ended by enter; `prompt_path.go` is the file/directory picker, which lists and opens through its question's `ask.PathRules` and judges what is picked through the question. Its filter line is the picker's only state: an absolute path whose text up to the last `/` is the listed directory and the rest is fuzzy-matched; `←`/`→` and typing only edit that text, and enter never opens a directory), and `styles.go` (lipgloss styles, the `lead` and `taskMark` helpers every
+log line is built from, and `SecretMask`). The runner calls `PromptAsk` (`prompt_text.go`: text, menu or picker models, each judging through its `ask.Question`)
+and `PromptSay`; `app` injects `PromptTaskSelect` as the task picker, which renders in the same card (its own title, no var name) with the menus' type-to-filter.
 
 ### `internal/browser`: the browser front end
 
-`hobnob --browser <task>` (`app/browser.go`, `execBrowserTask`) runs the task as usual
-and has `browser.Server` watch it. `hobnob --browser` with no task (`execBrowserHome`,
-reached from `selectAndRun`, so a `default` task never short-circuits it) shows
+`hobnob --browser <task>` (`app/browser.go`, `browserFrontEnd`, the browser's
+[front end](#internalapp-the-cli-body)) runs the task as usual
+and has `browser.Server` watch it. `hobnob --browser` with no task
+(`selectAndRun`, where `AlwaysPicks` means a `default` task never short-circuits it) shows
 the task picker: `Server.PickTask` clears the last run's state and blocks until
-the `choose` action names a task the picker offered; `runOnPage` runs it with a
-fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
+the `choose` action names a task the picker offered; `browserFrontEnd.Begin` readies each run with a
+fresh `RunLog` and a copy of the scope (`selectAndRun` copies it); `Server.AwaitHome` then waits on the
 `home` action (only accepted on a finished run when no task was named) or
 until ctx ends or the grace timer gives up. The exit code is
 the last run's. `browser.Listen` binds a random port on 127.0.0.1
@@ -760,20 +796,15 @@ the URL beside the run log. With `--port`, `Listen` binds that port as a
 `fixed` server: no token, no grace timer, and `app` only prints the URL and
 refuses a named task, so the page is always the picker.
 `--browser` runs with prompts on whatever `IsTerminal` says,
-asked through the page's prompts (`browserPrompts` in `app/browser.go`), even in tests.
+asked through the page's prompts (`browserPrompts` in `app/browser.go`, which `Begin` hands the run), even in tests.
 
-**The run listener.** `tui.RunListener` is how a front end observes a run. A
-`RunLog` with a listener (`RunLog.Listen`) reports a task entered or left
-(`Enter(task, label)`, where `runner.executeTask` applies the file scope first
-so `taskLabel` can fill the `info:`'s variables in and mask secrets; the leave
-func carries whether the task failed), a step
-started and whether it is held (`quiet:`), each line of a command's output
-(`RunLog.Tap`, wrapped around the step's destination writers in `execRun`, so
+**The run listener.** `runevents.Listener` is how a front end observes a run; see
+[runevents](#internalrunevents-the-run-event-stream). the front end's `Begin` builds the run's
+stream with the terminal `RunLog` and the `Server` as listeners, so the page hears
+the same events the terminal prints, plus each line of a command's output (`Stream.Tap`, wrapped around the step's destination writers in `execRun`, so
 `--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
-and ANSI-stripped; an unfinished last line is flushed when the step's output
-ends), each variable line, and the run ending (`RunSucceeded`,
-`RunFailed`, `RunCancelled`, called by `app`; `RunFailed` carries the first
-failed step's task and reason, except that a soft-failed step is forgiven). Terminal output is unchanged.
+and ANSI-stripped). `Server` is a listener through its embedded `state`, which logs every event as a
+`task mark text` line (the Copy details log) and turns the outcome into the result. Terminal output is unchanged.
 
 **State and snapshots.** `browser.state` turns those events into a `Snapshot`
 (`snapshot.go`): the screen (tasks, progress, done or failed), the task, the rail
@@ -788,26 +819,24 @@ default, `secret:`, `optional:`, the refusal of the last answer) as the
 `prompt` screen and blocks until it is answered, skipped or its context ends.
 Each asking has an ID; `POST /actions/answer` and `POST /actions/skip` carry
 the ID and are refused when it isn't the open prompt's. An answer goes
-through the `judge` closure the prompt kind passes to `ask`, which wraps the
-validator closure the runner handed over (so `check:` and `match:` run exactly
-as in the terminal); a refusal is stored in the open prompt and comes back in
+through the `judge` closure `PromptAsk` passes to `ask`, which reads the JSON
+into an `ask.Answer` and lets the `ask.Question`'s `Judge` rule on it (so
+defaults, `check:` and `match:` run exactly as in the terminal); a refusal is stored in the open prompt and comes back in
 the next snapshot, an accepted answer adds a rail answer (masked for
 `secret:`) and releases the caller. A secret's default never reaches the page
 (`hasDefault` says there is one). Context cancellation returns `ctx.Err()`,
 which `tui.IsInterrupted` counts as an interrupt. A menu
-(`prompt_menu.go`, `PromptSelect`) is the same `ask` with `KindMenu`, its
-`Options`, `Multi` and `Defaults`, and a `judge` that reads a string (one
-choice) or a list (`multi:`), refuses anything not offered, and runs the
-runner's `check:` closure on the chosen value or list. A picker
-(`picker.go`, `PromptPath`) is the same `ask` with `KindPath` and a `Picker`
-field: the column view from the home folder (the filesystem root when the open
-folder isn't under it) down to the open folder, listed through the
-`tui.PathPrompt`'s `Included`/`Excluded` predicates, so what `match:` excludes
-is hidden as in the terminal. Its `judge` takes a path (a list under `multi:`)
-and refuses one that is relative, missing, the wrong kind or not allowed by the
-predicates, since the runner treats a bad path as fatal rather than asking
-again; a `check:` failure reopens the picker with `PathPrompt.Error` as the
-refusal. `POST /actions/open` (the ID and a folder) changes a picker's open
+(`PromptAsk` for a question with options) is the same `ask` with `KindMenu`, its
+`Options`, `Multi` and `Defaults` (the question's `Picks`), reading a string
+(one choice) or a list (`multi:`) as the answer's picks. A picker
+(`picker.go`, `PromptAsk` for a question with `Path` rules) is the same `ask`
+with `KindPath` and a `Picker` field: the column view from the home folder (the
+filesystem root when the open folder isn't under it) down to the open folder,
+listed through `ask.PathRules.List`, so what `match:` excludes is hidden as in
+the terminal. Its `judge` reads a path (a list under `multi:`) into the
+answer's picks and the question's `Judge` rules on it, so a missing path, the
+wrong kind, a junk name, a `match:` miss and a failing `check:` are all
+refusals, as in the terminal. `POST /actions/open` (the ID and a folder) changes a picker's open
 folder and the next snapshot lists it; the picks live in the page.
 
 **Requests.** Every request must carry the token (constant-time compare).
@@ -831,12 +860,32 @@ the page back. On any other error it leaves the `EventSource` to reconnect and
 shows "hobnob has stopped" after eight seconds without a snapshot, unless the
 page is on Done or Failed (Cancelled is a Failed screen).
 
-**Cancel.** `runOnPage` runs each task, in both flows, under a context of its own and hands
+**Cancel.** `browserFrontEnd.Begin` readies each task, in both flows, under a context of its own and hands
 the server `SetInterrupt(stop, kill)` (and `ClearInterrupt` when the run ends): `stop` cancels that context (a first
 CTRL+C) and `kill` is `runner.KillRunningStep` (a second). `Server.Cancel`, also
 behind `POST /actions/cancel`, calls `stop` once and sets
 `Progress.Cancelling`, then `kill` on every later call; it does nothing unless a run is
-live: not at the task picker, not between runs, not after the run has ended. A run that ends with `runner.ErrInterrupted` is `RunCancelled`.
+live: not at the task picker, not between runs, not after the run has ended. A run that ends with `runner.ErrInterrupted` finishes as `runevents.Cancelled`.
+
+### `internal/runevents`: the run event stream
+
+`runner.ExecuteTask` gets a `*runevents.Stream` and reports everything through it;
+the stream sends each event, in order and one at a time, to its `Listener`s
+(`runevents.New(listeners...)`, `Listen`). A listener embeds `runevents.Nop`
+and overrides the events it shows. Every string is already masked.
+
+- **Events.** `TaskEntered`/`TaskLeft` (`Stream.Enter` returns the leave func), `TaskSkipped`, `TaskDone`,
+  `TaskFailed`, `Stopping` (the first CTRL+C, once, on the innermost task), `StepStarted` (command and notes),
+  `StepHeld`, `OutputLine` (from `Stream.Tap`), `StepSkipped`, `StepDone`, `StepFailed`,
+  `StepSoftFailed`, `StepError`, `Call`, `DoneEarlier`, `Var`, `VarSkipped`, `Say`, and last `Finished(Outcome)`.
+- **Failure bookkeeping lives here.** A non-soft `StepFailed`/`StepError` records the
+  first, innermost failure with its task's label; `StepSoftFailed` forgives it;
+  `TaskFailed` flags the innermost running task so its `TaskLeft` says `failed`.
+- **The outcome.** `ExecuteTask` ends the stream with `Finish(err, errors.Is(err, ErrInterrupted))`,
+  which sends `Outcome{Kind, Task, Label, Reason}`: `Succeeded`, `Cancelled`, or `Failed` naming the
+  recorded step failure, else (a failure outside a step) the innermost task that failed or was
+  still running, else the run's first task, else only the reason (the run failed before any
+  task). It is tested with a recording listener and no HTTP.
 
 ### `internal/app`: the CLI body
 
@@ -849,6 +898,29 @@ type App struct {
     OpenBrowser func(url string) error
 }
 ```
+
+`App` keeps no per-run state: `run` reads `--browser`, `--port` and `--quiet` and
+picks one `frontEnd` with `App.frontEnd` (`app/frontend.go`; `--port` without
+`--browser` is refused there), then passes it down, so dispatch never branches on a mode.
+
+```go
+type frontEnd interface {
+    AlwaysPicks() bool   // the picker comes first: no default-task or empty-list shortcut
+    CanPick(noPrompts bool) bool
+    Pick(ctx, tasks, showUsage) (name string, ok bool, err error)
+    Begin(ctx, cfg, name string, picked bool) (frontRun, error)  // may refuse the task
+    Close()
+}
+```
+
+`frontRun` is what one `ExecuteTask` call needs from the front end: the context,
+the `runevents.Stream` with its listeners, the `RunLog`, the `Prompts`, and `Done`,
+the after-run wait that says whether to pick again. `terminalFrontEnd`
+(`app/terminal.go`) listens with the `RunLog`, asks on the keyboard and does not wait.
+`browserFrontEnd` (`app/browser.go`) listens with the `RunLog` and the `Server`,
+opens the page on first use, refuses a named task under `--port`, and waits in
+`AwaitDelivery` (named task) or `AwaitHome` (picked). `selectAndRun` and `execTask`
+(`app/frontend.go`) call it; `app`'s unit tests drive them with a fake front end.
 
 `IsTerminal`, `Screen`, `SelectTask` and `OpenBrowser` are fields, not package vars, so `internal/e2e`
 can fake the terminal and picker per test without global state. `App.Run`
@@ -865,7 +937,7 @@ never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 4. `loadConfig` parses, then `scope.Load` builds the root scope and file
    scopes.
 5. Route `--list`/`--help`/`--select` through `runListingFlag`, so real and
-   demo paths cannot drift, or run the task via `execTask`.
+   demo paths cannot drift, or run the task via `execTask`. Both go through the front end.
 
 With no task and no `default` task, `selectAndRun` opens the picker, or prints
 the task list when there is no terminal, `CI` is set, or `--no-input` was
@@ -923,5 +995,5 @@ Write a package-local, table-driven unit test only for what e2e cannot observe
   `internal/eval/accessor_test.go`, `internal/eval/shell_test.go`, and
   `internal/literal`'s parse-then-evaluate tables, one per constructor
 
-Production code exposes exactly seven test seams: `runner.SetPrompts` (text, select, path and say prompts together),
+Production code exposes exactly seven test seams: `runner.SetPrompts` (ask, path and say prompts together),
 `runner.SetLeftoverGrace`, `browser.SetGrace`, `App.IsTerminal`, `App.Screen`, `App.SelectTask` and `App.OpenBrowser`.

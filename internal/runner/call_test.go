@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"hobnob/internal/config"
+	"hobnob/internal/runevents"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
 )
@@ -33,7 +34,7 @@ func TestExecCall_Soft_DoesNotSwallowInterrupt(t *testing.T) {
 	defer cancel()
 
 	// Act
-	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
+	err := ExecuteTask(ctx, "t", scope.New(), nil, cfg, true, t.TempDir(), runevents.New(), tui.NewRunLog(os.Stdout, os.Stderr), TerminalPrompts())
 
 	// Assert
 	if !errors.Is(err, ErrInterrupted) {

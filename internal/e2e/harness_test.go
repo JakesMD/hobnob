@@ -21,7 +21,7 @@
 // 10. make a later env: entry lose to an earlier one                 -> env_test.go
 // 11. resolve relative dir: against cwd instead of TaskfileDir       -> dir_test.go
 // 12. make value.Capture always return a String                     -> values_test.go
-// 13. drop the check: validator handed to the select prompt in get.go -> get_test.go (InteractiveSelectRepromptsUntilCheckPasses)
+// 13. drop the Check set on a menu's ask.Question in runner.getInteractive -> get_test.go (InteractiveSelectRepromptsUntilCheckPasses)
 // 14. make step-level dir: lose to task-level                        -> dir_test.go
 // 15. drop the missing-env-file warning in scope/envfiles.go         -> env_test.go stderr
 //
@@ -86,24 +86,24 @@
 // 66. keep a quiet: step's LineWriters as its late dest in execRun    -> run_background_test.go (QuietStepsJobStaysQuiet)
 // 67. drop the absolute-path rewrite for an already-set type: file value -> get_path_test.go (PresetRelativeBecomesAbsolute)
 // 68. resolve a CLI-arg path against the task dir, not the invocation dir -> get_path_test.go (CLIArgResolvesAgainstInvocationDir, ShellEnvResolvesAgainstInvocationDir)
-// 69. skip the right-kind check in the path pipeline                  -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails)
+// 69. skip the right-kind check in ask.PathRules.Verify -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails), ask path_test.go (PathQuestion_JudgesEachPickedPath)
 // 70. resolve symlinks before storing a picked path                   -> get_path_test.go (SymlinkKeptAsGiven)
 // 71. treat a directory default on type: file as the answer with prompts off -> get_path_test.go (DirectoryDefaultIsNoAnswerWithPromptsOff, DirectoryDefaultOptionalIsEmptyWithPromptsOff, MultiDirectoryDefaultIsNoAnswerWithPromptsOff, MultiDirectoryDefaultOptionalIsEmptyWithPromptsOff)
 // 72. set optional entries empty before reading default: in getFromNoPrompts -> get_test.go (OptionalWithDefaultUsesDefaultWithPromptsOff)
-// 73. check a multi: list's match: on the joined text, not per item   -> get_path_test.go (EachMultiItemMustMatch)
-// 74. let a plain match: pattern hide directories in the file picker (tui.ListDir) -> prompt_path_test.go (FilePicker_PlainPatternNeverHidesADirectoryButBangPatternDoes)
+// 73. check a multi: list's match: on the joined text, not per item in runner.acceptPath -> get_path_test.go (EachMultiItemMustMatch)
+// 74. let a plain match: pattern hide directories in the file picker (ask.PathRules.List) -> ask path_test.go (PathRules_ListShowsWhatCanBeBrowsed)
 // 75. drop the options:+type: load-time rejection                     -> get_path_test.go (OptionsWithTypeFileRejectedAtLoad)
-// 76. drop the check: re-open loop in runner.getPathInteractive       -> get_path_test.go (FailingCheckReopensThePicker)
-// 77. drop the type/match: hand-off to promptPathFn in getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
-// 78. drop the prompt.Included/prompt.Excluded assignments in getPathInteractive -> get_path_test.go (PickerGetsMatchAsPredicates)
+// 76. drop the Check set on a picker's ask.Question in runner.getPathInteractive -> get_path_test.go (FailingCheckRefusesThePick)
+// 77. leave the Path rules off the picker's ask.Question in runner.getPathInteractive -> get_path_test.go (PickerAnswerIsStoredAbsolute)
+// 78. drop the Included/Excluded assignments in runner.pathRules -> get_path_test.go (PickerGetsMatchAsPredicates)
 // 79. print a secret value in full in runner.logVar -> log_lines_test.go (VariableLinesNameTheValueAndWhereItCameFrom, secret cases)
-// 80. skip the match: test on multi: defaults in tui.newPathModel      -> prompt_path_test.go (Multi_DefaultsThatMissMatchAreNotMarked)
+// 80. skip the allowed test on multi: defaults in ask.PathRules.Opening -> ask path_test.go (PathRules_OpeningStartsAtTheDefaultAndPicksWhatFits)
 // 81. list a colon-named task ungrouped, or a plain task under a heading, in cli.groupTaskRows -> cli_test.go (ListGroupsTasksByNamePrefix)
 // 82. let esc skip a required text prompt in tui.textModel.Update    -> prompt_text_test.go (Update_Answers)
 // 83. drop the error line in tui.card.render                         -> prompt_text_test.go (Update_Answers)
 // 84. print no call line in runner.execCall                          -> log_lines_test.go (CallPrintsTheCallLine, CallToASkippedTaskPrintsTheCallThenTheSkip)
 // 85. skip DoneEarlier on a once: cache hit                          -> log_lines_test.go (CallToAnAlreadyRunOnceTaskIsDoneEarlier)
-// 86. drop the continuation indent in tui.RunLog.Run                 -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
+// 86. drop the continuation indent in tui.RunLog.StepStarted       -> log_lines_test.go (MultiLineCommandContinuesUnderTheFirstLine)
 // 87. leave a quiet: step's note off its run line in runner.execRun  -> log_lines_test.go (QuietStepNotesHiddenOutput)
 // 88. print a skipped run: step as "skipped" instead of its command  -> run_into_test.go (IfFalseSkipsAndPrintsSkipLine)
 // 88a. print an unrenderable skipped run: step as "skipped" in runner.skippedRunText -> run_into_test.go (SkippedStepWhoseCommandCannotRenderPrintsItAsWritten)
@@ -138,23 +138,23 @@
 // 116. print nothing for a skipped call: step in runner.executeSteps -> log_lines_test.go (SkippedCallNamesTheCalledTask)
 // 117. leave the "# default" note off a --no-input default in runner.getFromNoPrompts -> log_lines_test.go (DefaultTakenWithPromptsOffIsNoted)
 // 118. word the no-taskfile error "found in … any parent directory" in the taskfile search of app/args.go -> log_errors_test.go (BeforeARunHobnobTakesTheTasksPlace), demo_test.go (NotReachableWithoutTheFlag)
-// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.Run -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
+// 119. leave a run: command's notes on its line when quiet, in tui.RunLog.StepStarted -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds)
 // 120. drop the HOBNOB_QUIET=1 check in app.run                       -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietIsNeverOnByItself)
 // 121. stop holding a step's output when the log is quiet, in runner.execRun -> log_quiet_test.go (QuietRunKeepsOnlyCommandLinesAndTaskEnds, QuietRunPrintsAFailedStepsHeldOutputBeforeItsEnd)
 //
 // 122. forward a CTRL+C byte to the PTY instead of signalling hobnob    -> runner/run_stdin_test.go (CtrlCReachesHobnobNotTheCommand)
 // 123. drop the terminal restore in runner.attachStdin's stop           -> runner/run_stdin_test.go (ForwardsKeysToTheCommand)
 //
-// 124. drop the "check failed:" prefix from a text or menu check's error line (tui.textModel, tui.selectModel) -> prompt_text_test.go, prompt_select_test.go (ErroringCheckShowsItsError)
+// 124. drop the "check failed:" prefix from a check's error in ask.Question.checked -> prompt_select_test.go (ErroringCheckShowsItsError)
 // 125. let enter with nothing toggled on an optional multi menu go through the check (tui.selectModel.confirm) -> prompt_select_test.go (OptionalMultiEnterWithNothingToggledSkips)
-// 126. drop the picker's Error hand-off after a check that errors (runner.getPathInteractive, tui.newPathModel) -> get_path_test.go (ErroringCheckReopensThePickerShowingItsError), prompt_path_test.go (View_ShowsTheErrorItOpensWith)
+// 126. drop the check-error refusal in ask.Question.checked -> get_path_test.go (ErroringCheckRefusesThePickShowingItsError), prompt_path_test.go (RefusalFromTheJudgeShowsOnTheErrorLineAndKeepsThePickerOpen)
 // 127. stop dropping the win32-input and focus-reporting mode switches in runner.conPTYFilter.Write -> internal/runner/conptyfilter_test.go (DropsTerminalModeSequencesSplitAcrossWrites)
 // 128. write a held unfinished escape nowhere in runner.conPTYFilter.Flush -> internal/runner/conptyfilter_test.go (PassesOnAnUnfinishedEscape)
 // 129. (windows) create the process without the stderr pipe handle in runner.startOnPTY -> run_conpty_windows_test.go (WatchedCommandSeesATTYOnStdoutOnly)
 // 130. write the rule to a piped stdout (create the live area without a Screen in tui.RunLog.Watch) -> log_status_test.go (NeverAppearsInPipedOutput), live_test.go (NeverReachesAPipe)
-// 131. drop the live.begin call from tui.RunLog.Enter                 -> log_status_test.go (RuleShowsUnderTheRunningCommandAndIsGoneAfter), live_test.go
-// 132. drop the live.end call from the leave func of tui.RunLog.Enter -> live_test.go (IsGoneWhenTheRunEnds), log_status_test.go
-// 133. drop the step clock (live.stepBegin in tui.RunLog.Run)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
+// 131. drop the live.begin call from tui.RunLog.TaskEntered        -> log_status_test.go (RuleShowsUnderTheRunningCommandAndIsGoneAfter), live_test.go
+// 132. drop the live.end call from tui.RunLog.TaskLeft -> live_test.go (IsGoneWhenTheRunEnds), log_status_test.go
+// 133. drop the step clock (live.stepBegin in tui.RunLog.StepStarted)         -> live_test.go (SitsUnderTheLogWithTheStepAndTotalClocks, BetweenStepsHasOnlyTheTotal)
 // 134. drop the note from tui.RunLog.Stopping                         -> live_test.go (SaysStoppingOnItsLeftAfterCtrlC)
 // 135. drop the clear in tui.liveArea.pause                          -> live_test.go (IsClearedWhileACardPromptIsOpen)
 // 136. skip the cursorMove check in tui.liveArea.write                -> live_test.go (HidesWhileAToolRedrawsRowsAndReturnsWhenItStops)
@@ -172,22 +172,22 @@
 // 148. make tui.LineWriter.Restart write col directly instead of flagging -> live_test.go (RestartingTheOtherStreamsWriterIsRaceFree, under -race)
 // 149. drop the leading blank line in tui.card.render -> frame_test.go (OpensWithOneBlankLine)
 // 150. stop skipping the opening sequences in runner.conPTYFilter.Write -> runner/conptyfilter_test.go (OpeningSequencesLeaveTheOutputPrefixedOnBothStreams)
-// 151. drop the empty-answer refusal on enter in tui.textModel.Update -> tui/prompt_text_test.go (Update_Answers, required prompt on an empty field)
+// 151. drop the required-answer refusal in ask.Question.judgeText -> runner/get_test.go (TextJudge_AppliesDefaultRequiredAndSkipRules), tui/prompt_text_test.go (Update_Answers, required prompt on an empty field)
 // 152. drop the empty-picks refusal in tui.selectModel.confirm -> tui/prompt_select_test.go (MultiEnter_NoSelections)
 //
 // 153. drop the token compare in browser.Server.guard                       -> browser_test.go (RequestsNeedTheToken)
 // 154. bind browser.Listen to all interfaces instead of 127.0.0.1           -> browser_test.go (TaskWithoutPromptsEndsOnDone)
 // 155. show a held step's last line in browser.state.snapshot (drop the held check) -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 156. pass an identity mask instead of scope.Mask to tui.RunLog.Tap in runner.execRun -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
-// 157. report no output lines to the listener when the log is quiet, in tui.RunLog.Tap -> browser_test.go (QuietChangesOnlyTheTerminal)
-// 158. record the outermost running task instead of the step's task in tui.RunLog.recordFailure -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
-// 159. never mark a task failed in tui.RunLog.TaskFailed                -> browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 156. pass an identity mask instead of scope.Mask to runevents.Stream.Tap in runner.execRun -> browser_test.go (HeldStepShowsNoLastLineAndASecretIsMasked)
+// 157. drop the OutputLine report from runevents.Stream.Tap -> runevents/stream_test.go (TapPassesOutputOnAndReportsEachMaskedLine), browser_test.go (QuietChangesOnlyTheTerminal)
+// 158. record the outermost running task instead of the step's task in runevents.Stream.recordFailure -> runevents/stream_test.go (FinishNamesTheStepThatFailed), runner/outcome_test.go (RunOutcomeNamesTheCalledTaskWhoseStepFailed), browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
+// 159. never mark a task failed in runevents.Stream.TaskFailed -> runevents/stream_test.go (TaskLeftSaysWhetherItsTaskFailed), browser_test.go (FailedNamesTheStepAndExitsLikeTheTerminalRun)
 // 160. label a task by its name even when it has an info: in browser.label  -> browser_test.go (ProgressShowsTheLabelTheLastLineAndTheRail)
-// 161. drop the server.AwaitDelivery call from app.execBrowserTask         -> browser_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
+// 161. drop the server.AwaitDelivery call from browserFrontEnd.Done (named task)  -> browser_test.go (PageOpenedAfterTheRunEndedStillGetsTheOutcome)
 // 162. accept --browser beside --no-input in app.checkBrowserFlag               -> browser_test.go (FlagsThatCannotCombine)
 // 163. call app.checkBrowserFlag before --quiet is stripped, in app.run       -> browser_test.go (FlagsThatCannotCombine, quiet cases)
-// 164. drop the runner.CheckTask call from app.execBrowserTask               -> browser_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
-// 165. drop the forgiveFailure call from tui.RunLog.StepSoftFailed         -> browser_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
+// 164. drop the runner.CheckTask call from browserFrontEnd.Begin               -> browser_test.go (UnknownTaskFailsLikeTheTerminalRunWithoutOpeningAPage)
+// 165. drop the forgiven-failure reset from runevents.Stream.StepSoftFailed -> runevents/stream_test.go (FinishIgnoresAFailureASoftStepForgave), runner/outcome_test.go (RunOutcomeIgnoresASoftFailedStep), browser_test.go (FailedNamesTheFailureThatEndedTheRunNotAForgivenOne)
 // 166. drop the Flush calls after the copiers finish in runner.execRun    -> browser_test.go (OutputWithoutATrailingNewlineIsTheLastLineAndInTheLog)
 // 167. keep ANSI sequences in the line tui.TapWriter.Flush reports -> browser_test.go (LastLineHasNoColourCodes)
 // 168. leave elapsed time out of browser.state.snapshot -> browser_test.go (ProgressSnapshotsCarryElapsedTime)
@@ -195,12 +195,12 @@
 // 170. drop the r.Host check in browser.Server.guard                         -> browser_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
 // 171. drop the Origin check in browser.Server.guard                          -> browser_test.go (RequestsNeedTheLoopbackHostAndAMatchingOrigin)
 // 172. accept --browser on Windows in app.checkBrowserFlag                        -> internal/app/args_test.go (BrowserFlagFailsOnWindows)
-// 173. skip the validate call in browser.state.PromptText                    -> browser_prompt_test.go (RefusedAnswerKeepsThePromptWithTheReason)
+// 173. skip the Judge call in browser.state.PromptAsk                       -> browser_prompt_test.go (RefusedAnswerKeepsThePromptWithTheReason)
 // 174. let browser.state.skip skip a required prompt                         -> browser_prompt_test.go (SkipContinuesAnOptionalPromptWithoutAnAnswer)
-// 175. send a secret prompt's default to the page in browser.state.PromptText -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
-// 176. put a secret answer on the rail unmasked in browser.state.PromptText   -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 175. send a secret prompt's default to the page in browser.state.PromptAsk -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
+// 176. put a secret answer on the rail unmasked in browser.state.PromptAsk    -> browser_prompt_test.go (SecretPromptIsHiddenAndMaskedOnTheRailAndInTheLog)
 // 177. drop the prompt id check in browser.state.openPrompt                   -> browser_prompt_test.go (AnswerToAPromptThatIsNotOpenIsRefused)
-// 178. pass runner.TerminalPrompts() instead of browserPrompts in app.execBrowserTask -> browser_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
+// 178. pass runner.TerminalPrompts() instead of browserPrompts in browserFrontEnd.Begin -> browser_prompt_test.go (TextPromptShowsInfoAndDefaultAndTakesTheAnswer)
 // 179. drop the stop call for the first press in browser.Server.Cancel -> browser_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
 // 180. drop the kill call for a later press in browser.Server.Cancel -> browser_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
 // 181. never set cancelling in browser.Server.Cancel -> browser_test.go (SecondCancelForceStopsAStepThatIgnoresTheFirst)
@@ -210,19 +210,19 @@
 // 185. offer Home on every finished run in browser.state.snapshot             -> browser_test.go (HomeIsOnlyOfferedWhenHobnobHadNoTask)
 // 186. accept any task name in browser.state.choose                           -> browser_test.go (PickerRefusesATaskItDidNotOffer)
 // 187. drop the isOpen re-check once browser.state.answer holds the prompt's busy lock -> browser_prompt_test.go (SecondAnswerForOnePromptIsRefusedWithoutRunningItsCheck)
-// 188. treat an untouched secret default as a skip in browser.state.PromptText -> browser_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
-// 189. drop the required-answer refusal in browser.state.PromptText            -> browser_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
-// 190. drop the check: judgement from browser.state.PromptSelect's judge   -> browser_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
-// 191. take every option a multi menu is answered with, offered or not, in browser.menuPicks -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 192. drop the multi menu's ticked defaults from browser.state.PromptSelect -> browser_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
-// 193. let a required multi menu go through with nothing ticked in browser.state.PromptSelect -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
-// 194. show what match: excludes in tui.ListDir (drop the Excluded check) -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 195. list files that match: doesn't include in tui.ListDir -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
-// 196. open a file's folder instead of the default folder in browser.pickerRules.start -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
-// 197. leave a folder picker's default unselected in browser.pickerRules.start -> browser_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 188. treat an untouched secret default as a skip in ask.Question.judgeText -> browser_prompt_test.go (ContinueOnAnUntouchedSecretDefaultUsesItAndSkipGivesNone)
+// 189. drop the required-answer refusal in ask.Question.judgeText               -> browser_prompt_test.go (EmptyAnswerToARequiredPromptIsRefused)
+// 190. drop the check: judgement from ask.Question.checked                      -> browser_menu_test.go (MenuChoiceThatFailsItsCheckIsRefusedWithTheReason)
+// 191. take every option a multi menu is answered with, offered or not, in ask.Question.judgeMenu -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 192. drop the multi menu's ticked defaults from browser.state.PromptAsk -> browser_menu_test.go (MultiMenuHasItsDefaultTickedAndTakesSeveralChoices)
+// 193. let a required multi menu go through with nothing ticked in ask.Question.shaped -> browser_menu_test.go (MenuRefusesAnOptionItDoesNotOfferAndAnEmptyMultiChoice)
+// 194. show what match: excludes in ask.PathRules.List (drop the Excluded check) -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 195. list files that match: doesn't include in ask.PathRules.List -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes)
+// 196. open a file's folder instead of the default folder in ask.PathRules.Opening -> browser_picker_test.go (PickerStartsAtTheDefaultFolderAndHidesWhatMatchExcludes, FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
+// 197. leave a folder picker's default unselected in ask.PathRules.Opening -> browser_picker_test.go (FolderPickerStartsWithItsDefaultSelectedAndAnswersAtOnce)
 // 198. open a path that is not a folder in browser.state.askPicker -> browser_picker_test.go (OpeningAFolderByPostChangesTheListing)
-// 199. accept a path match: excludes in browser.pickerRules.pick -> browser_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
-// 200. let a required picker go through with no pick in browser.state.PromptPath -> browser_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
+// 199. accept a path match: excludes in ask.PathRules.Verify -> browser_picker_test.go (MultiPickerAnswersWithSeveralPathsAndRefusesBadOnes)
+// 200. let a required picker go through with no pick in ask.Question.shaped -> browser_picker_test.go (OptionalPickerCanBeSkippedAndARequiredOneRefusesAnEmptyAnswer)
 // 201. never close the previous tab's replaced channel in browser.Server.serveEvents -> browser_lifecycle_test.go (NewestTabWinsAndTheOldOneIsToldAndClosed)
 // 202. keep the timer running while steps run in browser.Server.waitingOnPerson -> browser_lifecycle_test.go (NothingExitsWhileStepsRunAndTheTimerStartsWhenTheRunEnds)
 // 203. ignore open tabs in browser.Server.watchGrace -> browser_lifecycle_test.go (AReconnectingTabStopsTheTimer)
@@ -231,11 +231,11 @@
 // 206. drop the abandoned case from browser.Server.AwaitHome -> browser_lifecycle_test.go (NoTabAtDoneInTheHomeFlowExitsAfterTheGraceWithTheRunsOutcome)
 // 207. drop the watchGrace call when a tab closes in browser.Server.serveEvents -> browser_lifecycle_test.go (ClosingTheLastTabAtAPromptStartsTheTimer)
 // 208. drop the abandoned case from browser.Server.PickTask -> browser_lifecycle_test.go (NoTabAtTheTaskPickerExitsAfterTheGrace)
-// 209. let tui.PathPrompt.Allows accept a junk-named path -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused)
-// 210. pre-select the nearest existing folder when a folder picker's default is missing in browser.pickerRules.start -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
+// 209. let ask.PathRules.Verify accept a junk-named path (or leave out its junk-name check) -> browser_picker_test.go (JunkNamedPathPostedToAFilePickerIsRefused), ask path_test.go (PathQuestion_JudgesEachPickedPath)
+// 210. pre-select the nearest existing folder when a folder picker's default is missing in ask.PathRules.Opening -> browser_picker_test.go (FolderPickerWhoseDefaultDoesNotExistStartsWithNothingSelected)
 // 211. let browser.Server.Cancel act without a live run (drop the stop != nil check) -> browser_test.go (CancelAtTheTaskPickerChangesNothingAndTheNextRunStopsGracefully)
-// 212. leave the label blank when RunFailed names no task in browser.state.labelOf -> internal/browser/state_test.go (RunFailedWithNoTaskNamesTheInnermostTaskRunning, RunFailedWithNoTaskFallsBackToTheRunsTask), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
-// 213. pass task.Info to log.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
+// 212. leave the task blank when a run fails outside a step in runevents.Stream.innermost -> runevents/stream_test.go (FinishOutsideAStepNamesTheInnermostTaskStillRunning, FinishFallsBackToTheRunsTaskOnceEverythingLeftCleanly), browser_test.go (FailedNamesTheTaskWhenTheRunFailsOutsideAStep)
+// 213. pass task.Info to events.Enter unfilled in runner.executeTask -> browser_test.go (LabelFillsInTheVariablesItCan)
 // 214. skip the prompt in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt), browser_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
 // 215. drop scope.Mask in runner.execSay -> say_test.go (ShowsTheFilledInMessageAndLogsIt)
 // 216. prompt even when prompts are off in runner.execSay -> say_test.go (WithoutPromptsOnlyLogsTheMessage)
@@ -243,13 +243,40 @@
 // 218. accept an empty or non-scalar say: in config.parseStepNode -> say_test.go (RejectsWhatIsNotAMessage)
 // 219. add the say answer to the rail in browser.state.PromptSay -> browser_prompt_test.go (SayShowsTheMessageAndContinueGoesOn)
 // 220. listen on port 0 whatever the port in browser.Listen -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
-// 221. drop the --port needs --browser check in app.run -> browser_test.go (PortRefusals)
+// 221. drop the --port needs --browser check in app.frontEnd -> browser_test.go (PortRefusals)
 // 222. accept a port outside 1 to 65535 in app.extractPortFlag -> browser_test.go (PortRefusals)
-// 223. open the browser under --port in app.openPage -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
+// 223. open the browser under --port in browserFrontEnd.page -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
 // 224. check the token on a fixed server in browser.Server.guard -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
 // 225. keep the token in a fixed server's browser.Server.URL -> browser_test.go (PortServesThePageWithoutATokenAndOpensNoBrowser)
 // 226. start the grace timer on a fixed server in browser.Server.watchGrace -> browser_test.go (PortWaitsForATabPastTheGrace)
-// 227. run a named task under --port in app.execBrowserTask -> browser_test.go (PortRefusals)
+// 227. run a named task under --port in browserFrontEnd.Begin -> browser_test.go (PortRefusals)
+// 228. read a multi menu's JSON-list default as one option's text in runner.menuPicks -> runner/get_test.go (MenuQuestion_ResolvesDefaultsIntoPicks)
+// 229. skip the default fallback for an empty text answer in ask.Question.judgeText -> runner/get_test.go (TextJudge_AppliesDefaultRequiredAndSkipRules)
+// 230. leave match: out of the text Check in runner.checkCandidate -> runner/get_test.go (TextJudge_RefusesWithMatchAndCheckWording)
+// 231. take menu picks in the order given, not the options', in ask.Question.judgeMenu -> runner/get_test.go (MenuJudge_AppliesPickRules)
+// 232. emit Stopping on every call, not just the first, in runevents.Stream.Stopping -> runevents/stream_test.go (StoppingReportsOnlyTheFirstInterruptOnTheInnermostTask), live_test.go
+// 233. drop the Call line from browser.state's log (leave Call to runevents.Nop) -> browser/state_test.go (DetailsLogCarriesEveryEventTheTerminalShows)
+// 234. log the failure line twice, from StepFailed and again from Finished, in browser.state.Finished (drop the failureLogged check) -> browser/state_test.go (FailedResultIsLabelledWithTheNamedTaskAndLogsTheFailureOnce)
+// 235. classify an interrupt as Failed in runner.ExecuteTask's Finish call -> browser_test.go (CancelStopsAStepGracefullyAndTheResultIsCancelled)
+// 236. skip Finish when ExecuteTask fails before entering a task (resolveTask error) -> runner/outcome_test.go (RunOutcomeForAnUnknownTaskCarriesOnlyTheReason)
+// 237. let a named task run under --port in browserFrontEnd.Begin (drop the picked check) -> app/frontend_test.go (BrowserFrontEndRefusesANamedTaskUnderPort)
+// 238. drop the AlwaysPicks check so a default task short-circuits --browser -> browser_test.go (WithoutATaskThePickerListsTheVisibleTasksEvenWithADefault)
+// 239. skip the front end's Done wait after a run in app.runTask -> app/frontend_test.go (SelectAndRunPicksRunsThenWaits)
+// 240. stop picking after the first run in app.selectAndRun (ignore Done's again) -> app/frontend_test.go (SelectAndRunPicksAgainWhileTheWaitSaysSo)
+// 241. return nil instead of the last run's failure when the picker ends in app.selectAndRun -> app/frontend_test.go (SelectAndRunReturnsTheLastRunsFailureWhenThePickerEnds)
+// 242. run a task after Begin refuses it in app.runTask -> app/frontend_test.go (ExecTaskFailsSilentlyWhenTheFrontEndRefusesTheTask)
+// 243. accept --port without --browser in app.frontEnd -> app/frontend_test.go (PortNeedsBrowser)
+// 244. pick from a front end that cannot pick in app.selectAndRun (skip CanPick) -> app/frontend_test.go (SelectAndRunListsWhenTheFrontEndCannotPick)
+// 245. drop the ~ expansion in ask.PathRules.Resolve -> ask path_test.go (PathQuestion_JudgesEachPickedPath), get_path_test.go (PathIsCleanedAndHomeExpanded)
+// 246. list a path's picks more than once in ask.Question.judgePath -> ask path_test.go (PathQuestion_ShapesTheAnswerLikeAMenu)
+// 247. accept the answer despite a refusal in tui.pathModel.judge -> prompt_path_test.go (RefusalFromTheJudgeShowsOnTheErrorLineAndKeepsThePickerOpen)
+// 248. open a folder picker at its parent when its default fails match: in browser.pickerView.start -> browser/picker_test.go (PickerStart_DirDefaultFailingMatchOpensThatFolder)
+// 249. highlight nothing when the default fails match: in tui.newPathModel -> prompt_path_test.go (PathModel_Open_DirDefaultFailingMatchIsStillHighlighted), ask path_test.go (PathRules_DefaultTargetIsTheFirstDefaultOfTheKindWhetherOrNotMatchAllowsIt)
+// 250. leave the variable name out of a preset path's wrong-kind refusal in ask.PathRules.wrongKind -> get_path_test.go (FilePresetThatIsADirectoryFails, DirPresetThatIsAFileFails)
+// 251. accept a relative path the page posts in browser.readPaths -> browser/picker_test.go (ReadPaths_RefusesARelativePathFromThePage)
+// 252. let a soft StepError forgive the recorded failure in runevents.Stream.StepError -> runevents/stream_test.go (FinishKeepsAFailureASoftStepErrorDidNotForgive)
+// 253. refuse an empty multi picker with the menu's wording in ask.Question.shaped -> ask path_test.go (PathQuestion_ShapesTheAnswerLikeAMenu)
+// 254. drop the checkBrowserFlag call from app.frontEnd -> app/frontend_test.go (BrowserFrontEndRefusesFlagsItCannotBeCombinedWith)
 package e2e
 
 import (
@@ -266,6 +293,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"hobnob/internal/app"
+	"hobnob/internal/ask"
 	"hobnob/internal/runner"
 	"hobnob/internal/termsim"
 	"hobnob/internal/tui"
@@ -351,8 +379,8 @@ type PromptCall struct {
 	Secret   bool
 	Optional bool
 	Task     string
-	Type     string // "file" or "dir" for a picker, "say" for a say: step (Info is its message), empty for a text prompt or menu
-	Error    string // what a picker reopened with on its error line
+	Type     string   // "file" or "dir" for a picker, "say" for a say: step (Info is its message), empty for a text prompt or menu
+	Refusals []string // what the judge refused of the answers offered before the one it took
 
 	// What the picker's predicates reported for each Case.Probe path (keyed as
 	// given). Nil when the picker got no predicate.
@@ -485,7 +513,7 @@ func Run(t *testing.T, c Case) *Result {
 
 	state := newPromptState(t, c.Answers)
 	state.dir, state.probe, state.interrupt = dir, c.Probe, c.Interrupt
-	restorePrompts := runner.SetPrompts(state.text, state.sel, state.path, state.say)
+	restorePrompts := runner.SetPrompts(state.ask, state.say)
 	defer restorePrompts()
 
 	a := app.New("v0.0.0-test")
@@ -734,9 +762,7 @@ func copyTestdataDir(t *testing.T, name, destRoot string) {
 type promptState struct {
 	t         *testing.T
 	answers   map[string][]string
-	textIdx   map[string]int
-	selIdx    map[string]int
-	pathIdx   map[string]int
+	askIdx    map[string]int
 	calls     []PromptCall
 	dir       string   // the temp root, for resolving probe paths
 	probe     []string // see Case.Probe
@@ -747,9 +773,7 @@ func newPromptState(t *testing.T, answers map[string][]string) *promptState {
 	return &promptState{
 		t:       t,
 		answers: answers,
-		textIdx: map[string]int{},
-		selIdx:  map[string]int{},
-		pathIdx: map[string]int{},
+		askIdx:  map[string]int{},
 	}
 }
 
@@ -757,124 +781,80 @@ func (s *promptState) record(c PromptCall) {
 	s.calls = append(s.calls, c)
 }
 
-// text implements runner.TextPromptFunc. It replays successive answers for
-// varName until one satisfies validate — the same check:/re-prompt contract
-// tui.PromptText's real bubbletea loop implements — and fails loudly rather
-// than hanging if every answer is exhausted without success.
-func (s *promptState) text(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
+// ask implements runner.AskFunc as a plain answer feeder (a picker's answers are paths, relative ones from the invocation directory): it offers each
+// answer for q.VarName to the question's judge in turn, as a person retyping
+// after a refusal would, and takes the first one the judge doesn't refuse.
+// Menu answers are option names and picker answers paths, comma-separated under multi:. It fails loudly
+// rather than hanging if every answer is exhausted without success.
+func (s *promptState) ask(ctx context.Context, q ask.Question) (value.Value, error) {
 	s.t.Helper()
-	if varName == s.interrupt {
-		return "", tea.ErrProgramKilled
+	if q.VarName == s.interrupt {
+		return value.Value{}, tea.ErrProgramKilled
 	}
-	answers := s.answers[varName]
-	start := s.textIdx[varName]
-	for i := start; i < len(answers); i++ {
-		candidate := answers[i]
-		if validate != nil {
-			ok, _ := validate(candidate)
-			if !ok {
-				continue
-			}
+	answers := s.answers[q.VarName]
+	var refusals []string
+	for i := s.askIdx[q.VarName]; i < len(answers); i++ {
+		verdict := q.Judge(answerFrom(q, answers[i]))
+		if verdict.Refusal != "" {
+			refusals = append(refusals, verdict.Refusal)
+			continue
 		}
-		s.textIdx[varName] = i + 1
-		s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Secret: secret, Optional: optional, Task: task})
-		return candidate, nil
+		s.askIdx[q.VarName] = i + 1
+		call := PromptCall{VarName: q.VarName, Info: q.Info, Default: q.Default, Items: q.Options, Multi: q.Multi, Secret: q.Secret, Optional: q.Optional, Task: q.Task, Refusals: refusals}
+		if q.Path != nil {
+			s.describePicker(&call, q.Path)
+		}
+		s.record(call)
+		return verdict.Value, nil
 	}
-	s.t.Fatalf("unexpected text prompt for %q (task %q) — got %d candidate answer(s), none satisfied check: %q, or none were provided", varName, task, len(answers)-start, checkDesc)
-	return "", errors.New("unreachable")
-}
-
-// say implements runner.SayPromptFunc: the person always continues.
-func (s *promptState) say(ctx context.Context, message, task string) error {
-	s.record(PromptCall{Type: "say", Info: message, Task: task})
-	return nil
-}
-
-// sel implements runner.SelectPromptFunc. Like text it consumes answers for
-// varName until one satisfies validate, as the real menu stays open until
-// its check passes. An empty answer on an optional menu is the escape key.
-func (s *promptState) sel(ctx context.Context, varName, info string, items []string, multi bool, defaultVal, task string, secret, optional bool, validate func(value.Value) (bool, error), checkDesc string) (value.Value, error) {
-	s.t.Helper()
-	answers := s.answers[varName]
-	for i := s.selIdx[varName]; i < len(answers); i++ {
-		raw := answers[i]
-		var val value.Value
-		if multi {
-			parts := []any{}
-			if raw != "" {
-				for _, p := range strings.Split(raw, ",") {
-					parts = append(parts, p)
-				}
-			}
-			val = value.Of(parts)
-		} else {
-			val = value.Str(raw)
-		}
-		if validate != nil && !(optional && val.IsEmpty()) {
-			if ok, _ := validate(val); !ok {
-				continue
-			}
-		}
-		s.selIdx[varName] = i + 1
-		s.record(PromptCall{VarName: varName, Info: info, Default: defaultVal, Items: items, Multi: multi, Secret: secret, Optional: optional, Task: task})
-		return val, nil
-	}
-	s.t.Fatalf("unexpected select prompt for %q (task %q) - none of the %d answer(s) left satisfied check: %q, or none were provided", varName, task, len(answers)-s.selIdx[varName], checkDesc)
+	s.t.Fatalf("unexpected prompt for %q (task %q): no answer was accepted (refusals: %q), or none were provided", q.VarName, q.Task, refusals)
 	return value.Value{}, errors.New("unreachable")
 }
 
-// path implements runner.PathPromptFunc. Each call consumes the next
-// not-yet-used answer for prompt.VarName, like sel: a path (comma-separated
-// under multi:), relative ones taken from the invocation directory the way
-// the real picker returns absolute paths. An empty answer on an optional
-// picker is the escape key: no answer. internal/runner's own check:/re-open
-// loop is what drives repeat calls.
-func (s *promptState) path(ctx context.Context, prompt tui.PathPrompt, task string, secret bool) (value.Value, bool, error) {
-	s.t.Helper()
-	answers := s.answers[prompt.VarName]
-	idx := s.pathIdx[prompt.VarName]
-	if idx >= len(answers) {
-		s.t.Fatalf("unexpected picker for %q (task %q, visit %d) — only %d answer(s) provided", prompt.VarName, task, idx+1, len(answers))
+// describePicker records what a picker question carried: its kind, defaults
+// and what its predicates report for each Case.Probe path.
+func (s *promptState) describePicker(call *PromptCall, rules *ask.PathRules) {
+	call.Type = "file"
+	if rules.Dir {
+		call.Type = "dir"
 	}
-	raw := answers[idx]
-	s.pathIdx[prompt.VarName] = idx + 1
-	call := PromptCall{VarName: prompt.VarName, Info: prompt.Info, Default: strings.Join(prompt.Default, ","), Multi: prompt.Multi,
-		Secret: secret, Optional: prompt.Optional, Task: task, Type: prompt.Type, Error: prompt.Error}
+	call.Default = strings.Join(rules.Defaults, ",")
 	for _, p := range s.probe {
 		full := filepath.Join(s.dir, p)
 		info, err := os.Stat(full)
 		if err != nil {
 			s.t.Fatalf("probe path %q: %v", p, err)
 		}
-		if prompt.Included != nil {
+		if rules.Included != nil {
 			if call.Included == nil {
 				call.Included = map[string]bool{}
 			}
-			call.Included[p] = prompt.Included(full, info.IsDir())
+			call.Included[p] = rules.Included(full, info.IsDir())
 		}
-		if prompt.Excluded != nil {
+		if rules.Excluded != nil {
 			if call.Excluded == nil {
 				call.Excluded = map[string]bool{}
 			}
-			call.Excluded[p] = prompt.Excluded(full, info.IsDir())
+			call.Excluded[p] = rules.Excluded(full, info.IsDir())
 		}
 	}
-	s.record(call)
-	abs := func(p string) string {
-		if filepath.IsAbs(p) {
-			return p
-		}
-		return filepath.Join(prompt.Invoke, p)
+}
+
+func answerFrom(q ask.Question, raw string) ask.Answer {
+	if !q.IsMenu() && q.Path == nil {
+		return ask.Answer{Text: raw}
 	}
-	if raw == "" && prompt.Optional {
-		return value.Value{}, false, nil
+	if raw == "" {
+		return ask.Answer{}
 	}
-	if prompt.Multi {
-		parts := []any{}
-		for _, p := range strings.Split(raw, ",") {
-			parts = append(parts, abs(p))
-		}
-		return value.Of(parts), true, nil
+	if q.Multi {
+		return ask.Answer{Picks: strings.Split(raw, ",")}
 	}
-	return value.Str(abs(raw)), true, nil
+	return ask.Answer{Picks: []string{raw}}
+}
+
+// say implements runner.SayPromptFunc: the person always continues.
+func (s *promptState) say(ctx context.Context, message, task string) error {
+	s.record(PromptCall{Type: "say", Info: message, Task: task})
+	return nil
 }

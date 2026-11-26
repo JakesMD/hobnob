@@ -4,72 +4,88 @@ import (
 	"context"
 	"fmt"
 
+	"hobnob/internal/ask"
+	"hobnob/internal/value"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// PromptText prompts for free text. validate, when non-nil, is called with
-// the candidate value on Enter — errMsg uses checkDesc (the check:
-// expression's own text) purely for display, so tui never needs to know how
-// a check is evaluated or what a var's type is.
-func PromptText(ctx context.Context, info, varName string, validate func(string) (bool, error), checkDesc, defaultVal, task string, secret, optional bool) (string, error) {
-	model := newTextModel(
-		card{task: task, varName: varName, optional: optional, info: info},
-		textOptions{validate: validate, checkDesc: checkDesc, defaultVal: defaultVal, secret: secret},
-	)
-	program := tea.NewProgram(model, tea.WithContext(ctx))
-	result, err := program.Run()
+// PromptAsk shows q in the terminal: a picker when it has path rules, a
+// menu when it has options, else a text box. It returns what q's judge accepted, or the empty value for a
+// skipped optional question.
+func PromptAsk(ctx context.Context, q ask.Question) (value.Value, error) {
+	var model tea.Model = newTextModel(q)
+	switch {
+	case q.Path != nil:
+		model = newPathModel(q)
+	case q.IsMenu():
+		model = newSelectModel(q)
+	}
+	result, err := tea.NewProgram(model, tea.WithContext(ctx)).Run()
 	if err != nil {
-		return "", err
+		return value.Value{}, err
 	}
-	final := result.(textModel)
-	if final.quit {
-		return "", fmt.Errorf("aborted")
+	switch final := result.(type) {
+	case textModel:
+		return final.answer, final.finished()
+	case selectModel:
+		return final.answer, final.finished()
+	case pathModel:
+		return final.answer, final.finished()
 	}
-	return final.value, nil
-}
-
-type textOptions struct {
-	validate   func(string) (bool, error)
-	checkDesc  string
-	defaultVal string
-	secret     bool
+	return value.Value{}, fmt.Errorf("unexpected prompt model %T", result)
 }
 
 const secretDefaultMask = "••••"
 
 type textModel struct {
-	frame      card
-	validate   func(string) (bool, error)
-	checkDesc  string
-	defaultVal string
-	textInput  textinput.Model
+	question  ask.Question
+	frame     card
+	textInput textinput.Model
 	// maskedDefault is set for a secret default, which shows as a fixed
 	// mask until edited so its length isn't revealed.
 	maskedDefault bool
-	value         string
+	answer        value.Value
 	quit          bool
 	done          bool
 }
 
-func newTextModel(frame card, opts textOptions) textModel {
+func newTextModel(q ask.Question) textModel {
 	textInput := textinput.New()
 	textInput.Prompt = SArrow.Render("› ")
-	if opts.secret {
+	if q.Secret {
 		textInput.EchoMode = textinput.EchoPassword
 		textInput.EchoCharacter = '•'
 	}
-	textInput.SetValue(opts.defaultVal)
+	textInput.SetValue(q.Default)
 	textInput.Focus()
 	return textModel{
-		frame:      frame,
-		validate:   opts.validate,
-		checkDesc:  opts.checkDesc,
-		defaultVal: opts.defaultVal,
-		textInput:  textInput,
-
-		maskedDefault: opts.secret && opts.defaultVal != "",
+		question:      q,
+		frame:         card{task: q.Task, varName: q.VarName, optional: q.Optional, info: q.Info},
+		textInput:     textInput,
+		maskedDefault: q.Secret && q.Default != "",
 	}
+}
+
+func (model textModel) finished() error {
+	if model.quit {
+		return fmt.Errorf("aborted")
+	}
+	return nil
+}
+
+// judge takes the verdict on answer: a refusal shows on the error line, an
+// acceptance or a skip ends the prompt.
+func (model textModel) judge(answer ask.Answer) (tea.Model, tea.Cmd) {
+	verdict := model.question.Judge(answer)
+	if verdict.Refusal != "" {
+		model.frame.errMsg = verdict.Refusal
+		return model, nil
+	}
+	model.answer = verdict.Value
+	model.done = true
+	return model, tea.Quit
 }
 
 func (model textModel) Init() tea.Cmd { return textinput.Blink }
@@ -90,37 +106,12 @@ func (model textModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model.quit = true
 		return model, tea.Quit
 	case tea.KeyEsc:
-		if model.frame.optional {
-			model.done = true
-			return model, tea.Quit
+		if model.question.Optional {
+			return model.judge(ask.Answer{})
 		}
 		return model, nil
 	case tea.KeyEnter:
-		val := model.textInput.Value()
-		if model.frame.optional && val == "" {
-			model.done = true
-			return model, tea.Quit
-		}
-		if val == "" {
-			val = model.defaultVal
-		}
-		if val == "" {
-			return model, nil
-		}
-		if model.validate != nil {
-			ok, err := model.validate(val)
-			if err != nil {
-				model.frame.errMsg = fmt.Sprintf("check failed: %v", err)
-				return model, nil
-			}
-			if !ok {
-				model.frame.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
-				return model, nil
-			}
-		}
-		model.value = val
-		model.done = true
-		return model, tea.Quit
+		return model.judge(ask.Answer{Text: model.textInput.Value()})
 	}
 	var cmd tea.Cmd
 	model.textInput, cmd = model.textInput.Update(keyMsg)
@@ -137,7 +128,7 @@ func (model textModel) View() string {
 	}
 	frame := model.frame
 	frame.body = model.textInput.View()
-	if model.maskedDefault && model.textInput.Value() == model.defaultVal {
+	if model.maskedDefault && model.textInput.Value() == model.question.Default {
 		frame.body = model.textInput.Prompt + secretDefaultMask
 	}
 	frame.hints = hints

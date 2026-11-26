@@ -7,18 +7,23 @@ import (
 	"strings"
 	"testing"
 
+	"hobnob/internal/ask"
 	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+func menu(varName, info string, items []string, multi bool, picks ...string) selectModel {
+	return newSelectModel(ask.Question{VarName: varName, Info: info, Options: items, Multi: multi, Picks: picks})
+}
+
 func TestNewSelectModel_MultiWithDefault_PreSelectsDefault(t *testing.T) {
-	// given multi-select with a default value matching second item,
+	// given multi-select whose picks hold the second item,
 	// when model is initialized, then that item is pre-selected
 	// (why: default must be toggled on at open, not just cursor-positioned)
 
 	// Act
-	model := newSelectModel("RELEASES", "", []string{"v0.1.0", "v0.2.0", "v0.3.0"}, true, "v0.2.0")
+	model := menu("RELEASES", "", []string{"v0.1.0", "v0.2.0", "v0.3.0"}, true, "v0.2.0")
 
 	// Assert
 	if !model.selected[1] {
@@ -34,7 +39,7 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 	// (why: single-select uses cursor position, not selected map)
 
 	// Act
-	model := newSelectModel("ENV", "", []string{"staging", "production"}, false, "production")
+	model := menu("ENV", "", []string{"staging", "production"}, false, "production")
 
 	// Assert
 	if len(model.selected) != 0 {
@@ -46,21 +51,16 @@ func TestNewSelectModel_SingleWithDefault_DoesNotPreSelect(t *testing.T) {
 }
 
 func TestSelectModel_MultiEnter_NoSelections(t *testing.T) {
-	// given a required multi-select with no items toggled, when enter pressed, then the prompt stays open (why: without optional an empty list is no answer)
+	// given a required multi-select with no items toggled, when enter pressed, then the prompt stays open with the judge's refusal on its error line (why: without optional an empty list is no answer)
 	// Arrange
-	model := selectModel{
-		varName:  "TAGS",
-		items:    []string{"a", "b", "c"},
-		multi:    true,
-		selected: make(map[int]bool),
-	}
+	model := menu("TAGS", "", []string{"a", "b", "c"}, true)
 
 	// Act
-	updated, _ := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	if got := updated.(selectModel); got.done || got.skipped {
-		t.Errorf("done=%v skipped=%v, want the prompt still open", got.done, got.skipped)
+	if model.done || !strings.Contains(model.View(), "✗ pick at least one option") {
+		t.Errorf("done=%v view %q, want the prompt open with the refusal", model.done, model.View())
 	}
 }
 
@@ -92,15 +92,15 @@ func TestSelectModel_TypingFiltersAndPutsBestMatchFirst(t *testing.T) {
 	// given a menu, when letters are typed and enter pressed, then the best fuzzy match is chosen, not the first item in the list
 	// (why: ranking by match quality, not list order, is what makes typing worth it)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"staging", "pre-ordered-nodes", "production"}, false, "")
+	model := menu("ENV", "", []string{"staging", "pre-ordered-nodes", "production"}, false)
 
 	// Act
 	model = typeInto(model, "prod")
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	if model.value != "production" {
-		t.Errorf("value: got %q, want production (why: the contiguous match outranks the scattered one)", model.value)
+	if model.answer.String() != "production" {
+		t.Errorf("value: got %q, want production (why: the contiguous match outranks the scattered one)", model.answer.String())
 	}
 }
 
@@ -108,7 +108,7 @@ func TestSelectModel_SpaceFirstDoesNotStartAFilter(t *testing.T) {
 	// given an empty filter, when space is pressed, then no filter line appears and every item still lists
 	// (why: a leading space is not a filter, so a stray space cannot hide the menu)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"a", "b"}, false, "")
+	model := menu("ENV", "", []string{"a", "b"}, false)
 
 	// Act
 	model = typeInto(model, " ")
@@ -124,15 +124,15 @@ func TestSelectModel_SpaceAfterFirstCharacterIsAFilterCharacter(t *testing.T) {
 	// given a filter that already has a letter, when space then more letters are typed, then the filter holds the space
 	// (why: tab toggles in multi, so the filter is free to contain spaces)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"ab", "a b"}, false, "")
+	model := menu("ENV", "", []string{"ab", "a b"}, false)
 
 	// Act
 	model = typeInto(model, "a b")
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	if model.value != "a b" {
-		t.Errorf("value: got %q, want %q", model.value, "a b")
+	if model.answer.String() != "a b" {
+		t.Errorf("value: got %q, want %q", model.answer.String(), "a b")
 	}
 }
 
@@ -140,7 +140,7 @@ func TestSelectModel_QDoesNotQuit(t *testing.T) {
 	// given a menu, when q is typed, then it filters and the menu stays open
 	// (why: q is a filter letter now; ctrl+c is the only abort)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"queue", "other"}, false, "")
+	model := menu("ENV", "", []string{"queue", "other"}, false)
 
 	// Act
 	model = typeInto(model, "q")
@@ -158,7 +158,7 @@ func TestSelectModel_CtrlCAborts(t *testing.T) {
 	// given a menu, when ctrl+c is pressed, then it aborts
 	// (why: ctrl+c is the only abort key)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"a"}, false, "")
+	model := menu("ENV", "", []string{"a"}, false)
 
 	// Act
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyCtrlC})
@@ -173,8 +173,8 @@ func TestSelectModel_EscClearsFilterThenSkipsWhenOptional(t *testing.T) {
 	// given an optional menu with filter text, when esc is pressed twice, then the first clears the filter and the second skips
 	// (why: esc backs out one level at a time, so a skip never throws away typing by surprise)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"alpha", "beta"}, false, "")
-	model.optional = true
+	model := menu("ENV", "", []string{"alpha", "beta"}, false)
+	model.question.Optional = true
 	model = typeInto(model, "al")
 
 	// Act
@@ -187,8 +187,8 @@ func TestSelectModel_EscClearsFilterThenSkipsWhenOptional(t *testing.T) {
 	if afterFirst.filter != "" || afterFirst.done {
 		t.Errorf("after first esc: filter %q done %v, want cleared and still open", afterFirst.filter, afterFirst.done)
 	}
-	if !model.done || !model.skipped {
-		t.Errorf("after second esc: done %v skipped %v, want both true", model.done, model.skipped)
+	if !model.done || !model.answer.IsEmpty() {
+		t.Errorf("after second esc: done %v answer %v, want done with no answer", model.done, model.answer.Any())
 	}
 }
 
@@ -196,7 +196,7 @@ func TestSelectModel_EscDoesNothingWhenRequired(t *testing.T) {
 	// given a required menu, when esc is pressed, then it stays open
 	// (why: only optional prompts can be skipped)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"a"}, false, "")
+	model := menu("ENV", "", []string{"a"}, false)
 
 	// Act
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEsc})
@@ -211,7 +211,7 @@ func TestSelectModel_MultiTabTogglesAndSelectionSurvivesFiltering(t *testing.T) 
 	// given a multi menu, when an item is toggled, the filter changed and another toggled, then enter returns both in list order
 	// (why: a pick made under one filter must not vanish when the filter changes)
 	// Arrange
-	model := newSelectModel("TAGS", "", []string{"alpha", "beta", "gamma"}, true, "")
+	model := menu("TAGS", "", []string{"alpha", "beta", "gamma"}, true)
 	model = typeInto(model, "gam")
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyTab})
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEsc})
@@ -222,9 +222,9 @@ func TestSelectModel_MultiTabTogglesAndSelectionSurvivesFiltering(t *testing.T) 
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	want := []string{"alpha", "gamma"}
-	if !reflect.DeepEqual(model.values, want) {
-		t.Errorf("values: got %v, want %v", model.values, want)
+	want := []any{"alpha", "gamma"}
+	if !reflect.DeepEqual(model.answer.Any(), want) {
+		t.Errorf("answer: got %v, want %v", model.answer.Any(), want)
 	}
 }
 
@@ -232,9 +232,9 @@ func TestSelectModel_FailingCheckStaysInPromptAndShowsError(t *testing.T) {
 	// given a menu whose check rejects the choice, when enter is pressed, then the prompt stays open with the validation error shown, and a passing choice then completes it
 	// (why: the menu must not close and reopen silently when a check fails)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"bad", "good"}, false, "")
-	model.checkDesc = `ENV == "good"`
-	model.validate = func(v value.Value) (bool, error) { return v.String() == "good", nil }
+	model := menu("ENV", "", []string{"bad", "good"}, false)
+	model.question.CheckDesc = `ENV == "good"`
+	model.question.Check = func(v value.Value) (bool, error) { return v.String() == "good", nil }
 
 	// Act
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
@@ -246,26 +246,8 @@ func TestSelectModel_FailingCheckStaysInPromptAndShowsError(t *testing.T) {
 	if afterBad.done || !strings.Contains(afterBad.View(), `✗ validation failed: ENV == "good"`) {
 		t.Errorf("after bad: done %v view %q, want open with the error line", afterBad.done, afterBad.View())
 	}
-	if !model.done || model.value != "good" {
-		t.Errorf("after good: done %v value %q, want done with good", model.done, model.value)
-	}
-}
-
-func TestSelectModel_MultiCheckSeesTheWholeList(t *testing.T) {
-	// given a multi menu with a validator, when enter is pressed, then the validator gets the list of picks
-	// (why: check: with multi: judges the whole list)
-	// Arrange
-	var seen value.Value
-	model := newSelectModel("TAGS", "", []string{"a", "b"}, true, "")
-	model.validate = func(v value.Value) (bool, error) { seen = v; return true, nil }
-	model = pressSel(model, tea.KeyMsg{Type: tea.KeyTab})
-
-	// Act
-	pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
-
-	// Assert
-	if !reflect.DeepEqual(seen.Any(), []any{"a"}) {
-		t.Errorf("validator saw %v, want [a]", seen.Any())
+	if !model.done || model.answer.String() != "good" {
+		t.Errorf("after good: done %v value %q, want done with good", model.done, model.answer.String())
 	}
 }
 
@@ -273,7 +255,7 @@ func TestSelectModel_View(t *testing.T) {
 	// given menus in various states, when rendered, then the card shows the right body, window and hints
 	// (why: the filter line, more-lines and nothing-matches states are what people navigate by)
 	long := numberedItems(15)
-	scrolled := newSelectModel("PICK", "", long, false, "item-15")
+	scrolled := menu("PICK", "", long, false, "item-15")
 	tests := []struct {
 		name     string
 		model    selectModel
@@ -282,13 +264,13 @@ func TestSelectModel_View(t *testing.T) {
 	}{
 		{
 			name:     "given a short menu with no filter text, when rendered, then there is no filter line and the hints offer filtering",
-			model:    newSelectModel("ENV", "Where to?", []string{"staging", "production"}, false, ""),
+			model:    menu("ENV", "Where to?", []string{"staging", "production"}, false),
 			wantHas:  []string{"╭─ ", "ENV", "│  Where to?", "▶ staging", "  production", "type to filter • ↑↓ move • enter select"},
 			wantLack: []string{"▏", "more", "esc skip", "tab toggle"},
 		},
 		{
 			name:     "given a long menu, when rendered, then ten rows show with a down-more line",
-			model:    newSelectModel("PICK", "", long, false, ""),
+			model:    menu("PICK", "", long, false),
 			wantHas:  []string{"item-10", "↓ 5 more"},
 			wantLack: []string{"item-11", "↑ 5"},
 		},
@@ -300,20 +282,20 @@ func TestSelectModel_View(t *testing.T) {
 		},
 		{
 			name:     "given a filter matching nothing, when rendered, then nothing matches shows under the filter line",
-			model:    typeInto(newSelectModel("PICK", "", long, false, ""), "zzz"),
+			model:    typeInto(menu("PICK", "", long, false), "zzz"),
 			wantHas:  []string{"› zzz▏", "───", "nothing matches"},
 			wantLack: []string{"item-01"},
 		},
 		{
 			name:    "given a multi menu, when rendered, then the hints name tab and enter confirm",
-			model:   newSelectModel("TAGS", "", []string{"a", "b"}, true, ""),
+			model:   menu("TAGS", "", []string{"a", "b"}, true),
 			wantHas: []string{"type to filter • ↑↓ move • tab toggle • enter confirm", "○ a"},
 		},
 		{
 			name: "given an optional menu, when rendered, then the title and hints say it can be skipped",
 			model: func() selectModel {
-				m := newSelectModel("ENV", "", []string{"a"}, false, "")
-				m.optional = true
+				m := menu("ENV", "", []string{"a"}, false)
+				m.question.Optional = true
 				return m
 			}(),
 			wantHas: []string{"(optional)", "esc skip"},
@@ -347,9 +329,9 @@ func TestSelectModel_ErroringCheckShowsItsError(t *testing.T) {
 	// given a menu whose check errors, when enter is pressed, then the prompt stays open and the error line shows the evaluation error
 	// (why: a broken check must explain itself instead of rejecting every answer silently)
 	// Arrange
-	model := newSelectModel("ENV", "", []string{"a", "b"}, false, "")
-	model.checkDesc = "broken"
-	model.validate = func(value.Value) (bool, error) { return false, errors.New("boom") }
+	model := menu("ENV", "", []string{"a", "b"}, false)
+	model.question.CheckDesc = "broken"
+	model.question.Check = func(value.Value) (bool, error) { return false, errors.New("boom") }
 
 	// Act
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
@@ -361,19 +343,17 @@ func TestSelectModel_ErroringCheckShowsItsError(t *testing.T) {
 }
 
 func TestSelectModel_OptionalMultiEnterWithNothingToggledSkips(t *testing.T) {
-	// given an optional multi menu with nothing toggled, when enter is pressed, then it skips without calling check:
+	// given an optional multi menu with nothing toggled, when enter is pressed, then it ends with no answer
 	// (why: [] is no answer, like esc)
 	// Arrange
-	called := false
-	model := newSelectModel("TAGS", "", []string{"a", "b"}, true, "")
-	model.optional = true
-	model.validate = func(value.Value) (bool, error) { called = true; return false, nil }
+	model := menu("TAGS", "", []string{"a", "b"}, true)
+	model.question.Optional = true
 
 	// Act
 	model = pressSel(model, tea.KeyMsg{Type: tea.KeyEnter})
 
 	// Assert
-	if !model.done || !model.skipped || called {
-		t.Errorf("done %v skipped %v check called %v, want skipped without a check", model.done, model.skipped, called)
+	if !model.done || !reflect.DeepEqual(model.answer.Any(), []any{}) {
+		t.Errorf("done %v answer %v, want done with no answer", model.done, model.answer.Any())
 	}
 }

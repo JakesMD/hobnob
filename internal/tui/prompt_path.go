@@ -1,66 +1,18 @@
 package tui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
+	"hobnob/internal/ask"
 	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// PathPrompt is everything the picker takes in. Paths written in the taskfile
-// (Default) resolve against WorkDir and the start directory against Invoke;
-// the filter line always holds the resulting absolute path. The caller passes
-// both as absolute directories. Included and Excluded are the
-// caller's predicates for match: (tui never learns about match:); both are
-// applied on top of the type and the junk-name list, and either may be nil.
-//
-//   - Included is the plain patterns: in a file picker it hides non-matching
-//     files (never directories); in a dir picker non-matching directories can
-//     be opened but not picked.
-//   - Excluded is the "!" patterns: whatever it reports true for is hidden,
-//     directories included.
-type PathPrompt struct {
-	Type     string // "file" or "dir"
-	VarName  string
-	Info     string
-	Start    string   // start directory as written: relative to Invoke, ~-based or absolute; empty means WorkDir
-	Invoke   string   // absolute directory that relative paths resolve against
-	WorkDir  string   // absolute directory of the asking task (dir:, else the taskfile's); relative Default items resolve against it and an empty Start opens in it; empty means Invoke
-	Default  []string // as written in the taskfile (relative to WorkDir, ~-based or absolute); first one decides where the picker opens
-	Multi    bool     // tab toggles picks, enter confirms them all; Default is the initial picks
-	Optional bool     // esc clears the segment, then gives no answer
-	Included func(path string, isDir bool) bool
-	Excluded func(path string, isDir bool) bool
-	Error    string // shown on the error line until the first key: why the picker reopened
-}
-
 const pathListHeight = 12
-
-// junkNames are never listed, on every OS (spec §5). Compared
-// case-insensitively; "._*" is handled as a prefix.
-var junkNames = []string{
-	".DS_Store", ".Spotlight-V100", ".Trashes", ".fseventsd", ".TemporaryItems",
-	"Icon\r", "Thumbs.db", "desktop.ini", "$RECYCLE.BIN", "System Volume Information",
-}
-
-// IsJunk reports whether name is never listed or picked.
-func IsJunk(name string) bool {
-	if strings.HasPrefix(name, "._") {
-		return true
-	}
-	for _, junk := range junkNames {
-		if strings.EqualFold(name, junk) {
-			return true
-		}
-	}
-	return false
-}
 
 type pathEntry struct {
 	name     string
@@ -75,42 +27,28 @@ type pathRow struct {
 }
 
 type pathModel struct {
-	prompt    PathPrompt
-	task      string
-	home      string
+	question  ask.Question
+	rules     ask.PathRules
+	errMsg    string
 	text      string // the filter line: always an absolute path; up to the last "/" is the listed directory
 	cursor    int
 	offset    int
-	errMsg    string
-	picked    string
+	answer    value.Value
 	picks     []string // multi: absolute paths picked so far, in pick order
 	done      bool
 	quit      bool
-	skipped   bool // esc on an optional picker: no answer
 	termWidth int
 }
 
-func newPathModel(prompt PathPrompt) pathModel {
-	home, _ := os.UserHomeDir()
-	m := pathModel{prompt: prompt, home: home, errMsg: prompt.Error}
-	if m.prompt.WorkDir == "" {
-		m.prompt.WorkDir = prompt.Invoke
+func newPathModel(q ask.Question) pathModel {
+	m := pathModel{question: q, rules: *q.Path}
+	open, picks := m.rules.Opening(q.Multi)
+	m.text = withSlash(open)
+	if q.Multi {
+		m.picks = picks
 	}
-	if prompt.Start == "" {
-		m.text = withSlash(m.resolve("", m.prompt.WorkDir))
-	} else {
-		m.text = withSlash(m.resolve(prompt.Start, prompt.Invoke))
-	}
-	if prompt.Multi {
-		for _, d := range prompt.Default {
-			abs := m.resolve(d, m.prompt.WorkDir)
-			if info, err := os.Stat(abs); err == nil && info.IsDir() == (prompt.Type == "dir") && m.pickable(abs, info.IsDir()) {
-				m.picks = append(m.picks, abs)
-			}
-		}
-	}
-	if len(prompt.Default) > 0 {
-		m.open(prompt.Default[0])
+	if target := m.rules.DefaultTarget(); target != "" {
+		m.highlight(target)
 	}
 	return m
 }
@@ -121,59 +59,6 @@ func withSlash(p string) string {
 		return p
 	}
 	return p + "/"
-}
-
-// resolve turns a path as written into an absolute one; relative paths
-// resolve against base, and empty means base itself.
-func (m pathModel) resolve(written, base string) string {
-	return ResolvePath(written, base, m.home)
-}
-
-// ResolvePath is resolve for a picker whose home folder is home.
-func ResolvePath(written, base, home string) string {
-	switch {
-	case written == "":
-		return filepath.Clean(base)
-	case written == "~" || strings.HasPrefix(written, "~/"):
-		return filepath.Join(home, strings.TrimPrefix(written, "~"))
-	case filepath.IsAbs(written):
-		return filepath.Clean(written)
-	}
-	return filepath.Join(base, written)
-}
-
-// NearestFolder is dir, or its nearest ancestor that exists as a folder.
-func NearestFolder(dir string) string {
-	for {
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
-			return dir
-		}
-		next := filepath.Dir(dir)
-		if next == dir {
-			return dir
-		}
-		dir = next
-	}
-}
-
-// open positions the picker for a default: a default of the prompt's kind is
-// highlighted in its directory, a directory given to a file picker is where
-// browsing starts, and anything else opens the nearest existing parent with
-// nothing selected.
-func (m *pathModel) open(written string) {
-	abs := m.resolve(written, m.prompt.WorkDir)
-	info, err := os.Stat(abs)
-	switch {
-	case err == nil && info.IsDir() && m.prompt.Type == "file":
-		m.text = withSlash(abs)
-		return
-	case err == nil && info.IsDir() == (m.prompt.Type == "dir"):
-		m.text = withSlash(filepath.Dir(abs))
-		m.highlight(abs)
-		return
-	}
-	dir := NearestFolder(filepath.Dir(abs))
-	m.text = withSlash(dir)
 }
 
 func (m *pathModel) highlight(abs string) {
@@ -204,75 +89,13 @@ func (m pathModel) dirExists() bool {
 	return err == nil && info.IsDir()
 }
 
-// pickable reports whether a listed entry at abs could be picked: not junk,
-// not Excluded, and Included.
-func (m pathModel) pickable(abs string, isDir bool) bool {
-	return m.prompt.Allows(abs, isDir)
-}
-
-// Allows reports whether abs could be picked: not junk, not Excluded, and
-// Included.
-func (p PathPrompt) Allows(abs string, isDir bool) bool {
-	return !IsJunk(filepath.Base(abs)) &&
-		(p.Excluded == nil || !p.Excluded(abs, isDir)) &&
-		(p.Included == nil || p.Included(abs, isDir))
-}
-
-// PathEntry is a file or folder a picker lists. A folder that isn't Pickable
-// can still be opened.
-type PathEntry struct {
-	Name     string
-	Dir      bool
-	Pickable bool
-}
-
 func (m pathModel) entries() []pathEntry {
-	listed := ListDir(m.dir(), m.prompt)
+	listed := m.rules.List(m.dir())
 	out := make([]pathEntry, len(listed))
 	for i, e := range listed {
 		out[i] = pathEntry{e.Name, e.Dir, e.Pickable}
 	}
 	return out
-}
-
-// ListDir lists dir for a picker, applying the junk list, the type and the
-// caller's predicates. Directories come first, then by name ignoring case.
-func ListDir(dir string, prompt PathPrompt) []PathEntry {
-	items, _ := os.ReadDir(dir)
-	var dirs, files []PathEntry
-	for _, item := range items {
-		if IsJunk(item.Name()) {
-			continue
-		}
-		abs := filepath.Join(dir, item.Name())
-		isDir := item.IsDir()
-		if item.Type()&os.ModeSymlink != 0 {
-			if info, err := os.Stat(abs); err == nil {
-				isDir = info.IsDir()
-			}
-		}
-		if prompt.Type == "dir" && !isDir {
-			continue
-		}
-		if prompt.Excluded != nil && prompt.Excluded(abs, isDir) {
-			continue
-		}
-		included := prompt.Included == nil || prompt.Included(abs, isDir)
-		if !isDir && !included {
-			continue
-		}
-		if isDir {
-			dirs = append(dirs, PathEntry{item.Name(), true, prompt.Type == "dir" && included})
-		} else {
-			files = append(files, PathEntry{item.Name(), false, true})
-		}
-	}
-	byName := func(s []PathEntry) {
-		sort.SliceStable(s, func(i, j int) bool { return strings.ToLower(s[i].Name) < strings.ToLower(s[j].Name) })
-	}
-	byName(dirs)
-	byName(files)
-	return append(dirs, files...)
 }
 
 func (m pathModel) rows() []pathRow {
@@ -281,8 +104,8 @@ func (m pathModel) rows() []pathRow {
 		return nil
 	}
 	seg := m.seg()
-	if m.prompt.Type == "dir" && seg == "" {
-		here := m.pickable(m.dir(), true)
+	if m.rules.Dir && seg == "" {
+		here := m.rules.Allows(m.dir(), true)
 		out = append(out, pathRow{pathEntry: pathEntry{name: ".", isDir: true, pickable: here}, here: true})
 	}
 	entries := m.entries()
@@ -302,7 +125,7 @@ func (m pathModel) renderRow(rows []pathRow) func(i int) string {
 		row := rows[i]
 		var b strings.Builder
 		b.WriteString(cursorPrefix(i == m.cursor))
-		if m.prompt.Multi {
+		if m.question.Multi {
 			switch {
 			case m.isPicked(m.rowPath(row)):
 				b.WriteString(SChecked.Render("◉ "))
@@ -322,6 +145,13 @@ func (m pathModel) renderRow(rows []pathRow) func(i int) string {
 		}
 		return b.String()
 	}
+}
+
+func (m pathModel) finished() error {
+	if m.quit {
+		return fmt.Errorf("aborted")
+	}
+	return nil
 }
 
 func (m pathModel) Init() tea.Cmd { return nil }
@@ -391,14 +221,13 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case m.seg() != "":
 			m.setText(m.dirText())
-		case m.prompt.Optional:
-			m.skipped, m.done = true, true
-			return m, tea.Quit
+		case m.question.Optional:
+			return m.judge(ask.Answer{})
 		}
 	case "tab":
 		switch {
 		case !hasRow:
-		case m.prompt.Multi:
+		case m.question.Multi:
 			if row.pickable {
 				m.toggle(m.rowPath(row))
 				m.cursor++
@@ -410,21 +239,16 @@ func (m pathModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case "enter":
 		switch {
-		case m.prompt.Multi && len(m.picks) > 0:
-			m.done = true
-			return m, tea.Quit
+		case m.question.Multi && len(m.picks) > 0:
+			return m.judge(ask.Answer{Picks: m.picks})
 		case !hasRow:
 			m.errMsg = "nothing matches"
-		case row.isDir && !row.here && m.prompt.Type == "file":
+		case row.isDir && !row.here && !m.rules.Dir:
 			m.errMsg = "that's a directory: → opens it"
 		case !row.pickable:
 			m.errMsg = "doesn't match"
-		case m.prompt.Multi:
-			m.picks = []string{m.rowPath(row)}
-			m.done = true
-			return m, tea.Quit
 		default:
-			return m.finish(m.rowPath(row))
+			return m.judge(ask.Answer{Picks: []string{m.rowPath(row)}})
 		}
 	default:
 		if key.Type == tea.KeyRunes || key.Type == tea.KeySpace {
@@ -465,8 +289,15 @@ func (m pathModel) isPicked(path string) bool {
 	return false
 }
 
-func (m pathModel) finish(path string) (tea.Model, tea.Cmd) {
-	m.picked = path
+// judge takes the verdict on answer: a refusal shows on the error line, an
+// acceptance or a skip ends the prompt.
+func (m pathModel) judge(answer ask.Answer) (tea.Model, tea.Cmd) {
+	verdict := m.question.Judge(answer)
+	if verdict.Refusal != "" {
+		m.errMsg = verdict.Refusal
+		return m, nil
+	}
+	m.answer = verdict.Value
 	m.done = true
 	return m, tea.Quit
 }
@@ -489,20 +320,20 @@ func (m pathModel) View() string {
 		return ""
 	}
 	frame := card{
-		task:      m.task,
-		varName:   m.prompt.VarName,
-		optional:  m.prompt.Optional,
-		info:      m.prompt.Info,
+		task:      m.question.Task,
+		varName:   m.question.VarName,
+		optional:  m.question.Optional,
+		info:      m.question.Info,
 		errMsg:    m.errMsg,
 		termWidth: m.termWidth,
 	}
 	tab := hint{"tab", "complete"}
 	enter := hint{"enter", "pick"}
-	if m.prompt.Multi {
+	if m.question.Multi {
 		tab, enter = hint{"tab", "toggle"}, hint{"enter", "confirm"}
 	}
 	frame.hints = []hint{{"", "type to filter"}, {"↑↓", "move"}, {"←", "up"}, {"→", "open"}, tab, enter}
-	if m.prompt.Optional {
+	if m.question.Optional {
 		frame.hints = append(frame.hints, hint{"esc", "skip"})
 	}
 
@@ -523,32 +354,4 @@ func (m pathModel) View() string {
 	}
 	frame.body = strings.Join(lines, "\n")
 	return frame.render()
-}
-
-// PromptPath runs the picker and returns the picked absolute path.
-// With Multi the value is a list of absolute paths. answered is false when an
-// optional picker was escaped: there is no answer and nothing is printed.
-func PromptPath(ctx context.Context, prompt PathPrompt, task string, secret bool) (val value.Value, answered bool, err error) {
-	model := newPathModel(prompt)
-	model.task = task
-	result, err := tea.NewProgram(model, tea.WithContext(ctx)).Run()
-	if err != nil {
-		return value.Value{}, false, err
-	}
-	final := result.(pathModel)
-	if final.quit {
-		return value.Value{}, false, fmt.Errorf("aborted")
-	}
-	if final.skipped {
-		return value.Value{}, false, nil
-	}
-	val = value.Str(final.picked)
-	if prompt.Multi {
-		list := make([]any, len(final.picks))
-		for i, p := range final.picks {
-			list[i] = p
-		}
-		val = value.Of(list)
-	}
-	return val, true, nil
 }

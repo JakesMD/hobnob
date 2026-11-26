@@ -7,9 +7,9 @@ import (
 // SetPrompts substitutes the terminal prompt implementations that
 // TerminalPrompts returns, and returns a func that restores them. Test-only
 // seam: a caller handing ExecuteTask its own Prompts is unaffected.
-func SetPrompts(text TextPromptFunc, sel SelectPromptFunc, path PathPromptFunc, say SayPromptFunc) (restore func()) {
+func SetPrompts(ask AskFunc, say SayPromptFunc) (restore func()) {
 	orig := terminalPrompts
-	terminalPrompts = Prompts{Text: text, Select: sel, Path: path, Say: say}
+	terminalPrompts = Prompts{Ask: ask, Say: say}
 	return func() { terminalPrompts = orig }
 }
 

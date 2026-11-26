@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"hobnob/internal/tui"
+	"hobnob/internal/ask"
 	"hobnob/internal/value"
 )
 
@@ -42,35 +42,19 @@ type Entry struct {
 	Pickable bool   `json:"pickable,omitempty"`
 }
 
-// pickerRules is what a picker prompt allows, from its tui.PathPrompt.
-type pickerRules struct {
-	prompt tui.PathPrompt
-	home   string
+// pickerView lists a picker's folders, by the rules its question carries.
+type pickerView struct {
+	rules ask.PathRules
+	home  string
 }
 
-func newPickerRules(prompt tui.PathPrompt) pickerRules {
+func newPickerView(rules ask.PathRules) pickerView {
 	home, _ := os.UserHomeDir()
-	if prompt.WorkDir == "" {
-		prompt.WorkDir = prompt.Invoke
-	}
-	return pickerRules{prompt: prompt, home: home}
+	return pickerView{rules: rules, home: home}
 }
 
-func (r pickerRules) resolve(written, base string) string {
-	return tui.ResolvePath(written, base, r.home)
-}
-
-func (r pickerRules) isDirPicker() bool { return r.prompt.Type == "dir" }
-
-// allows says abs may be picked, by the terminal picker's rules.
-func (r pickerRules) allows(abs string, isDir bool) bool {
-	return r.prompt.Allows(abs, isDir)
-}
-
-func (r pickerRules) kindFits(isDir bool) bool { return isDir == r.isDirPicker() }
-
-func (r pickerRules) list(dir string) []Entry {
-	listed := tui.ListDir(dir, r.prompt)
+func (r pickerView) list(dir string) []Entry {
+	listed := r.rules.List(dir)
 	entries := make([]Entry, len(listed))
 	for i, e := range listed {
 		entries[i] = Entry{Name: e.Name, Dir: e.Dir, Pickable: e.Pickable}
@@ -80,7 +64,7 @@ func (r pickerRules) list(dir string) []Entry {
 
 // view lists the columns from the home folder, or the filesystem root when
 // open isn't under it, down to open.
-func (r pickerRules) view(open string, selected []string) *Picker {
+func (r pickerView) view(open string, selected []string) *Picker {
 	root := string(filepath.Separator)
 	if r.home != "" && (open == r.home || strings.HasPrefix(open, r.home+string(filepath.Separator))) {
 		root = r.home
@@ -90,7 +74,7 @@ func (r pickerRules) view(open string, selected []string) *Picker {
 		dir = filepath.Dir(dir)
 		chain = append([]string{dir}, chain...)
 	}
-	view := &Picker{Type: r.prompt.Type, Open: open, Selected: selected, Columns: []Column{}}
+	view := &Picker{Type: pickerType(r.rules), Open: open, Selected: selected, Columns: []Column{}}
 	for i, dir := range chain {
 		column := Column{Path: dir, Entries: r.list(dir)}
 		if i+1 < len(chain) {
@@ -104,121 +88,91 @@ func (r pickerRules) view(open string, selected []string) *Picker {
 	return view
 }
 
-// start is where the picker opens and what it starts with picked. See
-// docs/guide/browser-mode.md for the rules.
-func (r pickerRules) start() (open string, selected []string) {
-	prompt := r.prompt
-	open = r.resolve("", prompt.WorkDir)
-	if prompt.Start != "" {
-		open = r.resolve(prompt.Start, prompt.Invoke)
+func pickerType(rules ask.PathRules) string {
+	if rules.Dir {
+		return "dir"
 	}
-	for i, written := range prompt.Default {
-		if i > 0 && !prompt.Multi {
-			break
-		}
-		abs := r.resolve(written, prompt.WorkDir)
-		info, err := os.Stat(abs)
-		if err != nil || !r.kindFits(info.IsDir()) || !r.allows(abs, info.IsDir()) {
-			continue
-		}
-		selected = append(selected, abs)
-	}
-	if len(prompt.Default) > 0 {
-		abs := r.resolve(prompt.Default[0], prompt.WorkDir)
-		open = filepath.Dir(abs)
-		if info, err := os.Stat(abs); err == nil && info.IsDir() {
-			open = abs
-		}
-	}
-	return tui.NearestFolder(open), selected
+	return "file"
 }
 
-// pick checks the answer's paths, whatever the page sent, and says why not.
-func (r pickerRules) pick(raw json.RawMessage) (paths []string, refusal string) {
-	if r.prompt.Multi {
-		if err := json.Unmarshal(raw, &paths); err != nil {
-			return nil, "the answer must be a list of paths"
-		}
-	} else {
-		var one string
-		if err := json.Unmarshal(raw, &one); err != nil {
-			return nil, "the answer must be a path"
-		}
-		if one != "" {
-			paths = []string{one}
-		}
+// start is the folder the page opens and what it starts with picked. A
+// folder picker opens the folder its default names, as picking one opens it
+// on the page, even when match: keeps it from starting picked.
+func (r pickerView) start(multi bool) (open string, selected []string) {
+	open, selected = r.rules.Opening(multi)
+	if target := r.rules.DefaultTarget(); r.rules.Dir && target != "" {
+		open = target
 	}
-	seen := map[string]bool{}
-	kept := paths[:0]
-	for _, path := range paths {
-		if !filepath.IsAbs(path) {
-			return nil, fmt.Sprintf("%s isn't an absolute path", path)
-		}
-		path = filepath.Clean(path)
-		info, err := os.Stat(path)
-		switch {
-		case err != nil:
-			return nil, fmt.Sprintf("%s doesn't exist", path)
-		case r.isDirPicker() && !info.IsDir():
-			return nil, fmt.Sprintf("%s isn't a folder", path)
-		case !r.isDirPicker() && info.IsDir():
-			return nil, fmt.Sprintf("%s is a folder, not a file", path)
-		case !r.allows(path, info.IsDir()):
-			return nil, fmt.Sprintf("%s doesn't match", path)
-		}
-		if !seen[path] {
-			seen[path] = true
-			kept = append(kept, path)
-		}
-	}
-	return kept, ""
+	return open, selected
 }
 
-// PromptPath asks for a file or folder in the page. Its signature is
-// runner.PathPromptFunc's. The picker the page shows is the one the terminal
-// gets: the same start, the same predicates for match:.
-func (s *state) PromptPath(ctx context.Context, prompt tui.PathPrompt, _ string, secret bool) (value.Value, bool, error) {
-	rules := newPickerRules(prompt)
-	open, selected := rules.start()
-	p := Prompt{Kind: KindPath, VarName: prompt.VarName, Info: prompt.Info, Optional: prompt.Optional,
-		Multi: prompt.Multi, Refusal: prompt.Error, Picker: rules.view(open, selected)}
-	var picked []string
-	skipped, err := s.askPicker(ctx, p, rules, func(raw json.RawMessage) (RailEntry, string, bool) {
-		paths, refusal := rules.pick(raw)
+// readPaths reads a picker's answer: the picked paths, each absolute as the
+// page lists them.
+func readPaths(multi bool) func(json.RawMessage) (ask.Answer, string) {
+	return func(raw json.RawMessage) (ask.Answer, string) {
+		var paths []string
+		if multi {
+			if err := json.Unmarshal(raw, &paths); err != nil {
+				return ask.Answer{}, "the answer must be a list of paths"
+			}
+		} else {
+			var one string
+			if err := json.Unmarshal(raw, &one); err != nil {
+				return ask.Answer{}, "the answer must be a path"
+			}
+			if one != "" {
+				paths = []string{one}
+			}
+		}
+		for _, path := range paths {
+			if !filepath.IsAbs(path) {
+				return ask.Answer{}, fmt.Sprintf("%s isn't an absolute path", path)
+			}
+		}
+		return ask.Answer{Picks: paths}, ""
+	}
+}
+
+// promptPath asks for a file or folder in the page. The page only reads what
+// the person picked into an ask.Answer; q's judge rules on it, as it does
+// for the terminal.
+func (s *state) promptPath(ctx context.Context, q ask.Question) (value.Value, error) {
+	view := newPickerView(*q.Path)
+	open, selected := view.start(q.Multi)
+	p := Prompt{Kind: KindPath, VarName: q.VarName, Info: q.Info, Optional: q.Optional,
+		Multi: q.Multi, Picker: view.view(open, selected)}
+	read := readPaths(q.Multi)
+	var answer value.Value
+	skipped, err := s.askPicker(ctx, p, view, func(raw json.RawMessage) (RailEntry, string, bool) {
+		given, refusal := read(raw)
 		if refusal != "" {
 			return RailEntry{}, refusal, false
 		}
-		if len(paths) == 0 {
-			if prompt.Optional {
-				return RailEntry{}, "", true
-			}
-			return RailEntry{}, "an answer is required", false
+		verdict := q.Judge(given)
+		if verdict.Refusal != "" {
+			return RailEntry{}, verdict.Refusal, false
 		}
-		picked = paths
-		entry := RailEntry{Label: label(prompt.Info, prompt.VarName), Value: strings.Join(paths, ", ")}
-		if secret {
+		if verdict.Skipped {
+			return RailEntry{}, "", true
+		}
+		answer = verdict.Value
+		entry := RailEntry{Label: label(q.Info, q.VarName), Value: shown(answer)}
+		if q.Secret {
 			entry.Value = maskedAnswer
 		}
 		return entry, "", false
 	})
 	if err != nil {
-		return value.Value{}, false, err
+		return value.Value{}, err
 	}
 	if skipped {
-		return value.Value{}, false, nil
+		return q.Judge(ask.Answer{}).Value, nil
 	}
-	if prompt.Multi {
-		list := make([]any, len(picked))
-		for i, path := range picked {
-			list[i] = path
-		}
-		return value.Of(list), true, nil
-	}
-	return value.Str(picked[0]), true, nil
+	return answer, nil
 }
 
 // askPicker is ask for a picker, which can also change its open folder.
-func (s *state) askPicker(ctx context.Context, p Prompt, rules pickerRules, judge judge) (bool, error) {
+func (s *state) askPicker(ctx context.Context, p Prompt, view pickerView, judge judge) (bool, error) {
 	selected := p.Picker.Selected
 	return s.ask(ctx, p, judge, func(open *openPrompt) {
 		open.browse = func(path string) error {
@@ -226,8 +180,8 @@ func (s *state) askPicker(ctx context.Context, p Prompt, rules pickerRules, judg
 			if err != nil || !info.IsDir() || !filepath.IsAbs(path) {
 				return fmt.Errorf("%s isn't a folder to open", path)
 			}
-			view := rules.view(filepath.Clean(path), selected)
-			return s.settle(open, func() { open.Picker = view })
+			listing := view.view(filepath.Clean(path), selected)
+			return s.settle(open, func() { open.Picker = listing })
 		}
 	})
 }
