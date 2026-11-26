@@ -5,12 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
+
+	"hobnob/internal/ask"
+	"hobnob/internal/value"
 )
 
 // Kinds of prompt a Snapshot can carry.
 const (
 	KindText = "text"
+	// KindMenu offers options, one choice or several.
+	KindMenu = "menu"
 	// KindSay is a say: step's message: Info, with only Continue to answer it.
 	KindSay = "say"
 )
@@ -177,54 +183,104 @@ func (s *state) settle(open *openPrompt, change func()) error {
 	return err
 }
 
-// PromptText asks for free text in the page. Its signature is
-// runner.TextPromptFunc's; check: and match: arrive as validate.
-func (s *state) PromptText(ctx context.Context, info, varName string,
-	validate func(string) (bool, error), checkDesc, defaultVal, _ string,
-	secret, optional bool) (string, error) {
-	prompt := Prompt{Kind: KindText, VarName: varName, Info: info, Default: defaultVal,
-		HasDefault: defaultVal != "", Secret: secret, Optional: optional}
-	if secret {
-		prompt.Default = ""
-	}
-	var answer string
-	skipped, err := s.ask(ctx, prompt, func(raw json.RawMessage) (RailEntry, string, bool) {
-		var text string
-		// null is Continue on a secret's field left as its masked default,
-		// whose text the page never has.
-		untouchedDefault := string(raw) == "null"
-		if err := json.Unmarshal(raw, &text); err != nil {
-			return RailEntry{}, "the answer must be text", false
+// PromptAsk puts q to the person in the page: a menu when it has options,
+// else a text field. Its signature is runner.AskFunc's. The page only reads
+// what the person did into an ask.Answer; q's judge rules on it. A secret
+// is masked on the rail, and its default never reaches the page.
+func (s *state) PromptAsk(ctx context.Context, q ask.Question) (value.Value, error) {
+	prompt := Prompt{VarName: q.VarName, Info: q.Info, Secret: q.Secret, Optional: q.Optional, Multi: q.Multi}
+	read := readText
+	if q.IsMenu() {
+		prompt.Kind, prompt.Options = KindMenu, q.Options
+		if q.Multi {
+			prompt.Defaults = q.Picks
+		} else if len(q.Picks) > 0 {
+			prompt.Default, prompt.HasDefault = q.Picks[0], true
 		}
-		if text == "" && optional && !(untouchedDefault && defaultVal != "") {
+		read = readPicks(q.Multi)
+	} else {
+		prompt.Kind, prompt.HasDefault = KindText, q.Default != ""
+		if !q.Secret {
+			prompt.Default = q.Default
+		}
+	}
+	var answer value.Value
+	skipped, err := s.ask(ctx, prompt, func(raw json.RawMessage) (RailEntry, string, bool) {
+		given, refusal := read(raw)
+		if refusal != "" {
+			return RailEntry{}, refusal, false
+		}
+		verdict := q.Judge(given)
+		if verdict.Refusal != "" {
+			return RailEntry{}, verdict.Refusal, false
+		}
+		if verdict.Skipped {
 			return RailEntry{}, "", true
 		}
-		if text == "" {
-			text = defaultVal
-		}
-		if text == "" {
-			return RailEntry{}, "an answer is required", false
-		}
-		if validate != nil {
-			ok, err := validate(text)
-			if err != nil {
-				return RailEntry{}, fmt.Sprintf("check failed: %v", err), false
-			}
-			if !ok {
-				return RailEntry{}, "validation failed: " + checkDesc, false
-			}
-		}
-		answer = text
-		entry := RailEntry{Label: label(info, varName), Value: text}
-		if secret {
+		answer = verdict.Value
+		entry := RailEntry{Label: label(q.Info, q.VarName), Value: shown(answer)}
+		if q.Secret {
 			entry.Value = maskedAnswer
 		}
 		return entry, "", false
 	})
-	if err != nil || skipped {
-		return "", err
+	if err != nil {
+		return value.Value{}, err
+	}
+	if skipped {
+		return q.Judge(ask.Answer{}).Value, nil
 	}
 	return answer, nil
+}
+
+// readText reads a text answer. null is Continue on a field left as its
+// starting text, which a secret's masked default is the page never has.
+func readText(raw json.RawMessage) (ask.Answer, string) {
+	if string(raw) == "null" {
+		return ask.Answer{Untouched: true}, ""
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err != nil {
+		return ask.Answer{}, "the answer must be text"
+	}
+	return ask.Answer{Text: text}, ""
+}
+
+// readPicks reads a menu answer: null is Continue on an untouched menu.
+func readPicks(multi bool) func(json.RawMessage) (ask.Answer, string) {
+	return func(raw json.RawMessage) (ask.Answer, string) {
+		if string(raw) == "null" {
+			return ask.Answer{Untouched: true}, ""
+		}
+		if multi {
+			var picks []string
+			if err := json.Unmarshal(raw, &picks); err != nil {
+				return ask.Answer{}, "the answer must be a list of options"
+			}
+			return ask.Answer{Picks: picks}, ""
+		}
+		var one string
+		if err := json.Unmarshal(raw, &one); err != nil {
+			return ask.Answer{}, "the answer must be one of the options"
+		}
+		if one == "" {
+			return ask.Answer{}, ""
+		}
+		return ask.Answer{Picks: []string{one}}, ""
+	}
+}
+
+// shown is an answer as the rail reads it.
+func shown(answer value.Value) string {
+	list, ok := answer.Any().([]any)
+	if !ok {
+		return answer.String()
+	}
+	parts := make([]string, len(list))
+	for i, item := range list {
+		parts[i] = value.Of(item).String()
+	}
+	return strings.Join(parts, ", ")
 }
 
 // PromptSay shows message in the page until the person continues. Its

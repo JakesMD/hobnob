@@ -1,99 +1,57 @@
 package tui
 
 import (
-	"context"
 	"fmt"
+	"slices"
 	"strings"
 
+	"hobnob/internal/ask"
 	"hobnob/internal/value"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func newSelectModel(varName, info string, items []string, multi bool, defaultVal string) selectModel {
+func newSelectModel(q ask.Question) selectModel {
 	cursor := 0
-	preselected := make(map[int]bool)
-	if defaultVal != "" {
-		for i, item := range items {
-			if item == defaultVal {
-				cursor = i
-				if multi {
-					preselected[i] = true
-				}
-				break
-			}
+	selected := make(map[int]bool)
+	for i, item := range q.Options {
+		if len(q.Picks) > 0 && item == q.Picks[0] {
+			cursor = i
+		}
+		if q.Multi && slices.Contains(q.Picks, item) {
+			selected[i] = true
 		}
 	}
 	return selectModel{
-		varName:   varName,
-		info:      info,
-		items:     items,
-		multi:     multi,
+		question:  q,
+		items:     q.Options,
 		listState: listState{cursor: cursor, offset: scrollTo(cursor, 0, menuListHeight)},
-		selected:  preselected,
+		selected:  selected,
 	}
-}
-
-// PromptSelect shows a menu. validate, when non-nil, judges the choice on
-// enter (the whole list under multi) and checkDesc is what the error line
-// shows when it refuses: tui never needs to know how a check is evaluated.
-// Skipping an optional menu returns an empty value.
-func PromptSelect(ctx context.Context, varName, info string, items []string, multi bool, defaultVal string, task string, secret, optional bool, validate func(value.Value) (bool, error), checkDesc string) (value.Value, error) {
-	model := newSelectModel(varName, info, items, multi, defaultVal)
-	model.task, model.optional, model.validate, model.checkDesc = task, optional, validate, checkDesc
-	program := tea.NewProgram(model, tea.WithContext(ctx))
-	result, err := program.Run()
-	if err != nil {
-		return value.Value{}, err
-	}
-	final := result.(selectModel)
-	if final.quit {
-		return value.Value{}, fmt.Errorf("aborted")
-	}
-	if final.skipped {
-		if multi {
-			return value.Of([]any{}), nil
-		}
-		return value.Str(""), nil
-	}
-
-	return final.answer(), nil
 }
 
 type selectModel struct {
-	varName   string
-	task      string
-	info      string
-	items     []string
-	multi     bool
-	optional  bool
-	validate  func(value.Value) (bool, error)
-	checkDesc string
+	question ask.Question
+	items    []string
 	listState
 	selected  map[int]bool
-	value     string   // single-select result
-	values    []string // multi-select result
+	answer    value.Value
 	errMsg    string
 	done      bool
-	skipped   bool
 	quit      bool
 	termWidth int
+}
+
+func (model selectModel) finished() error {
+	if model.quit {
+		return fmt.Errorf("aborted")
+	}
+	return nil
 }
 
 func (model selectModel) Init() tea.Cmd { return nil }
 
 func (model selectModel) rows() []listRow { return matchRows(model.items, model.filter) }
-
-func (model selectModel) answer() value.Value {
-	if !model.multi {
-		return value.Str(model.value)
-	}
-	arr := make([]any, len(model.values))
-	for i, val := range model.values {
-		arr[i] = val
-	}
-	return value.Of(arr)
-}
 
 func (model selectModel) picks() []string {
 	picked := []string{}
@@ -123,12 +81,11 @@ func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case model.filter != "":
 			model.setFilter("")
 			model.errMsg = ""
-		case model.optional:
-			model.done, model.skipped = true, true
-			return model, tea.Quit
+		case model.question.Optional:
+			return model.judge(ask.Answer{})
 		}
 	case tea.KeyTab:
-		if rows := model.rows(); model.multi && len(rows) > 0 {
+		if rows := model.rows(); model.question.Multi && len(rows) > 0 {
 			idx := rows[model.cursor].index
 			model.selected[idx] = !model.selected[idx]
 			model.errMsg = ""
@@ -144,33 +101,25 @@ func (model selectModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (model selectModel) confirm() (tea.Model, tea.Cmd) {
-	if model.multi {
-		model.values = model.picks()
-		if model.optional && len(model.values) == 0 {
-			model.done, model.skipped = true, true
-			return model, tea.Quit
-		}
-		if len(model.values) == 0 {
-			return model, nil
-		}
-	} else {
-		rows := model.rows()
-		if len(rows) == 0 {
-			return model, nil
-		}
-		model.value = model.items[rows[model.cursor].index]
+	if model.question.Multi {
+		return model.judge(ask.Answer{Picks: model.picks()})
 	}
-	if model.validate != nil && !(model.optional && model.answer().IsEmpty()) {
-		ok, err := model.validate(model.answer())
-		if err != nil {
-			model.errMsg = fmt.Sprintf("check failed: %v", err)
-			return model, nil
-		}
-		if !ok {
-			model.errMsg = fmt.Sprintf("validation failed: %s", model.checkDesc)
-			return model, nil
-		}
+	rows := model.rows()
+	if len(rows) == 0 {
+		return model, nil
 	}
+	return model.judge(ask.Answer{Picks: []string{model.items[rows[model.cursor].index]}})
+}
+
+// judge takes the verdict on answer: a refusal shows on the error line, an
+// acceptance or a skip ends the prompt.
+func (model selectModel) judge(answer ask.Answer) (tea.Model, tea.Cmd) {
+	verdict := model.question.Judge(answer)
+	if verdict.Refusal != "" {
+		model.errMsg = verdict.Refusal
+		return model, nil
+	}
+	model.answer = verdict.Value
 	model.done = true
 	return model, tea.Quit
 }
@@ -180,20 +129,20 @@ func (model selectModel) View() string {
 		return ""
 	}
 	frame := card{
-		task:      model.task,
-		varName:   model.varName,
-		optional:  model.optional,
-		info:      model.info,
+		task:      model.question.Task,
+		varName:   model.question.VarName,
+		optional:  model.question.Optional,
+		info:      model.question.Info,
 		errMsg:    model.errMsg,
 		termWidth: model.termWidth,
 	}
 	hints := []hint{{"", "type to filter"}, {"↑↓", "move"}}
-	if model.multi {
+	if model.question.Multi {
 		hints = append(hints, hint{"tab", "toggle"}, hint{"enter", "confirm"})
 	} else {
 		hints = append(hints, hint{"enter", "select"})
 	}
-	if model.optional {
+	if model.question.Optional {
 		hints = append(hints, hint{"esc", "skip"})
 	}
 	frame.hints = hints
@@ -208,7 +157,7 @@ func (model selectModel) renderRow(rows []listRow) func(i int) string {
 		row := rows[i]
 		var b strings.Builder
 		b.WriteString(cursorPrefix(i == model.cursor))
-		if model.multi {
+		if model.question.Multi {
 			if model.selected[row.index] {
 				b.WriteString(SChecked.Render("◉ "))
 			} else {

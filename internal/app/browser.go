@@ -17,10 +17,9 @@ import (
 // browserPrompts is what a --browser run asks its answers through.
 func browserPrompts(server *browser.Server) runner.Prompts {
 	return runner.Prompts{
-		Text:   server.PromptText,
-		Select: server.PromptSelect,
-		Path:   server.PromptPath,
-		Say:    server.PromptSay,
+		Ask:  server.PromptAsk,
+		Path: server.PromptPath,
+		Say:  server.PromptSay,
 	}
 }
 

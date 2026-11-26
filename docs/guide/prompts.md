@@ -301,7 +301,11 @@ without waiting.
   text first.
 - **A text prompt starts filled in with its `default:`**, so enter keeps it.
   With `optional: true`, enter on an empty field skips the prompt. Without it,
-  enter on an empty field with no `default:` does nothing.
+  enter on an empty field with no `default:` stays open with `✗ an answer is
+  required`.
+- **A menu starts with its `default:` chosen.** With `multi:` the default is a
+  JSON list of options (`'["history","music"]'`) or one option, and text that
+  isn't an option is ignored.
 - **A `multi:` value that's already set or comes from `default:` must be a
   list**, or text that's a JSON list, such as `CATEGORIES='["history","music"]'`
   on the command line or in your shell. Other text, like `CATEGORIES=history`,
@@ -309,7 +313,8 @@ without waiting.
 - **With `optional: true` and no answer**, the variable is set but empty
   (`[]` with `multi:`), and `match:` and `check:` are skipped. On an optional
   `multi:` menu, enter with nothing toggled counts as no answer, like esc.
-  Without `optional: true`, enter with nothing toggled does nothing.
+  Without `optional: true`, enter with nothing toggled stays open with
+  `✗ pick at least one option`.
 - **A menu with nothing left after `match:`** stops the task, naming the
   variable and the patterns. With `optional: true` the variable is set empty
   instead, without asking.

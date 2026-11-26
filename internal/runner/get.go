@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"hobnob/internal/ask"
 	"hobnob/internal/config"
 	"hobnob/internal/eval"
 	"hobnob/internal/glob"
@@ -130,7 +132,10 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 		return err
 	}
 
-	var val value.Value
+	question := ask.Question{
+		VarName: getEntry.VarName, Info: info, Task: execState.task,
+		Multi: getEntry.Multi, Secret: getEntry.Secret, Optional: getEntry.Optional,
+	}
 	if len(fromItems) > 0 {
 		fromItems = filterMatching(fromItems, matcher)
 		if len(fromItems) == 0 {
@@ -141,22 +146,24 @@ func getInteractive(execState execCtx, getEntry config.GetEntry, scope *scope.Sc
 			}
 			return fmt.Errorf("get %s: no options match %s", getEntry.VarName, patterns)
 		}
-		resume := execState.log.Pause()
-		val, err = execState.prompts.Select(execState.ctx, getEntry.VarName, info, fromItems, getEntry.Multi, defaultVal, execState.task, getEntry.Secret,
-			getEntry.Optional, selectValidator(execState.ctx, getEntry, scope.Vars()), getEntry.Check)
-		resume()
-		if err != nil {
-			return wrapPromptErr("get "+getEntry.VarName, err)
+		question.Options = fromItems
+		question.Picks = menuPicks(fromItems, getEntry.Multi, defaultVal)
+		if getEntry.Check != "" {
+			question.Check = checkCandidate(execState.ctx, getEntry, scope.Vars(), glob.Matcher{})
+			question.CheckDesc = getEntry.Check
 		}
 	} else {
-		checkValidate := checkValidator(execState.ctx, getEntry, scope.Vars(), matcher)
-		resume := execState.log.Pause()
-		text, err := execState.prompts.Text(execState.ctx, info, getEntry.VarName, checkValidate, validatorDesc(getEntry, matcher, patterns), defaultVal, execState.task, getEntry.Secret, getEntry.Optional)
-		resume()
-		if err != nil {
-			return wrapPromptErr("get "+getEntry.VarName, err)
+		question.Default = defaultVal
+		if getEntry.Check != "" || !matcher.Empty() {
+			question.Check = checkCandidate(execState.ctx, getEntry, scope.Vars(), matcher)
+			question.CheckDesc = validatorDesc(getEntry, matcher, patterns)
 		}
-		val = value.Str(text)
+	}
+	resume := execState.log.Pause()
+	val, err := execState.prompts.Ask(execState.ctx, question)
+	resume()
+	if err != nil {
+		return wrapPromptErr("get "+getEntry.VarName, err)
 	}
 
 	scope.Set(getEntry.VarName, val, getEntry.Secret)
@@ -215,7 +222,7 @@ func filterMatching(items []string, matcher glob.Matcher) []string {
 	return kept
 }
 
-// validatorDesc is what tui shows when a text answer is refused: the check:
+// validatorDesc is what a refusal of a text answer says it failed: the check:
 // expression, the match: patterns, or both.
 func validatorDesc(getEntry config.GetEntry, matcher glob.Matcher, patterns string) string {
 	var parts []string
@@ -228,34 +235,47 @@ func validatorDesc(getEntry config.GetEntry, matcher glob.Matcher, patterns stri
 	return strings.Join(parts, "; ")
 }
 
-// checkValidator returns a candidate-validating closure for tui.PromptText,
-// or nil when getEntry has neither check: nor match: — tui calls it only if
-// non-nil, so it never needs to know how either is evaluated.
-func checkValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value, matcher glob.Matcher) func(string) (bool, error) {
-	if getEntry.Check == "" && matcher.Empty() {
-		return nil
-	}
-	return func(candidate string) (bool, error) {
-		if !matcher.Empty() && !matcher.Text(candidate) {
+// checkCandidate is the question's Check: match: on the text of a candidate
+// (a menu's options are filtered by it already, so it passes the empty
+// matcher), then check: with the candidate as the variable.
+func checkCandidate(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value, matcher glob.Matcher) func(value.Value) (bool, error) {
+	return func(candidate value.Value) (bool, error) {
+		if !matcher.Empty() && !matcher.Text(candidate.String()) {
 			return false, nil
 		}
 		if getEntry.Check == "" {
 			return true, nil
 		}
-		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, value.Str(candidate))
+		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, candidate)
 	}
 }
 
-// selectValidator returns the check: judge handed to tui.PromptSelect, or nil
-// when there is no check. The prompt shows its refusal in place, so it never
-// reopens.
-func selectValidator(ctx context.Context, getEntry config.GetEntry, vars map[string]value.Value) func(value.Value) (bool, error) {
-	if getEntry.Check == "" {
+// menuPicks is the options a menu starts ticked or chosen: under multi a
+// JSON list of options or one option, otherwise the one option defaultVal
+// names. Anything that isn't an option is dropped.
+func menuPicks(items []string, multi bool, defaultVal string) []string {
+	if defaultVal == "" {
 		return nil
 	}
-	return func(candidate value.Value) (bool, error) {
-		return eval.EvalCheckWithOverride(ctx, getEntry.Check, vars, getEntry.VarName, candidate)
+	wanted := []string{defaultVal}
+	if multi {
+		if parsed, err := value.Parse(defaultVal); err == nil && parsed.Kind() == value.KindArray {
+			wanted = nil
+			for _, item := range parsed.Any().([]any) {
+				wanted = append(wanted, value.Of(item).String())
+			}
+		}
 	}
+	var picks []string
+	for _, item := range items {
+		if slices.Contains(wanted, item) {
+			picks = append(picks, item)
+		}
+	}
+	if !multi && len(picks) > 1 {
+		picks = picks[:1]
+	}
+	return picks
 }
 
 // validateGetValue validates check and (in noPrompts mode) options for a var already in scope.
