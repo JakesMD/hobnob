@@ -34,6 +34,7 @@ button { font: inherit; color: inherit; background: none; border: none; cursor: 
 .btn.brand:hover { background: var(--brand-1); }
 .btn.alt { color: var(--t1); background: var(--alt-bg); }
 .btn.alt:hover { background: var(--alt-hover); }
+.btn:disabled { opacity: .4; pointer-events: none; }
 .shell { display: grid; grid-template-columns: clamp(200px, 24vw, 280px) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh; }
 .rail { background: var(--bg-alt); border-right: 1px solid var(--divider); padding: 28px 24px; display: flex; flex-direction: column; gap: 28px; }
 .logo { display: flex; align-items: center; gap: 10px; font-weight: 700; color: var(--brand-1); font-size: 18px; }
@@ -59,7 +60,7 @@ h1 { font-size: clamp(24px, 4vw, 32px); overflow-wrap: anywhere; line-height: 1.
 .progress { height: 6px; border-radius: 3px; background: var(--bg-soft); overflow: hidden; max-width: 520px; position: relative; }
 .progress::after { content: ''; position: absolute; inset: 0; width: 35%; border-radius: 3px; background: linear-gradient(90deg, var(--brand-3), var(--brand-1)); animation: indet 1.4s ease-in-out infinite; }
 @keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
-.lastbox { margin-top: 18px; max-width: min(520px, 100%); padding: 10px 14px; border-radius: 10px; background: var(--term); border: 1px solid var(--divider); font: 13px var(--mono); color: var(--t3); white-space: pre; overflow: hidden; text-overflow: ellipsis; min-height: 42px; }
+.lastbox { margin-top: 18px; max-width: min(520px, 100%); padding: 10px 14px; border-radius: 10px; background: var(--term); border: 1px solid var(--divider); font: 13px var(--mono); color: var(--t3); white-space: pre; overflow: hidden; text-overflow: ellipsis; line-height: 20px; min-height: 42px; }
 .clock { margin-top: 10px; font: 13px var(--mono); color: var(--t3); }
 .icon { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; margin-bottom: 22px; }
 .icon.ok { background: rgba(78,194,122,.15); color: var(--green); }
@@ -197,16 +198,26 @@ function rail(s) {
     el('div', { class: 'taskname' }, el('b', {}, s.task.info || s.task.name), s.task.info ? s.task.name : ''));
 }
 
+// running is the progress screen on show. Each new line of output patches it
+// in place, since rebuilding it would restart the activity bar.
+let running = null;
+
 function progress(s) {
-  const elapsed = el('div', { class: 'clock' });
-  const tick = () => { elapsed.textContent = duration(s.progress.elapsedMs + Date.now() - received); };
-  tick();
+  const title = el('h1'), last = el('div', { class: 'lastbox' }), elapsed = el('div', { class: 'clock' });
+  const cancel = el('button', { class: 'btn alt', onclick: () => post('cancel') });
+  const tick = () => { elapsed.textContent = duration(running.s.progress.elapsedMs + Date.now() - received); };
+  running = { s, title, update(s) {
+    running.s = s;
+    title.textContent = s.progress.cancelling ? 'Stopping…' : s.progress.label;
+    last.textContent = s.progress.lastLine;
+    cancel.textContent = s.progress.cancelling ? 'Force stop' : 'Cancel';
+    tick();
+  } };
+  running.update(s);
   clock = setInterval(tick, 200);
   return {
-    body: [el('h1', {}, s.progress.cancelling ? 'Stopping…' : s.progress.label), el('div', { class: 'progress' }),
-      el('div', { class: 'lastbox' }, s.progress.lastLine), elapsed],
-    bar: [el('button', { class: 'btn alt', onclick: () => post('cancel') }, s.progress.cancelling ? 'Force stop' : 'Cancel'),
-      el('span', { class: 'note' }, 'Keep this window open while hobnob runs.')],
+    body: [title, el('div', { class: 'progress' }), last, elapsed],
+    bar: [cancel, el('span', { class: 'note' }, 'Keep this window open while hobnob runs.')],
   };
 }
 
@@ -242,6 +253,7 @@ function menu(s) {
   const cards = el('div', { class: 'cards', role: p.multi ? 'group' : 'radiogroup' });
   const count = el('span', { class: 'note', id: 'count' });
   const send = () => post('answer', { id: p.id, value: p.multi ? menuDraft.picks : (menuDraft.picks[0] || '') });
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
   const fill = () => {
     const shown = matchAll(p.options, menuDraft.filter.trim(), o => o);
     cards.replaceChildren(...(shown.length ? shown.map(m => {
@@ -255,6 +267,7 @@ function menu(s) {
         } }, el('span', { class: p.multi ? 'box' : 'dot' }), highlight(o, m.positions));
     }) : [el('div', { class: 'empty' }, 'No options match.')]));
     count.textContent = p.multi ? menuDraft.picks.length + ' selected' : '';
+    next.disabled = !p.optional && !menuDraft.picks.length;
   };
   fill();
   const body = [el('h1', {}, p.info || p.varName)];
@@ -268,7 +281,7 @@ function menu(s) {
   body.push(cards, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null);
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
-  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  buttons.push(next);
   return { body, bar: [count, el('div', { class: 'actions' }, buttons)] };
 }
 
@@ -284,16 +297,20 @@ function ask(s) {
   if (p.kind === 'menu') return menu(s);
   if (p.kind === 'say') return say(s);
   if (draft.id !== p.id) draft = { id: p.id, text: p.default || '', touched: false };
-  const send = () => post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text });
+  const send = () => { if (!next.disabled) post('answer', { id: p.id, value: p.secret && p.hasDefault && !draft.touched ? null : draft.text }); };
+  // Empty text takes the default, so only a required prompt without one waits.
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
+  const ready = () => { next.disabled = !p.optional && !p.hasDefault && draft.text === ''; };
   const field = el('input', { class: 'field', type: p.secret ? 'password' : 'text', id: 'answer',
     autocomplete: 'off', spellcheck: 'false', placeholder: p.hasDefault && p.secret ? '••••' : '',
     onkeydown: (event) => { if (event.key === 'Enter') send(); } });
   field.value = draft.text;
-  field.addEventListener('input', () => { draft.text = field.value; draft.touched = true; });
+  field.addEventListener('input', () => { draft.text = field.value; draft.touched = true; ready(); });
+  ready();
   setTimeout(() => field.focus(), 0);
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
-  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  buttons.push(next);
   return {
     body: [el('h1', {}, p.info || p.varName), field, p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
     bar: [el('span'), el('div', { class: 'actions' }, buttons)],
@@ -356,7 +373,9 @@ function picker(s) {
   const send = () => post('answer', { id: p.id, value: multi ? answer : (answer[0] || '') });
   const buttons = [];
   if (p.optional) buttons.push(el('button', { class: 'btn alt', id: 'skip', onclick: () => post('skip', { id: p.id }) }, 'Skip'));
-  buttons.push(el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue'));
+  const next = el('button', { class: 'btn brand', id: 'continue', onclick: send }, 'Continue');
+  next.disabled = !p.optional && !answer.length;
+  buttons.push(next);
   return {
     body: [el('h1', {}, p.info || p.varName), search, el('div', { class: 'cols', id: 'cols' }, cols), p.refusal ? el('div', { class: 'refusal', id: 'refusal' }, p.refusal) : null],
     bar: [el('span', { class: 'picked', id: 'picked' }, statement), el('div', { class: 'actions' }, buttons)],
@@ -387,8 +406,13 @@ function result(s) {
 }
 
 function render() {
-  clearInterval(clock);
   const s = snap;
+  if (s.screen === 'progress' && running && app.contains(running.title)) {
+    app.querySelector('.rail').replaceWith(rail(s));
+    return running.update(s);
+  }
+  clearInterval(clock);
+  running = null;
   if (s.screen === 'tasks') return tasks(s);
   const screen = s.screen === 'prompt' ? (s.prompt.kind === 'path' ? picker(s) : ask(s)) : s.screen === 'progress' ? progress(s) : result(s);
   app.replaceChildren(el('div', { class: 'shell' }, rail(s),

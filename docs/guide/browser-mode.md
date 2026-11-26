@@ -67,6 +67,10 @@ a required prompt needs an answer, then `match:` and `check:` run, and a
 `check:` that runs a shell condition behaves exactly as it does there. A refused
 answer keeps you on the page with the reason under the field.
 
+On a required prompt, Continue is greyed out while there is nothing to send: an
+empty text box with no `default:`, a menu with nothing chosen, or a picker with
+nothing picked. Enter in the text box does nothing then either.
+
 Prompts settled by a `KEY=VALUE` preset are skipped, as in the terminal.
 
 A [menu](./prompts.md) (`options:`) shows its options as cards you click: radio
