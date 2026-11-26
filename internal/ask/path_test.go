@@ -117,7 +117,7 @@ func TestPathQuestion_ShapesTheAnswerLikeAMenu(t *testing.T) {
 	if multi.Refusal != "" || multi.Value.String() != value.Of([]any{a, b}).String() {
 		t.Errorf("multi: %+v", multi)
 	}
-	if multiNone.Refusal != "pick at least one option" {
+	if multiNone.Refusal != "an answer is required" {
 		t.Errorf("multi none: %+v", multiNone)
 	}
 }

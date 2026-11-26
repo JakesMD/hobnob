@@ -105,24 +105,7 @@ func (q Question) judgeMenu(answer Answer) Verdict {
 			picks = append(picks, option)
 		}
 	}
-	switch {
-	case len(picks) == 0 && q.Optional:
-		return q.skipped()
-	case len(picks) == 0 && q.Multi:
-		return Verdict{Refusal: "pick at least one option"}
-	case len(picks) == 0:
-		return Verdict{Refusal: "an answer is required"}
-	case len(picks) > 1 && !q.Multi:
-		return Verdict{Refusal: "the answer must be one of the options"}
-	}
-	if !q.Multi {
-		return q.checked(value.Str(picks[0]))
-	}
-	list := make([]any, len(picks))
-	for i, pick := range picks {
-		list[i] = pick
-	}
-	return q.checked(value.Of(list))
+	return q.shaped(picks, "pick at least one option", "the answer must be one of the options")
 }
 
 // judgePath rules on a picker's answer: the picked paths, each verified by
@@ -138,22 +121,29 @@ func (q Question) judgePath(answer Answer) Verdict {
 			paths = append(paths, abs)
 		}
 	}
+	return q.shaped(paths, "", "pick one path")
+}
+
+// shaped turns the accepted picks into the answer: nothing is skipped or
+// refused, one is a string, and several (only under Multi) are a list. A
+// refusal for nothing picked under Multi is emptyMulti, else the required one.
+func (q Question) shaped(picks []string, emptyMulti, tooMany string) Verdict {
 	switch {
-	case len(paths) == 0 && q.Optional:
+	case len(picks) == 0 && q.Optional:
 		return q.skipped()
-	case len(paths) == 0 && q.Multi:
-		return Verdict{Refusal: "pick at least one option"}
-	case len(paths) == 0:
+	case len(picks) == 0 && q.Multi && emptyMulti != "":
+		return Verdict{Refusal: emptyMulti}
+	case len(picks) == 0:
 		return Verdict{Refusal: "an answer is required"}
-	case len(paths) > 1 && !q.Multi:
-		return Verdict{Refusal: "pick one path"}
+	case len(picks) > 1 && !q.Multi:
+		return Verdict{Refusal: tooMany}
 	}
 	if !q.Multi {
-		return q.checked(value.Str(paths[0]))
+		return q.checked(value.Str(picks[0]))
 	}
-	list := make([]any, len(paths))
-	for i, path := range paths {
-		list[i] = path
+	list := make([]any, len(picks))
+	for i, pick := range picks {
+		list[i] = pick
 	}
 	return q.checked(value.Of(list))
 }
