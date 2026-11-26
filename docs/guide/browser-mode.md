@@ -20,17 +20,19 @@ setup ✓ done after 1.1s
 The terminal that started hobnob shows the usual run log, plus the page's
 address. The page is a setup assistant:
 
-- a **rail** on the left names the task, then lists a **Setup** entry for the
-  task and for each task it [calls](./calling-tasks.md), added when it starts,
-  ticked when it finishes, and crossed when it fails;
+- a **rail** on the left names the task;
 - the **main area** shows the label of the task now running, an activity bar,
   the last line of output (ANSI colour codes removed, [secrets](./secrets.md) masked) and a clock
   of the time since the run began. The label is the task's `info:`, or its
   name when it has none. Variables in `info:` are filled in from the task's
   [scope](./variables.md) as it starts, secrets masked; an `info:` naming a
-  variable that isn't set yet shows as written. The rail uses the same label;
+  variable that isn't set yet shows as written;
 - a **bottom bar** holds the buttons for the screen. While steps run it holds
   **Cancel** and a note to keep the window open.
+
+In a narrow window, such as one squeezed beside the instructions you are
+following, or on a phone, the rail becomes a bar across the top and the page
+fits the width without scrolling sideways.
 
 The page never shows a command. A step with [`quiet:`](./commands.md) shows no
 output line either.
@@ -53,8 +55,8 @@ the terminal, where a plain `hobnob` runs `default`; to run it in browser mode,
 name it: `hobnob default --web`.
 
 When hobnob was started without a task, Done and Failed also offer **Home**,
-which returns to the picker for another run. Each run starts with a fresh rail
-and log. A task named on the command line ends at Done with no Home.
+which returns to the picker for another run. Each run starts with a fresh
+log. A task named on the command line ends at Done with no Home.
 ## Prompts
 
 A [`get:`](./prompts.md) text prompt gets its own page: the entry's `info:` as
@@ -65,10 +67,7 @@ a required prompt needs an answer, then `match:` and `check:` run, and a
 `check:` that runs a shell condition behaves exactly as it does there. A refused
 answer keeps you on the page with the reason under the field.
 
-The rail's **Your answers** section gets one entry per answered prompt, labelled
-by the entry's `info:` (its variable name without one). A secret shows masked.
-A prompt skipped, or settled by a `KEY=VALUE` preset, has no entry; presets
-skip their prompts as in the terminal.
+Prompts settled by a `KEY=VALUE` preset are skipped, as in the terminal.
 
 A [menu](./prompts.md) (`options:`) shows its options as cards you click: radio
 cards for one choice, checkbox cards under `multi:`. With more than six options a
@@ -98,14 +97,13 @@ picked. Continue sends the picks through the same rules as the terminal: they
 must exist, be the right kind and match.
 
 A [`say:`](./prompts.md#showing-a-message) message gets a page of its own: the
-message and **Continue**. It counts as a prompt while it waits, and adds nothing
-to the rail.
+message and **Continue**. It counts as a prompt while it waits.
 
 There are no admin prompts in browser mode.
 
 ## How a run ends
 
-- **Done** shows a tick, "You're all set", the task and how long it took.
+- **Done** shows a tick, "You're all set" and how long the run took.
 - **Failed** names the task whose step failed and the last line it printed, or
   the reason it failed when it printed nothing. **Copy details** copies the
   run's log, with [secrets](./secrets.md) masked, to send to whoever can help.
@@ -135,7 +133,7 @@ failure, and 0 when no run happened.
 A tab counts as open while its page is connected. Only one tab drives the run:
 opening the address again replaces the earlier tab, which shows "hobnob is open
 in another tab" and disconnects. A tab that connects, or reconnects after being
-closed, shows the screen the run is at, with the answers and setup so far. A tab
+closed, shows the screen the run is at. A tab
 whose connection drops while hobnob still runs, as when a laptop sleeps,
 reconnects by itself; it shows "hobnob has stopped" only once hobnob has been
 unreachable for several seconds.
