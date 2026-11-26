@@ -13,6 +13,9 @@ export default defineConfig({
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
   srcExclude: ['adr/**', 'agents/**'],
 
+  // The homepage demo loads hobnob's --web page from internal/web.
+  vite: { server: { fs: { allow: ['..'] } } },
+
   rewrites: {
     'installation.md': 'docs/installation.md',
     'quick-start.md': 'docs/quick-start.md',

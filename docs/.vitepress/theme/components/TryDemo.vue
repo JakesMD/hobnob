@@ -7,7 +7,14 @@
 // line of text from that step's YAML, so a slot can be edited without
 // renumbering anything here. The trivia slot must stay in step with
 // internal/app/demo.yml.
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+//
+// The Browser view runs the same scripts behind hobnob's own --web page,
+// internal/web/page.html, in a frame. A shim stands in for its events stream
+// and its button actions: the run's state goes in as the snapshots of
+// internal/web/snapshot.go, and the page's answers come back as the actions
+// of internal/web/server.go.
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import PAGE_HTML from '../../../../internal/web/page.html?raw'
 
 type Seg = { t: string; c?: string; click?: () => void }
 type Line = Seg[]
@@ -38,6 +45,16 @@ type BodyRow = { segs: Seg[]; row?: number; input?: boolean }
 type CardRow = { pre: Seg[]; post?: Seg[]; row?: number; input?: boolean }
 
 type DemoId = 'trivia' | 'deploy' | 'flash'
+type View = 'terminal' | 'browser'
+const VIEWS: View[] = ['terminal', 'browser']
+// Each task's info:, which the page shows while its steps run.
+const INFO: Record<string, string> = {
+  'ask-trivia': 'Answer a trivia question from a category you pick.',
+  deploy: 'Build services and roll them out to an environment.',
+  'build-and-flash': 'Build an OS image with Packer and flash it to a disk.',
+  build: 'Build an OS image with Packer.',
+  flash: 'Flash the built image to a disk.',
+}
 const DEMOS: { id: DemoId; label: string; command: string; caption: string }[] = [
   { id: 'trivia', label: 'Trivia', command: 'hobnob --demo ask-trivia', caption: 'Live, in your browser: the questions come straight from the API.' },
   { id: 'deploy', label: 'Deploy', command: 'hobnob deploy', caption: 'Pick services, an environment and a token. The token never shows.' },
@@ -61,6 +78,25 @@ let runId = 0
 class Cancelled extends Error {}
 // A step that failed, already logged, on its way up to the task ends.
 class StepFailed extends Error {}
+// The page's Cancel: the run stops at its next sleep, as after a CTRL+C.
+class Interrupted extends Error {}
+let interrupted = false
+
+const view = ref<View>('terminal')
+const frame = ref<HTMLIFrameElement>()
+const frameKey = ref(0)
+
+// What the page is sent, kept as the run goes: the tasks running, innermost
+// last, the current step's last output line, and how the run ended.
+const running = ref<string[]>([])
+const lastLine = ref('')
+const refusal = ref('')
+const pickerOpen = ref('')
+let promptId = 0
+let failedAt = { label: '', lastLine: '' }
+type Outcome = { outcome: 'done' | 'failed' | 'cancelled'; durationMs: number; label: string; lastLine: string }
+const outcome = ref<Outcome | null>(null)
+const label = (task: string) => INFO[task] || task
 
 
 const GREY = 'a8'
@@ -132,6 +168,7 @@ function fitColumns() {
 // Command output passes through a line at a time, wrapped under its own text
 // past the prefix.
 function outLine(task: string, text: string) {
+  lastLine.value = text
   const room = Math.max(20, termCols - task.length - 3)
   const chunks: string[] = []
   for (let i = 0; i < Math.max(text.length, 1); i += room) chunks.push(text.slice(i, i + room))
@@ -140,13 +177,14 @@ function outLine(task: string, text: string) {
 
 // A \r-redrawn line (dd status=progress): replace the last line in place.
 function redraw(task: string, text: string) {
+  lastLine.value = text
   lines.value[lines.value.length - 1] = [...lead(task, { t: '│', c: GREY }), { t: text }]
 }
 
 function sleep(ms: number) {
   const id = runId
   return new Promise<void>((resolve, reject) =>
-    setTimeout(() => (id === runId ? resolve() : reject(new Cancelled())), ms),
+    setTimeout(() => (id !== runId ? reject(new Cancelled()) : interrupted ? reject(new Interrupted()) : resolve()), ms),
   )
 }
 
@@ -163,12 +201,18 @@ async function step(task: string, cmd: string, body: () => Promise<void>) {
   runLine(task, cmd)
   const started = performance.now()
   stepStart.value = started
+  lastLine.value = ''
   try {
     await body()
   } catch (err) {
     stepStart.value = null
     if (err instanceof Cancelled) throw err
+    if (err instanceof Interrupted) {
+      print(...lead(task, { t: '✗', c: RED }), { t: formatElapsed(performance.now() - started), c: GREY }, { t: ` ${cmd}: stopped` })
+      throw err
+    }
     const reason = err instanceof Error ? err.message : String(err)
+    failedAt = { label: label(task), lastLine: lastLine.value || reason }
     print(...lead(task, { t: '✗', c: RED }), { t: formatElapsed(performance.now() - started), c: GREY }, { t: ` ${cmd}: ${reason}` })
     throw new StepFailed(reason)
   }
@@ -179,12 +223,17 @@ async function step(task: string, cmd: string, body: () => Promise<void>) {
 // A task: its steps, then its own end line.
 async function inTask(task: string, body: () => Promise<void>) {
   const started = performance.now()
+  const id = runId
+  running.value.push(task)
   try {
     await body()
   } catch (err) {
     if (err instanceof Cancelled) throw err
-    print(...lead(task, { t: '✗', c: RED }), { t: 'failed', c: RED }, { t: ` after ${formatElapsed(performance.now() - started)}`, c: GREY })
+    const how = err instanceof Interrupted ? 'stopped' : 'failed'
+    print(...lead(task, { t: '✗', c: RED }), { t: how, c: RED }, { t: ` after ${formatElapsed(performance.now() - started)}`, c: GREY })
     throw err
+  } finally {
+    if (id === runId) running.value.pop()
   }
   print(...lead(task, { t: '✓', c: GREEN }), { t: 'done', c: GREEN }, { t: ` after ${formatElapsed(performance.now() - started)}`, c: GREY })
 }
@@ -385,6 +434,9 @@ function windowBody(total: number, offset: number, height: number, row: (i: numb
 
 function ask(p: Omit<Prompt, 'resolve'>): Promise<string | string[]> {
   const id = runId
+  promptId++
+  refusal.value = ''
+  if (p.kind === 'path') pickerOpen.value = dirKey(pathDirText(p))
   return new Promise((resolve, reject) => {
     prompt.value = {
       ...p,
@@ -876,6 +928,146 @@ async function flash() {
 
 const RUNS: Record<DemoId, () => Promise<void>> = { trivia, deploy, flash }
 
+
+// The page as hobnob serves it, but talking to this component. The site is
+// always dark, so the page's light theme goes. Focus never scrolls the
+// homepage to the frame.
+const SHIM = `<script>
+(() => {
+  const focus = HTMLElement.prototype.focus;
+  HTMLElement.prototype.focus = function (options) { focus.call(this, { ...options, preventScroll: true }); };
+  window.EventSource = class {
+    constructor() {
+      addEventListener('message', (e) => {
+        if (e.source === parent && e.data && e.data.hobnobSnapshot) this.onmessage && this.onmessage({ data: e.data.hobnobSnapshot });
+      });
+      parent.postMessage({ hobnobReady: true }, '*');
+    }
+    close() {}
+  };
+  window.fetch = (url, init) => {
+    parent.postMessage({ hobnobAction: String(url).split('?')[0].replace('/actions/', ''), body: init && init.body }, '*');
+    return Promise.resolve(new Response(null, { status: 204 }));
+  };
+})();
+<` + `/script>`
+const PAGE = PAGE_HTML.replace('@media (prefers-color-scheme: light)', '@media not all').replace('<script>', SHIM + '<script>')
+
+const webCommand = computed(() => demo.value.command.replace(/^hobnob /, 'hobnob --web '))
+const ADDRESS = '127.0.0.1:52814/?token=3f9c…'
+
+// A folder the picker lists, after ListDir in internal/tui/prompt_path.go.
+function listDir(dir: string, match: (name: string) => boolean) {
+  const all = (FS[dir] ?? []).map((e) => ({ name: e.replace(/\/$/, ''), dir: e.endsWith('/') }))
+  const byName = (a: { name: string }, b: { name: string }) => a.name.toLowerCase().localeCompare(b.name.toLowerCase())
+  return [
+    ...all.filter((e) => e.dir).sort(byName).map((e) => ({ name: e.name, dir: true })),
+    ...all.filter((e) => !e.dir && match(e.name)).sort(byName).map((e) => ({ name: e.name, pickable: true })),
+  ]
+}
+
+// The columns from the home folder (or / when open isn't under it) down to
+// open, after view in internal/web/picker.go.
+function pickerView(open: string, match: (name: string) => boolean) {
+  const root = open === HOME || open.startsWith(HOME + '/') ? HOME : '/'
+  const chain = [open]
+  for (let dir = open; dir !== root; ) {
+    dir = parentDir(dir)
+    chain.unshift(dir)
+  }
+  const columns = chain.map((dir, i) => {
+    const next = chain[i + 1]
+    return { path: dir, ...(next ? { next: next.slice(next.lastIndexOf('/') + 1) } : {}), entries: listDir(dir, match) }
+  })
+  return { type: 'file', open, columns, selected: [] }
+}
+
+function webPrompt(p: Prompt) {
+  const base = { id: promptId, ...(refusal.value ? { refusal: refusal.value } : {}) }
+  if (p.kind === 'select') return { ...base, kind: 'menu', varName: p.varName, info: p.info, options: p.items, multi: p.multi }
+  if (p.kind === 'text') return { ...base, kind: 'text', varName: p.varName, info: p.info, secret: p.secret }
+  if (p.kind === 'say') return { ...base, kind: 'say', varName: '', info: p.message }
+  return { ...base, kind: 'path', varName: p.varName, info: p.info, picker: pickerView(pickerOpen.value, p.match) }
+}
+
+const runLog = () => lines.value.slice(1).map((line) => line.map((seg) => seg.t).join('')).join('\n')
+
+// The snapshot, but for the clock, which goes in as it is sent. Null until
+// the run's first task starts.
+const snapshot = computed(() => {
+  const task = running.value[0] ?? snapTask
+  if (!task) return null
+  const base = { task: { name: task, info: INFO[task] ?? '' }, rail: { answers: [], setup: [] } }
+  const o = outcome.value
+  if (o) return { ...base, screen: o.outcome === 'done' ? 'done' : 'failed', result: { ...o, log: runLog(), home: false } }
+  if (prompt.value) return { ...base, screen: 'prompt', prompt: webPrompt(prompt.value) }
+  return { ...base, screen: 'progress', progress: { label: label(running.value[running.value.length - 1] ?? task), lastLine: lastLine.value, elapsedMs: 0, cancelling: false } }
+})
+let snapTask = ''
+watch(() => running.value[0], (task) => task && (snapTask = task))
+
+function sendSnapshot() {
+  const s = snapshot.value
+  const win = frame.value?.contentWindow
+  if (!s || !win) return
+  if (s.progress && runStart.value !== null) s.progress.elapsedMs = Math.round(performance.now() - runStart.value)
+  win.postMessage({ hobnobSnapshot: JSON.stringify(s) }, '*')
+}
+watch(() => JSON.stringify(snapshot.value), sendSnapshot)
+
+// An answer goes through the rules of internal/web/prompt.go: a refusal
+// keeps the prompt open with the reason under it.
+function answer(value: unknown) {
+  const p = prompt.value
+  if (!p) return
+  const take = (v: string | string[]) => {
+    prompt.value = null
+    p.resolve(v)
+  }
+  if (p.kind === 'say') return take('')
+  if (p.kind === 'select' && p.multi) {
+    const picks = Array.isArray(value) ? value.filter((v) => p.items.includes(v)) : []
+    return picks.length ? take(picks) : (refusal.value = 'pick at least one option')
+  }
+  const text = typeof value === 'string' ? value : ''
+  if (!text) return (refusal.value = 'an answer is required')
+  if (p.kind === 'select') return p.items.includes(text) ? take(text) : (refusal.value = `${text} isn't one of the options`)
+  if (p.kind === 'path') {
+    const name = text.slice(text.lastIndexOf('/') + 1)
+    return FS[parentDir(text)]?.includes(name) && p.match(name) ? take(text) : (refusal.value = `${text} doesn't match`)
+  }
+  take(text)
+}
+
+function onFrameMessage(e: MessageEvent) {
+  if (!frame.value || e.source !== frame.value.contentWindow || !e.data) return
+  if (e.data.hobnobReady) return sendSnapshot()
+  let body: { id?: number; value?: unknown; path?: string } = {}
+  try {
+    body = JSON.parse(e.data.body || '{}')
+  } catch {}
+  const action = e.data.hobnobAction
+  if (action === 'cancel') {
+    if (state.value === 'running' && !prompt.value && !interrupted) {
+      interrupted = true
+      print(...lead(running.value[running.value.length - 1] ?? 'hobnob', { t: '!', c: YELLOW }), { t: 'stopping, ctrl+c again to force', c: YELLOW })
+    }
+    return
+  }
+  if (body.id !== promptId) return
+  if (action === 'answer') answer(body.value)
+  else if (action === 'open' && prompt.value?.kind === 'path' && body.path && dirExists(body.path)) pickerOpen.value = body.path
+}
+
+onMounted(() => window.addEventListener('message', onFrameMessage))
+onBeforeUnmount(() => window.removeEventListener('message', onFrameMessage))
+
+function setView(v: View) {
+  if (v === view.value) return
+  reset()
+  view.value = v
+}
+
 function reset() {
   runId++
   stopClock()
@@ -884,6 +1076,13 @@ function reset() {
   typed.value = ''
   state.value = 'idle'
   highlight(null)
+  interrupted = false
+  running.value = []
+  snapTask = ''
+  lastLine.value = ''
+  refusal.value = ''
+  outcome.value = null
+  failedAt = { label: '', lastLine: '' }
 }
 
 function pick(id: DemoId) {
@@ -902,20 +1101,34 @@ async function start() {
   fitColumns()
   state.value = 'running'
   const id = runId
+  const web = view.value === 'browser'
+  if (web) frameKey.value++
+  let ended: Outcome['outcome'] = 'done'
   try {
-    for (const ch of demo.value.command) {
-      typed.value += ch
-      await sleep(28)
+    const command = web ? webCommand.value : demo.value.command
+    if (!web) {
+      for (const ch of command) {
+        typed.value += ch
+        await sleep(28)
+      }
+      await sleep(250)
     }
-    await sleep(250)
-    print({ t: '$ ', c: 'prompt' }, { t: demo.value.command })
+    print({ t: '$ ', c: 'prompt' }, { t: command })
     typed.value = ''
+    if (web) hobnobNote(`Browser mode: http://${ADDRESS}`)
     await RUNS[active.value]()
   } catch (err) {
     if (err instanceof Cancelled || id !== runId) return
     prompt.value = null
-    if (!(err instanceof StepFailed)) print({ t: 'hobnob', c: 'b' }, { t: ' ' }, { t: '✗', c: RED }, { t: ' ' }, { t: err instanceof Error ? err.message : String(err) })
+    ended = err instanceof Interrupted ? 'cancelled' : 'failed'
+    if (!(err instanceof StepFailed) && !(err instanceof Interrupted)) {
+      const reason = err instanceof Error ? err.message : String(err)
+      failedAt = { label: label(running.value[running.value.length - 1] ?? snapTask), lastLine: lastLine.value || reason }
+      print({ t: 'hobnob', c: 'b' }, { t: ' ' }, { t: '✗', c: RED }, { t: ' ' }, { t: reason })
+    }
   }
+  const durationMs = runStart.value === null ? 0 : Math.round(performance.now() - runStart.value)
+  outcome.value = { outcome: ended, durationMs, ...(ended === 'failed' ? failedAt : { label: '', lastLine: '' }) }
   stopClock()
   await sleep(600).catch(() => {})
   if (id !== runId) return
@@ -944,11 +1157,25 @@ async function start() {
     <div class="window">
       <div class="bar">
         <span class="lights"><span class="dot r" /><span class="dot y" /><span class="dot g" /></span>
-        <span class="tab">Terminal</span>
+        <span class="tab views" role="tablist" aria-label="Where it runs">
+          <button v-for="v in VIEWS" :key="v" role="tab" :class="{ on: view === v }" :aria-selected="view === v" @click="setView(v)">
+            {{ v === 'terminal' ? 'Terminal' : 'Browser' }}
+          </button>
+        </span>
         <span class="tab file">hobnob.yml</span>
       </div>
       <div class="panes">
-        <div ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">
+        <div v-if="view === 'browser'" class="browser">
+          <div class="address">
+            <span class="url">{{ state === 'idle' ? '' : ADDRESS }}</span>
+            <button v-if="state === 'done'" class="again" @click="start">↻ Run it again</button>
+          </div>
+          <iframe ref="frame" :key="frameKey" class="page" :srcdoc="PAGE" title="hobnob's browser page" allow="clipboard-write" />
+          <div v-if="state === 'idle'" class="cover">
+            <button class="run" @click="start">▶ Run {{ webCommand }}</button>
+          </div>
+        </div>
+        <div v-show="view === 'terminal'" ref="screen" class="screen" tabindex="0" @keydown="onKey" @click="screen?.focus({ preventScroll: true })">
           <div v-for="(line, i) in lines" :key="i" class="ln">
             <span v-for="(seg, j) in line" :key="j" :class="seg.c">{{ seg.t }}</span>
           </div>
@@ -1111,6 +1338,89 @@ async function start() {
 }
 .run:hover {
   background: var(--vp-button-brand-hover-bg);
+}
+
+/* Terminal or Browser, in the window's bar */
+.views {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: #0f131a;
+}
+.views button {
+  padding: 2px 12px;
+  border-radius: 6px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  color: var(--vp-c-text-3);
+  transition: color 0.2s, background 0.2s;
+}
+.views button:hover {
+  color: var(--vp-c-text-1);
+}
+.views button.on {
+  color: var(--vp-c-text-1);
+  background: #2c3542;
+}
+
+/* The browser view: an address bar over hobnob's page */
+.browser {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: #1a2029;
+}
+.address {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 40px;
+  padding: 0 10px;
+  background: #151a22;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.url {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 12px;
+  border-radius: 13px;
+  background: #0f131a;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 26px;
+  color: var(--vp-c-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.again {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+.page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  border: none;
+  color-scheme: dark;
+}
+.cover {
+  position: absolute;
+  inset: 40px 0 0;
+  display: grid;
+  place-items: center;
+  background: #1a2029;
+}
+.cover .run {
+  margin: 0;
 }
 
 /* Demo switcher */
