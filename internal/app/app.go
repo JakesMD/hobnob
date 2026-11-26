@@ -16,7 +16,6 @@ import (
 
 	"hobnob/internal/cli"
 	"hobnob/internal/config"
-	"hobnob/internal/runevents"
 	"hobnob/internal/runner"
 	"hobnob/internal/scope"
 	"hobnob/internal/tui"
@@ -40,10 +39,6 @@ type App struct {
 	SelectTask func(ctx context.Context, tasks []tui.TaskItem) (string, error)
 	// OpenBrowser opens url in the default browser for --browser.
 	OpenBrowser func(url string) error
-
-	quiet       bool
-	browserMode bool
-	port        int
 }
 
 // New builds an App wired to the real terminal and the real interactive task
@@ -72,49 +67,6 @@ func loadConfig(ctx context.Context, path string, cliVars map[string]string, inv
 		return nil, nil, nil, err
 	}
 	return cfg, rootScope, fileScopes, nil
-}
-
-func (a *App) selectAndRun(ctx context.Context, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, showUsage bool) error {
-	if a.browserMode {
-		return a.execBrowserHome(ctx, cli.CollectSelectableTasks(cfg, scope), scope, fileScopes, cfg)
-	}
-	if noPrompts || !a.IsTerminal() {
-		if showUsage {
-			cli.PrintUsage(os.Stdout, a.Version)
-		}
-		return cli.ListTasks(cfg, scope, os.Stdout)
-	}
-	tasks := cli.CollectSelectableTasks(cfg, scope)
-	if len(tasks) == 0 {
-		cli.PrintUsage(os.Stdout, a.Version)
-		return cli.ListTasks(cfg, scope, os.Stdout)
-	}
-	if showUsage {
-		cli.PrintUsage(os.Stdout, a.Version)
-	}
-	selected, err := a.SelectTask(ctx, tasks)
-	if err != nil {
-		return err
-	}
-	return a.execTask(ctx, selected, scope, fileScopes, cfg, false, cfg.TaskfileDir)
-}
-
-func (a *App) execTask(ctx context.Context, taskName string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile, noPrompts bool, dir string) error {
-	if a.browserMode {
-		return a.execBrowserTask(ctx, taskName, scope, fileScopes, cfg, dir)
-	}
-	log := a.newRunLog()
-	return failSilently(runner.ExecuteTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, dir, runevents.New(log), log, runner.TerminalPrompts()))
-}
-
-// newRunLog is the run's log on this terminal, quiet if asked.
-func (a *App) newRunLog() *tui.RunLog {
-	log := tui.NewRunLog(os.Stdout, os.Stderr)
-	log.SetQuiet(a.quiet)
-	if a.Screen != nil {
-		log.Watch(a.Screen())
-	}
-	return log
 }
 
 // failSilently prints a failure the run didn't already log, and turns any
@@ -148,20 +100,21 @@ func (a *App) run(ctx context.Context, args []string) error {
 	}
 	useDemo, args := extractDemoFlag(args)
 	flagQuiet, args := extractFlag(args, "--quiet", "-q")
-	a.browserMode, args = extractFlag(args, "--browser")
-	a.port, args, err = extractPortFlag(args)
+	browserMode, args := extractFlag(args, "--browser")
+	port, args, err := extractPortFlag(args)
 	if err != nil {
 		return err
 	}
-	if a.port != 0 && !a.browserMode {
-		return fmt.Errorf("--port needs --browser")
+	fe, err := a.frontEnd(browserMode, port, flagQuiet || os.Getenv("HOBNOB_QUIET") == "1")
+	if err != nil {
+		return err
 	}
-	if a.browserMode {
+	defer fe.Close()
+	if browserMode {
 		if err := checkBrowserFlag(runtime.GOOS, args); err != nil {
 			return err
 		}
 	}
-	a.quiet = flagQuiet || os.Getenv("HOBNOB_QUIET") == "1"
 	if useDemo && fileFlag != "" {
 		return fmt.Errorf("--demo and --file are alternative taskfile sources; pass only one")
 	}
@@ -201,7 +154,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			announceDemo()
-			return a.selectAndRun(ctx, scope, fileScopes, cfg, a.defaultNoPrompts(), false)
+			return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, a.defaultNoPrompts(), false)
 		}
 		tfPath, _ := resolveTaskfile(fileFlag, invDir) // error = "not found"; tfPath=="" handles it below
 		if tfPath != "" {
@@ -210,10 +163,10 @@ func (a *App) run(ctx context.Context, args []string) error {
 				return err
 			}
 			noPrompts := a.defaultNoPrompts()
-			if _, ok := cfg.Tasks["default"]; ok && !a.browserMode {
-				return a.execTask(ctx, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+			if _, ok := cfg.Tasks["default"]; ok && !fe.AlwaysPicks() {
+				return a.execTask(ctx, fe, "default", scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 			}
-			return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, true)
+			return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, noPrompts, true)
 		}
 		cli.PrintUsage(os.Stdout, a.Version)
 		return nil
@@ -230,9 +183,9 @@ func (a *App) run(ctx context.Context, args []string) error {
 		}
 		announceDemo()
 		if isListingFlag(args[0]) {
-			return a.runListingFlag(ctx, args, scope, fileScopes, cfg)
+			return a.runListingFlag(ctx, fe, args, scope, fileScopes, cfg)
 		}
-		return a.execTask(ctx, args[0], scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+		return a.execTask(ctx, fe, args[0], scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 	}
 
 	taskfilePath, err := resolveTaskfile(fileFlag, invDir)
@@ -245,7 +198,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 		if err != nil {
 			return err
 		}
-		return a.runListingFlag(ctx, args, scope, fileScopes, cfg)
+		return a.runListingFlag(ctx, fe, args, scope, fileScopes, cfg)
 	}
 
 	taskName := args[0]
@@ -259,7 +212,7 @@ func (a *App) run(ctx context.Context, args []string) error {
 		return err
 	}
 
-	return a.execTask(ctx, taskName, scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
+	return a.execTask(ctx, fe, taskName, scope, fileScopes, cfg, noPrompts, cfg.TaskfileDir)
 }
 
 // isListingFlag reports whether arg is one of the flags that inspect a
@@ -270,13 +223,13 @@ func isListingFlag(arg string) bool {
 
 // runListingFlag dispatches the --list/--help/--select trio against an
 // already-loaded config, so the real and built-in-demo paths can't drift.
-func (a *App) runListingFlag(ctx context.Context, args []string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
+func (a *App) runListingFlag(ctx context.Context, fe frontEnd, args []string, scope *scope.Scope, fileScopes scope.FileScopes, cfg *config.ConfigFile) error {
 	switch args[0] {
 	case "--help":
 		return cli.PrintHelp(cfg, scope, os.Stdout, a.Version)
 	case "--select":
 		noPrompts := a.defaultNoPrompts() || hasNoInputFlag(args[1:])
-		return a.selectAndRun(ctx, scope, fileScopes, cfg, noPrompts, false)
+		return a.selectAndRun(ctx, fe, scope, fileScopes, cfg, noPrompts, false)
 	default:
 		return cli.ListTasks(cfg, scope, os.Stdout)
 	}

@@ -56,7 +56,7 @@ Every change must preserve these. Each is explained in the section named.
 - **Hidden tasks.** `Task.Hidden` is true for `_`-prefixed tasks and for tasks
   from `_`-prefixed modules: they run, but stay out of `--list`.
 - **Prompt seam.** The runner asks through the `runner.Prompts` (ask, path,
-  say) its caller passes to `ExecuteTask`; `app` passes `runner.TerminalPrompts()`,
+  say) its caller passes to `ExecuteTask`; the terminal front end passes `runner.TerminalPrompts()`,
   or the page's prompts (`browserPrompts`) under `--browser`. A text or menu
   `get:` entry is one `ask.Question` whose `Judge` owns the answer rules
   (default fallback, required refusal, skip, `match:`/`check:`, every refusal's
@@ -770,12 +770,13 @@ log line is built from, and `SecretMask`). The runner calls `PromptAsk` (`prompt
 
 ### `internal/browser`: the browser front end
 
-`hobnob --browser <task>` (`app/browser.go`, `execBrowserTask`) runs the task as usual
-and has `browser.Server` watch it. `hobnob --browser` with no task (`execBrowserHome`,
-reached from `selectAndRun`, so a `default` task never short-circuits it) shows
+`hobnob --browser <task>` (`app/browser.go`, `browserFrontEnd`, the browser's
+[front end](#internalapp-the-cli-body)) runs the task as usual
+and has `browser.Server` watch it. `hobnob --browser` with no task
+(`selectAndRun`, where `AlwaysPicks` means a `default` task never short-circuits it) shows
 the task picker: `Server.PickTask` clears the last run's state and blocks until
-the `choose` action names a task the picker offered; `runOnPage` runs it with a
-fresh `RunLog` and a copy of the scope; `Server.AwaitHome` then waits on the
+the `choose` action names a task the picker offered; `browserFrontEnd.Begin` readies each run with a
+fresh `RunLog` and a copy of the scope (`selectAndRun` copies it); `Server.AwaitHome` then waits on the
 `home` action (only accepted on a finished run when no task was named) or
 until ctx ends or the grace timer gives up. The exit code is
 the last run's. `browser.Listen` binds a random port on 127.0.0.1
@@ -785,10 +786,10 @@ the URL beside the run log. With `--port`, `Listen` binds that port as a
 `fixed` server: no token, no grace timer, and `app` only prints the URL and
 refuses a named task, so the page is always the picker.
 `--browser` runs with prompts on whatever `IsTerminal` says,
-asked through the page's prompts (`browserPrompts` in `app/browser.go`), even in tests.
+asked through the page's prompts (`browserPrompts` in `app/browser.go`, which `Begin` hands the run), even in tests.
 
 **The run listener.** `runevents.Listener` is how a front end observes a run; see
-[runevents](#internalrunevents-the-run-event-stream). `app` builds the run's
+[runevents](#internalrunevents-the-run-event-stream). the front end's `Begin` builds the run's
 stream with the terminal `RunLog` and the `Server` as listeners, so the page hears
 the same events the terminal prints, plus each line of a command's output (`Stream.Tap`, wrapped around the step's destination writers in `execRun`, so
 `--quiet`'s terminal-only hiding doesn't reach it; masked with `Scope.Mask`
@@ -850,7 +851,7 @@ the page back. On any other error it leaves the `EventSource` to reconnect and
 shows "hobnob has stopped" after eight seconds without a snapshot, unless the
 page is on Done or Failed (Cancelled is a Failed screen).
 
-**Cancel.** `runOnPage` runs each task, in both flows, under a context of its own and hands
+**Cancel.** `browserFrontEnd.Begin` readies each task, in both flows, under a context of its own and hands
 the server `SetInterrupt(stop, kill)` (and `ClearInterrupt` when the run ends): `stop` cancels that context (a first
 CTRL+C) and `kill` is `runner.KillRunningStep` (a second). `Server.Cancel`, also
 behind `POST /actions/cancel`, calls `stop` once and sets
@@ -889,6 +890,29 @@ type App struct {
 }
 ```
 
+`App` keeps no per-run state: `run` reads `--browser`, `--port` and `--quiet` and
+picks one `frontEnd` with `App.frontEnd` (`app/frontend.go`; `--port` without
+`--browser` is refused there), then passes it down, so dispatch never branches on a mode.
+
+```go
+type frontEnd interface {
+    AlwaysPicks() bool   // the picker comes first: no default-task or empty-list shortcut
+    CanPick(noPrompts bool) bool
+    Pick(ctx, tasks, showUsage) (name string, ok bool, err error)
+    Begin(ctx, cfg, name string, picked bool) (frontRun, error)  // may refuse the task
+    Close()
+}
+```
+
+`frontRun` is what one `ExecuteTask` call needs from the front end: the context,
+the `runevents.Stream` with its listeners, the `RunLog`, the `Prompts`, and `Done`,
+the after-run wait that says whether to pick again. `terminalFrontEnd`
+(`app/terminal.go`) listens with the `RunLog`, asks on the keyboard and does not wait.
+`browserFrontEnd` (`app/browser.go`) listens with the `RunLog` and the `Server`,
+opens the page on first use, refuses a named task under `--port`, and waits in
+`AwaitDelivery` (named task) or `AwaitHome` (picked). `selectAndRun` and `execTask`
+(`app/frontend.go`) call it; `app`'s unit tests drive them with a fake front end.
+
 `IsTerminal`, `Screen`, `SelectTask` and `OpenBrowser` are fields, not package vars, so `internal/e2e`
 can fake the terminal and picker per test without global state. `App.Run`
 never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
@@ -904,7 +928,7 @@ never reads `os.Args` or calls `os.Exit`, so the e2e suite runs in process.
 4. `loadConfig` parses, then `scope.Load` builds the root scope and file
    scopes.
 5. Route `--list`/`--help`/`--select` through `runListingFlag`, so real and
-   demo paths cannot drift, or run the task via `execTask`.
+   demo paths cannot drift, or run the task via `execTask`. Both go through the front end.
 
 With no task and no `default` task, `selectAndRun` opens the picker, or prints
 the task list when there is no terminal, `CI` is set, or `--no-input` was
