@@ -1,3 +1,7 @@
+---
+description: "Keep what a command printed, its errors or its exit code in a variable with into:, and use it in later steps of a hobnob task."
+---
+
 # Capturing output
 
 Add `into:` to a `run:` step to keep what the command printed in a variable.

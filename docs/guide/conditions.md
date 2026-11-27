@@ -1,3 +1,7 @@
+---
+description: "Run a step of a hobnob task only when a condition holds, with if: and template comparisons."
+---
+
 # Conditions
 
 Add `if:` to a step to run it only when a condition holds:

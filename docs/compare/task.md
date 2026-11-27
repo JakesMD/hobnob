@@ -26,11 +26,12 @@ wizards in hobnob.
 | Cleaning up after a failure         | `soft:`, then a step that reacts                        | `defer:`                                                             |
 | Taskfiles from elsewhere            | Local files only                                        | From a URL or a Git repository                                       |
 | Windows                             | No, macOS and Linux                                     | Yes, with a shell built in                                           |
-| Asking a question                   | A `get:` step, anywhere in the task                     | Before the task's commands, for any missing `requires:` variable     |
+| Asking a question                   | A `get:` step, anywhere in the task: text box, menu, multi-select or file picker | Before the task's commands, for any missing `requires:` variable |
 | A question that depends on an answer | The next step                                          | Another task                                                         |
 | Using a command's output            | Any later step, through `into:`                         | `sh:` variables, all worked out before the first command             |
 | Values back from another task       | `results:`                                              | None. Values only go down to the tasks it calls                      |
 | JSON from a command                 | [Data](../guide/structured-data.md), as in `stdout.items[*].name` | Text, cut up with `jq`                                     |
+| For people who never open a terminal | `hobnob --browser`, a local web page                   | None                                                                 |
 
 ## The same wizard
 

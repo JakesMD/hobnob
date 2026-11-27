@@ -1,3 +1,7 @@
+---
+description: "hobnob keeps a command's JSON output as data: dot into it at any depth, in any later step, without jq or a parsing step."
+---
+
 # Structured data
 
 When a command prints JSON, hobnob keeps it as data, not text. You can reach

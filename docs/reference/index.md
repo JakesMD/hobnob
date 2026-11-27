@@ -1,3 +1,7 @@
+---
+description: "hobnob reference: lookup tables for every CLI flag, taskfile key and template filter."
+---
+
 # Reference
 
 Every YAML key, template filter and CLI flag, for looking things up. New to

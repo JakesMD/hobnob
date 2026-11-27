@@ -1,3 +1,7 @@
+---
+description: "What a hobnob task is: a name and a list of steps in hobnob.yml, the kinds of step, helper tasks and how to name them."
+---
+
 # Tasks
 
 A taskfile is a file called `hobnob.yml` at the top of your project. It

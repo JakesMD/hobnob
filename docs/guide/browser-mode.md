@@ -1,3 +1,7 @@
+---
+description: "Run any hobnob task behind a local web page with --browser, so people who never open a terminal can answer its prompts and run it."
+---
+
 # Browser mode
 
 `--browser` runs a task behind a local page and opens it in your default

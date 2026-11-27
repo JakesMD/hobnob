@@ -1,3 +1,7 @@
+---
+description: "Every key a hobnob.yml can hold, as tables: top-level, task, step and module keys, each linked to its guide page."
+---
+
 # Taskfile schema
 
 Every key hobnob reads, as tables. Each row links to the guide page that

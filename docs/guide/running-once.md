@@ -1,3 +1,7 @@
+---
+description: "Mark a shared hobnob helper task once: true so it asks, downloads or logs in only once, however many tasks call it."
+---
+
 # Running once
 
 Sometimes several tasks call the same helper, and it should only run once:

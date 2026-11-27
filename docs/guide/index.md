@@ -1,3 +1,7 @@
+---
+description: "The hobnob guide: every taskfile feature, taught by example, from tasks and prompts to structured data, loops and modules."
+---
+
 # Guide
 
 ## Basics

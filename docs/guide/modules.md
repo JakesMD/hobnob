@@ -1,3 +1,7 @@
+---
+description: "Split a growing hobnob project across several taskfiles with modules:, each under its own prefix."
+---
+
 # Modules
 
 As a project grows, you can split its tasks across several files. List

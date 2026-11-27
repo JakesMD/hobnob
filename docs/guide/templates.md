@@ -1,3 +1,7 @@
+---
+description: "Use {{ }} templates anywhere in a hobnob taskfile to put variables, filters and expressions into commands, conditions and paths."
+---
+
 # Templates
 
 Anywhere you write text in a taskfile, such as a command, a condition, a value

@@ -1,3 +1,7 @@
+---
+description: "Run shell commands from a hobnob task: text and list commands, other working directories, hidden output and background jobs."
+---
+
 # Running commands
 
 A `run:` step runs a command, just as you'd type it in a terminal:

@@ -1,3 +1,7 @@
+---
+description: "Install hobnob with one command: a single static binary for macOS and Linux, with shell completion, upgrades and a GitHub Actions setup."
+---
+
 # Installation
 
 ```bash

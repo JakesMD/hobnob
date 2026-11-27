@@ -1,20 +1,57 @@
 import { defineConfig } from 'vitepress'
 
 const repo = 'https://github.com/jakesmd/hobnob'
+const site = 'https://hobnob.jakesmd.dev'
 
 export default defineConfig({
   title: 'hobnob',
-  description: 'A YAML task runner for building wizards. Hand your workflows to anyone, in the terminal, on a page or from CI, and ditch the outdated docs.',
+  description: 'Turn the shell commands in your README into tasks anyone can run: in the terminal, in the browser or on CI.',
   base: '/',
   cleanUrls: true,
   lastUpdated: true,
-  sitemap: { hostname: 'https://hobnob.jakesmd.dev' },
+  sitemap: { hostname: site },
   appearance: 'force-dark',
-  head: [['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }]],
-  srcExclude: ['adr/**', 'agents/**'],
+  head: [
+    ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
+    ['meta', { property: 'og:site_name', content: 'hobnob' }],
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:image', content: `${site}/og.png` }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+  ],
+
+  // Per page: the canonical URL, and the title and description link previews show.
+  transformHead({ pageData, title, description }) {
+    const path = pageData.relativePath.replace(/(^|\/)index\.md$/, '$1').replace(/\.md$/, '')
+    const url = `${site}/${path}`
+    const head: [string, Record<string, string>, string?][] = [
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { property: 'og:title', content: title }],
+      ['meta', { property: 'og:description', content: description }],
+    ]
+    if (path === '') {
+      head.push(['script', { type: 'application/ld+json' }, JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'hobnob',
+        url: site,
+        description,
+        applicationCategory: 'DeveloperApplication',
+        operatingSystem: 'macOS, Linux',
+        license: 'https://opensource.org/licenses/BSD-3-Clause',
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        sameAs: repo,
+      })])
+    }
+    return head
+  },
+  srcExclude: ['adr/**', 'agents/**', 'parts/**'],
 
   // The homepage demo loads hobnob's --browser page from internal/browser.
-  vite: { server: { fs: { allow: ['..'] } } },
+  // ts.net lets `tailscale serve` proxy the dev server across a tailnet.
+  vite: { server: { fs: { allow: ['..'] }, allowedHosts: ['.ts.net'] } },
 
   rewrites: {
     'installation.md': 'docs/installation.md',

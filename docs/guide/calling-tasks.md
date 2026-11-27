@@ -1,3 +1,7 @@
+---
+description: "Call one hobnob task from another, pass values in with with:, and get values back with into:, like calling a function."
+---
+
 # Calling tasks
 
 A task can run another task as one of its steps, hand it values, and get

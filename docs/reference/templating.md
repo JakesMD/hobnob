@@ -1,3 +1,7 @@
+---
+description: "hobnob template lookup tables: accessor forms, every filter and the comparison rules."
+---
+
 # Templating
 
 Lookup tables for templates. The guide introduces [templates](../guide/templates.md) and explains how values get their [types](../guide/structured-data.md).

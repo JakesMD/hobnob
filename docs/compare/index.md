@@ -20,7 +20,9 @@ You'd otherwise write it as a script or a program:
 ## Already using a task runner
 
 You don't have to switch. Keep your task runner for what it's good at, and
-write the wizards in hobnob. Each page ends with how to run both:
+write the wizards in hobnob. For the short version, see
+[hobnob for task-runner users](/make-just-task). Each page ends with how to run
+both:
 
 - [hobnob vs Task](./task.md): keep Task for builds.
 - [hobnob vs just](./just.md): keep just for shortcuts.

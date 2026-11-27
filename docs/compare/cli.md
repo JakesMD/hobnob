@@ -22,10 +22,11 @@ in between: the same wizard as a task in YAML, with nothing to build.
 |                                  | hobnob                                                  | A custom CLI                                                   |
 | -------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
 | Logic                            | Steps, with `if:`, `loop:` and `call:`                  | A whole language                                               |
-| Screens                          | Text box, menu, multi-select, hidden input              | Whatever the library offers, or you build                      |
+| Screens                          | Text box, menu, multi-select, hidden input, file and folder picker | Whatever the library offers, or you build           |
 | Going back to an earlier question | No                                                     | With form libraries such as huh                                |
 | Tests                            | Run the task                                            | Unit tests                                                     |
 | Who can run it                   | Anyone with the repository and hobnob, on macOS or Linux | Anyone you ship it to, Windows included                        |
+| For people who never open a terminal | `hobnob --browser` asks on a local web page         | A web app, written and hosted separately                       |
 | Building and installing          | Nothing to build. One binary, one YAML file             | A virtualenv, a package, or a compiled binary per platform     |
 | Answers from the command line    | Built in: `NAME=value` skips the question               | A flag per question, wired to its prompt by hand               |
 | The log                          | Every command, with secrets shown as `****`             | Whatever you print                                             |
@@ -140,6 +141,10 @@ The differences:
 - **The log is up to you.** `subprocess.run` prints nothing about what it
   runs. Print the commands, and the token is in the log unless you hide it
   yourself. hobnob prints each command with the token as `****`.
+- **hobnob's wizard also runs in a browser.** `hobnob --browser deploy` asks
+  the same questions on a local web page (see
+  [Browser mode](../guide/browser-mode.md)). For the CLI, that's a second
+  front end to build.
 - **JSON is fine in both.** Python's `json` makes `gh`'s output easy to
   work with. That's no advantage either way.
 

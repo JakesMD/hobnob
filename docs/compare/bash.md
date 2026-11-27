@@ -22,10 +22,12 @@ in CI without extra code.
 |                                  | hobnob                                                     | bash with gum                                                    |
 | -------------------------------- | ---------------------------------------------------------- | ---------------------------------------------------------------- |
 | Logic                            | Steps, with `if:`, `loop:` and `call:`                     | Anything bash can do                                             |
-| Kinds of question                | Text box, menu, multi-select, hidden input                 | Those, plus fuzzy filter, file picker, spinners and more         |
+| Kinds of question                | Text box, menu, multi-select, hidden input, file and folder picker | Those, plus a multi-line editor, spinners and more       |
+| Filtering a long list            | Every menu and picker filters as you type                  | `gum filter` or `fzf`, in place of `gum choose`                  |
 | Something new to learn           | hobnob's YAML                                              | Nothing, if you know bash                                        |
 | Answers from the command line    | Built in: `NAME=value` skips the question                  | Hand-written flag parsing                                        |
 | Running without a terminal       | Stops and says which `NAME=` to pass                       | gum fails, unless the script checks first                        |
+| For people who never open a terminal | `hobnob --browser` asks on a local web page            | A terminal only                                                  |
 | Checking passed answers          | Against `check:`, and in CI against `options:` too         | Hand-written, per answer                                         |
 | The log                          | Every command, with secrets shown as `****`                | Nothing, or everything with `set -x`, secrets included           |
 | JSON from a command              | [Data](../guide/structured-data.md), as in `stdout[*].name` | Text, cut up with `jq`                                           |
@@ -204,6 +206,10 @@ The differences:
   joins them with commas and splits them again to loop. hobnob's `SERVICES`
   is a list, whether it's picked in the menu or passed on the command line
   as JSON (see [Text that looks like JSON](../guide/structured-data.md#text-that-looks-like-json)).
+- **The same wizard runs in a browser.** `hobnob --browser deploy` asks the
+  same three questions on a local web page, for someone who never opens a
+  terminal (see [Browser mode](../guide/browser-mode.md)). The script only
+  runs in a terminal.
 - **gum has to be installed** on every machine where someone answers the
   questions. In CI, with every answer passed, neither needs anything but the
   commands themselves and, for hobnob, its binary.
@@ -215,9 +221,9 @@ The differences:
   [`if:`](../guide/conditions.md), [`loop:`](../guide/loops.md) and
   [`call:`](../guide/calling-tasks.md). Past a certain point, that's more
   awkward than code.
-- **More kinds of question.** gum also has a fuzzy filter for long lists, a
-  file picker, spinners, styled text and a pager. hobnob has a text box, a
-  menu, a multi-select and hidden input.
+- **More kinds of question.** gum also has a multi-line editor, spinners,
+  styled text and a pager. hobnob has a text box, a menu, a multi-select,
+  hidden input and a file or folder picker.
 - **Nothing new.** If the script exists and works, and everyone who runs it
   has gum, there's little to gain from rewriting it.
 
@@ -233,8 +239,11 @@ commands, when a team shares it, or when it also has to run in CI.
 | `gum input --password`                      | `secret: true` (see [Secrets](../guide/secrets.md))                             |
 | `gum choose a b`                            | `options: [a, b]`                                                               |
 | `gum choose --no-limit`                     | `multi: true`                                                                   |
+| `gum filter`                                | `options:`. Every menu filters as you type                                      |
+| `gum file`                                  | `type: file` or `type: dir` (see [Picking a file or directory](../guide/prompts.md#picking-a-file-or-directory)) |
 | `… \| gum choose`, from a command           | A `run:` step with [`into:`](../guide/capturing-output.md), then `options: .LIST` |
 | `gum confirm`                               | A `get:` with `options: ["no", "yes"]`, then a step with `if:`                  |
+| `echo` a result, then wait for enter        | [`say:`](../guide/prompts.md#showing-a-message)                                 |
 | A `while`/`case` loop over flags            | Nothing. Pass `NAME=value`                                                      |
 | `[ -t 0 ]` before asking                    | Nothing. hobnob [doesn't ask without a terminal](../guide/prompts.md#running-without-prompts) |
 | `jq -r '.items[].name'`                     | `into:` with `stdout.items[*].name`                                             |

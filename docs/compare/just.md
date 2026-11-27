@@ -25,11 +25,12 @@ wizards in hobnob.
 | Recipes in other languages      | Through a script file or `python3 -c`                         | Any `#!` interpreter                                      |
 | Running things at once          | Only background jobs                                          | `[parallel]` dependencies                                 |
 | Windows                         | No, macOS and Linux                                           | Yes                                                       |
-| Asking for a value              | A `get:` step: text box, menu or multi-select, anywhere        | `[confirm]` asks yes or no. Anything else is bash         |
+| Asking for a value              | A `get:` step: text box, menu, multi-select or file picker, anywhere | `[confirm]` asks yes or no. Anything else is bash   |
 | A menu built from live data     | `options:` from an earlier step's output                      | A pipe into gum or `fzf`, if it's installed               |
 | Using an earlier command's output | Any later step, with JSON kept as data                      | Shell variables, inside one `#!` recipe                   |
 | Values back from another task   | `results:`, by name                                           | None from a dependency. Capture what a recipe prints      |
 | Bare command                    | A menu of tasks                                               | Runs the first recipe. `--choose` opens a fuzzy finder    |
+| For people who never open a terminal | `hobnob --browser`, a local web page                     | None                                                      |
 
 ## The same wizard
 

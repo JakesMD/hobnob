@@ -1,3 +1,7 @@
+---
+description: "Repeat steps in a hobnob task once for each item in a list, including a list built from a command's JSON output."
+---
+
 # Loops
 
 A `loop:` step runs the steps nested under it once for each item in a list.

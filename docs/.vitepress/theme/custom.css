@@ -114,6 +114,44 @@
   color: var(--vp-c-text-1);
 }
 
+/* A headline set as lines of terminal output, with a blinking cursor. Its
+   lines never wrap, so its size follows the width of the hero's text. */
+.l-hero-text:has(.l-log) {
+  max-width: 720px;
+  container-type: inline-size;
+}
+
+.landing .l-title.l-log {
+  font-family: var(--vp-font-family-mono);
+  font-size: min(60px, 10cqi);
+  line-height: 1.15;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.landing .l-title.l-log::after {
+  content: '';
+  display: inline-block;
+  width: 0.55em;
+  height: 0.9em;
+  margin-left: 0.12em;
+  vertical-align: -0.08em;
+  background: var(--vp-c-text-1);
+  animation: l-blink 1.1s steps(1) infinite;
+}
+
+@keyframes l-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing .l-title.l-log::after {
+    animation: none;
+  }
+}
+
 .l-accent {
   background: linear-gradient(120deg, #f6c27a 20%, #d98a35);
   -webkit-background-clip: text;
@@ -214,6 +252,162 @@
   color: var(--vp-c-brand-1);
 }
 
+/* The link across to the other landing page */
+
+.landing .l-switch {
+  margin: 20px 0 0;
+  font-size: 15px;
+  color: var(--vp-c-text-2);
+}
+
+/* The CTA column is narrower than the install line, so the line breaks out
+   of it, centred. */
+.landing .l-cta .l-install {
+  width: min(800px, calc(100vw - 48px));
+  margin: 28px 0 0 50%;
+  transform: translateX(-50%);
+}
+
+.landing .l-cta .l-switch {
+  margin-top: 28px;
+}
+
+.landing .l-label {
+  margin: 0 0 8px;
+  color: var(--vp-c-brand-1);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* README beside taskfile: the problem and its fix, side by side */
+
+.l-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  max-width: var(--stage);
+  margin: 96px auto 0;
+}
+
+.landing .l-pair .l-heading {
+  margin-bottom: 8px;
+}
+
+/* A terminal window, sized to sit beside a PageShot */
+.l-term {
+  display: flex;
+  flex-direction: column;
+  height: 500px;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background: #14181f;
+}
+.l-term-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  background: #202733;
+}
+.l-term-bar span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #3a4453;
+}
+.landing .l-term-bar p {
+  margin: 0 0 0 10px;
+  font-family: var(--vp-font-family-mono);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--vp-c-text-3);
+}
+.landing .l-term pre {
+  margin: 0;
+  padding: 18px 20px;
+  overflow-x: auto;
+  font-family: var(--vp-font-family-mono);
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--vp-c-text-1);
+  /* Long commands wrap mid-word, as a terminal does. */
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.l-term-prompt {
+  color: var(--vp-c-brand-1);
+}
+.l-term-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.1em;
+  vertical-align: text-bottom;
+  background: var(--vp-c-text-1);
+  animation: l-blink 1s steps(1) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .l-term-cursor {
+    animation: none;
+  }
+}
+
+/* Two taskfiles side by side, each filling its column to the same height */
+.l-pair-code .l-pair-side {
+  display: flex;
+  flex-direction: column;
+}
+
+.landing .l-pair-code div[class*='language-'] {
+  flex: 1;
+  margin: 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+}
+
+.landing .l-pair-code span.lang {
+  display: none;
+}
+
+.landing .l-pair-code div[class*='language-'] code {
+  font-size: 13px;
+  padding: 0 18px;
+}
+
+.landing .l-pair-caption {
+  grid-column: 1 / -1;
+  max-width: var(--measure);
+  margin: 8px 0 0;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.l-demo-intro {
+  max-width: var(--measure);
+  margin: 0 auto 32px;
+  text-align: center;
+}
+
+.landing .l-demo-intro .l-heading {
+  margin: 0 0 12px;
+}
+
+.landing .l-demo-intro p,
+.landing .l-cta-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.65;
+  color: var(--vp-c-text-2);
+}
+
+.landing .l-cta-text {
+  margin-top: 16px;
+}
+
 /* Demo: the product shot, on a soft glow */
 
 /* VitePress holds the home page to a 1280px column; the demo breaks out of
@@ -253,6 +447,10 @@
   gap: 20px;
   max-width: var(--stage);
   margin: 88px auto 0;
+}
+
+.l-uses-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .landing .l-uses .l-heading {
@@ -295,12 +493,8 @@
   border-top: 1px solid var(--vp-c-divider);
 }
 
-.l-icon {
-  font-size: 22px;
-}
-
 .landing .l-feature h3 {
-  margin: 12px 0 8px;
+  margin: 0 0 8px;
   font-size: 16px;
   line-height: 24px;
   font-weight: 600;
@@ -341,7 +535,8 @@
 }
 
 @media (max-width: 960px) {
-  .l-uses {
+  .l-uses,
+  .l-pair {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }

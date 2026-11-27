@@ -1,3 +1,7 @@
+---
+description: "Mark passwords and tokens secret: in a hobnob task, and hobnob prints **** in their place in its output."
+---
+
 # Secrets
 
 hobnob prints every command before it runs it. If a command holds a password,

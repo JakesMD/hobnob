@@ -15,7 +15,7 @@
 // internal/browser/snapshot.go, and the page's answers come back as the actions
 // of internal/browser/server.go.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import PAGE_HTML from '../../../../internal/browser/page.html?raw'
+import { PAGE } from './page'
 
 type Seg = { t: string; c?: string; click?: () => void }
 type Line = Seg[]
@@ -837,7 +837,7 @@ async function deploy() {
   })
 }
 
-const DISKS = ['nvme0n1 953.9G Samsung SSD 980 PRO', 'sda      28.9G SanDisk Ultra']
+const DISKS = ['sdb  28.9G SanDisk Ultra', 'sdc  59.8G Samsung BAR Plus']
 const at = (anchor: string, within?: string) => (highlight(anchor, within), sleep(350))
 
 async function pickImage(caller: string): Promise<string> {
@@ -855,7 +855,7 @@ async function pickDisk(caller: string): Promise<string> {
   let disk = ''
   await call(caller, '_pick-disk', async () => {
     highlight('lsblk -dno')
-    await step('_pick-disk', 'lsblk -dno NAME,SIZE,MODEL', () => stream('_pick-disk', DISKS, 120))
+    await step('_pick-disk', "lsblk -dno NAME,SIZE,MODEL,RM | sed -n 's/ *1$//p'", () => stream('_pick-disk', DISKS, 120))
     await sleep(300)
     highlight('- DISK:')
     const line = await select('_pick-disk', 'DISK', 'Which disk should the image be flashed to?', DISKS)
@@ -901,7 +901,7 @@ async function packerBuild(image: string) {
 async function flashDisk(disk: string) {
   highlight('sudo wipefs')
   await step('flash', `sudo wipefs --all /dev/${disk}`, () => {
-    const end = disk === 'sda' ? '0x7363ffe00' : '0xee3d4c5e00'
+    const end = disk === 'sdb' ? '0x7363ffe00' : '0xef3fffe00'
     return stream('flash', [
       `/dev/${disk}: 8 bytes were erased at offset 0x00000200 (gpt): 45 46 49 20 50 41 52 54`,
       `/dev/${disk}: 8 bytes were erased at offset ${end} (gpt): 45 46 49 20 50 41 52 54`,
@@ -995,29 +995,6 @@ const picker = computed(() =>
 )
 
 
-// The page as hobnob serves it, but talking to this component. The site is
-// always dark, so the page's light theme goes. Focus never scrolls the
-// homepage to the frame.
-const SHIM = `<script>
-(() => {
-  const focus = HTMLElement.prototype.focus;
-  HTMLElement.prototype.focus = function (options) { focus.call(this, { ...options, preventScroll: true }); };
-  window.EventSource = class {
-    constructor() {
-      addEventListener('message', (e) => {
-        if (e.source === parent && e.data && e.data.hobnobSnapshot) this.onmessage && this.onmessage({ data: e.data.hobnobSnapshot });
-      });
-      parent.postMessage({ hobnobReady: true }, '*');
-    }
-    close() {}
-  };
-  window.fetch = (url, init) => {
-    parent.postMessage({ hobnobAction: String(url).split('?')[0].replace('/actions/', ''), body: init && init.body }, '*');
-    return Promise.resolve(new Response(null, { status: 204 }));
-  };
-})();
-<` + `/script>`
-const PAGE = PAGE_HTML.replace('@media (prefers-color-scheme: light)', '@media not all').replace('<script>', SHIM + '<script>')
 
 
 // A folder the picker lists, after PathRules.List in internal/ask/path.go.

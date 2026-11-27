@@ -22,10 +22,11 @@ they go. Keep make for building, and write the wizards in hobnob.
 | Skipping work that's up to date   | No, every task runs every time                          | Yes, by comparing files' timestamps                          |
 | Running things at once            | Only background jobs                                    | `make -j`                                                    |
 | Already installed                 | No, one binary to add                                   | With macOS's developer tools and almost every Linux          |
-| Asking for a value                | A `get:` step: text box, menu or multi-select           | `read` in a command, by hand                                 |
+| Asking for a value                | A `get:` step: text box, menu, multi-select or file picker | `read` in a command, by hand                              |
 | Checking a value                  | `check:`, which asks again until it passes              | A shell test that fails the target                           |
 | Using a command's output later    | Any later step, with JSON kept as data                  | One shell line joined with `\`, or `$(shell)` before anything runs |
 | A list of the tasks               | Built in                                                | A hand-written `help` target                                 |
+| For people who never open a terminal | `hobnob --browser`, a local web page                 | None                                                         |
 | The shell's `$`                   | Plain `$`. hobnob's own variables are `{{ }}`           | `$$`, and every command line starts with a tab               |
 
 ## The same wizard

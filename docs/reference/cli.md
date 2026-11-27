@@ -1,3 +1,7 @@
+---
+description: "Every hobnob command-line flag: running tasks, passing variables, --browser, --no-input, --list, --demo and more."
+---
+
 # CLI
 
 ```

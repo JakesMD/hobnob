@@ -1,3 +1,7 @@
+---
+description: "Set and read variables in a hobnob task, override them from the command line, and see which value wins when several are set."
+---
+
 # Variables
 
 A variable holds a value so that later steps can use it. Set one with `set:`,

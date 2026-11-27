@@ -1,3 +1,7 @@
+---
+description: "What happens when a command in a hobnob task fails, and how to carry on after a failure or react to it."
+---
+
 # Errors
 
 When a command fails, the task stops there, and so does everything else

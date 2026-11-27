@@ -1,3 +1,7 @@
+---
+description: "Write your first hobnob.yml: a task that runs commands, asks questions and keeps JSON as data, then run it in the terminal, the browser or CI."
+---
+
 # Quick start
 
 ## Write a taskfile

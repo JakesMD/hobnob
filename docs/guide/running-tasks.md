@@ -1,3 +1,7 @@
+---
+description: "Run a hobnob task by name or from a menu, pass variables as NAME=value, and point hobnob at another taskfile with --file."
+---
+
 # Running tasks
 
 Run a task by giving its name:

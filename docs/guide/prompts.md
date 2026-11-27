@@ -1,3 +1,7 @@
+---
+description: "Ask questions from a hobnob task in a get: step. Text boxes, menus, multi-selects, file pickers and secrets, with options built from earlier steps."
+---
+
 # Prompts
 
 A `get:` step asks whoever is running the task for a value, and stores the
